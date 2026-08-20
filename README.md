@@ -47,6 +47,50 @@ persona voices) plus a running PocketTTS instance for voice.
 > Configure the backend, model, default voice, and think-time-out in the in-app
 > **⚙ Settings** panel.
 
+## 📦 Installer (modular / multi-machine)
+
+`install.sh` installs **different components on different local machines** and
+points them at each other via `config.json`. This is handy when one box has a
+GPU/torch and another is light.
+
+```bash
+# Machine A (LLM + web UI):
+./install.sh --core --models
+
+# Machine B (voice + speech, has torch / GPU):
+./install.sh --tts --stt
+
+# then on A, set in config.json:
+#   "tts":  { "base_url": "http://<B-ip>:49152" }
+#   "stt":  { "base_url": "http://<B-ip>:8181"  }
+```
+
+Flags: `--all` (default), `--core`, `--tts`, `--stt`, `--models`, `--autonomous`,
+`--ollama-url URL`, `--model NAME`, `--prefix DIR`, `--skip-deps`, `--dry-run`.
+Run `./install.sh --help` for the full list. macOS and Linux (apt) are supported;
+Windows is not. The script is idempotent and safe to re-run.
+
+After install, launch with `./run.sh` (server only) or `./launch.sh` (full stack:
+server + PocketTTS + Whisper, health-aware, safe for cron).
+
+## 🩺 CLI: `vgctl.py`
+
+A dependency-free control tool for ops without the browser.
+
+```bash
+.venv/bin/python vgctl.py health                         # probe /api/health
+.venv/bin/python vgctl.py doctor                         # full diagnostic of stack + config
+.venv/bin/python vgctl.py fix --kill-ports              # clear stale processes on stack ports
+.venv/bin/python vgctl.py fix --ensure-venv --restart   # rebuild venv + relaunch stack
+.venv/bin/python vgctl.py settings list                 # print config.json
+.venv/bin/python vgctl.py settings get ollama.default_model
+.venv/bin/python vgctl.py settings set ollama.default_model qwen2.5:3b
+.venv/bin/python vgctl.py settings reset tts.enabled    # remove key -> server default
+```
+
+`settings` writes land in `config.json` and apply on the next server boot
+(`set` auto-types bool/int/float/str). `fix --restart` calls `launch.sh`.
+
 ## 🗂 Project layout
 
 The frontend was refactored out of a single `index.html` into focused modules:
