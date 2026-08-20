@@ -49,7 +49,7 @@
 ## DB resilience
 | Feature | Status | Notes |
 |---|---|---|
-| backup_db (snapshot + prune) | ✅ | `data/db_backups/`, keeps 10 |
+| backup_db (snapshot + prune) | ✅ | `data/db_backups/`, keeps 10 (prune **bug fixed** in T1 — was a silent no-op) |
 | verify_db (integrity_check) | ✅ | |
 | auto_heal on corruption | ✅ | ran at startup; verified restores good backup |
 | endpoints | ✅ | `/api/db/status|backup|restore` |
@@ -77,7 +77,15 @@
 | pipeline orchestration (research→build→test→check→upload) | 🔴 | `autonomous/pipeline.py` |
 | marton.ai connector (Gmail/YouTube/Snapchat) | 🔴 | the ONLY external integration not existing anywhere |
 | Studio UI tab | 🔴 | live stage tracker + preview |
-| **Desktop app build-out** | 🔴 | see ROADMAP — wrap stack in a native desktop shell |
+| **Desktop app build-out** | ✅ | pywebview shell + `desktop/build-*.py`; native window wraps `:8500` (see ROADMAP §1) |
+
+## Backend tuning — T1 (verified)
+| Item | Status | Notes |
+|---|---|---|
+| Chat small-context trim | ✅ | `trim_history()` caps history at `max_history=24` msgs / `max_history_tokens=2800` chars → qwen2.5:3b never overflows. Live-tested with a 35,556-char input. |
+| Memory retrieval scan cap | ✅ | `retrieve()` short-circuits at `MEMORY_SCAN_CAP=200` (scores only most-recent concepts); dependency-free, bounded per-turn latency. |
+| DB backup prune | ✅ | **Bug fixed** — prune loop dropped `.db` ext (`old.stem + ""`), never deleted main backup. Now prunes to `BACKUP_KEEP=10` (verified 16→10). |
+| Gateway cron cadences | ✅ | `builtin_jobs()`: launch_check 60s, memory_maintain 30m, db_backup 24h, selfdev 1h. `launch.sh` starts the gateway supervisor. |
 
 ## Test status
 - CI: ✅ green (py syntax + requirements + JSON validate).

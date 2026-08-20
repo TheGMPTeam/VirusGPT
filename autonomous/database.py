@@ -109,14 +109,18 @@ def backup_db(tag: str = "") -> Optional[str]:
                 sib = DB_PATH.parent / (DB_PATH.stem + ext)
                 if sib.exists():
                     shutil.copy2(sib, dst.parent / (dst.stem + ext))
-        # prune old backups
+        # prune old backups (keep the BACKUP_KEEP most recent).
+        # NOTE: delete the .db file itself (old) plus its -wal/-shm siblings,
+        # which backup_db names as "<stem>-wal" / "<stem>-shm". The earlier
+        # `old.stem + ""` form dropped the ".db" extension and so never deleted
+        # the main backup — that made the prune a silent no-op.
         backs = sorted(BACKUP_DIR.glob("virusgpt-*.db"), key=lambda p: p.stat().st_mtime)
         for old in backs[:-BACKUP_KEEP]:
-            for ext in ("", "-wal", "-shm"):
-                op = old.parent / (old.stem + ext)
-                if op.exists():
+            for sib in (old, old.parent / (old.stem + "-wal"),
+                        old.parent / (old.stem + "-shm")):
+                if sib.exists():
                     try:
-                        op.unlink()
+                        sib.unlink()
                     except Exception:
                         pass
         return str(dst)

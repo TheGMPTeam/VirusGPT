@@ -9,6 +9,13 @@
     "default_model": "qwen2.5:3b"
   },
   "chat_timeout": 60,
+  "chat": {
+    "system_prompt": "You are VirusGPT, a helpful offline AI assistant running fully local. You have your own knowledge graph (memory) that is injected as context when relevant. Use it. Be concise, accurate, and friendly. Do not invent tools or claim capabilities you lack. If you are unsure, say so.",
+    "memory_enabled": true,
+    "memory_k": 4,
+    "max_history": 24,
+    "max_history_tokens": 2800
+  },
   "tts": {
     "enabled": true,
     "base_url": "http://localhost:49152",

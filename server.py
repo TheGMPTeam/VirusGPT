@@ -77,9 +77,28 @@ async def health():
     })
 
 
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Chat — proxy to Ollama, stream SSE {content|done|error}
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+def trim_history(messages, max_hist: int = 24, max_chars: int = 2800):
+    """Small-context window: keep the last `max_hist` messages, then drop the
+    oldest until total content chars <= `max_chars`. Returns the trimmed list.
+
+    Guarantees the model never receives more than `max_chars` of history, which
+    keeps qwen2.5:3b (8192-token ctx) far from an overflow on long sessions.
+    Extracted from chat() so the bound is unit-testable and reusable.
+    """
+    if not messages:
+        return []
+    window = messages[-max_hist:] if len(messages) > max_hist else messages
+    kept = list(window)
+    total = sum(len(m.get("content") or "") for m in kept)
+    while kept and total > max_chars:
+        dropped = kept.pop(0)
+        total -= len(dropped.get("content") or "")
+    return kept
+
+
 @app.post("/api/chat")
 async def chat(req: Request):
     body = await req.json()
@@ -104,15 +123,10 @@ async def chat(req: Request):
         else:
             non_system.append(m)
 
-    # --- Small-context history window (trim to last N messages / token cap) ---
+    # --- Small-context history window (trim to last N messages / char cap) ---
     max_hist = int(chat_cfg.get("max_history", 24))
     max_chars = int(chat_cfg.get("max_history_tokens", 2800))
-    trimmed = non_system[-max_hist:] if len(non_system) > max_hist else non_system
-    kept = list(trimmed)
-    char_total = sum(len((m.get("content") or "")) for m in kept)
-    while kept and char_total > max_chars:
-        dropped = kept.pop(0)
-        char_total -= len(dropped.get("content") or "")
+    kept = trim_history(non_system, max_hist, max_chars)
 
     # --- System prompt (default VirusGPT context) + memory graph injection ---
     system = (chat_cfg.get("system_prompt")

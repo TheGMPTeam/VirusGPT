@@ -9,6 +9,10 @@
 - **Desktop app = the product.** The vanilla-JS UI in `app/` is no longer served
   to a browser; it is rendered inside a **native desktop window**.
 - **Must run on all OS**: macOS, Windows, Linux.
+- **Verified (T2 reconcile, 2026-08-20):** small-context chat (now an explicit `chat`
+  block in `config.json`, the single source of truth for context behavior), memory-RAG,
+  the pywebview desktop shell, and `vgctl audit` are all ✅; creative-pipeline service
+  clients remain 🔴. `desktop/requirements.txt` now pins `pyinstaller` for buildable apps.
 - **Chosen shell: `pywebview`** — pure-Python, embeds the OS-native webview
   (macOS WKWebView / Windows WebView2 / Linux WebKit), launches the FastAPI
   server in-process, and loads `http://localhost:8500`. **Zero rewrite** of the

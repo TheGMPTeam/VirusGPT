@@ -322,12 +322,35 @@ def memory_dream(title: str, body: str, typ: str = "insight") -> dict:
 # inject the knowledge graph as DEFAULT context on every chat turn (RAG-style)
 # without paying for an extra LLM call. Small-context friendly.
 # -------------------------------------------------------------------------
+# Memory retrieval stays dependency-free and O(N). When the concept store grows
+# past MEMORY_SCAN_CAP, cap the scoring pass to the most-recently-modified
+# concepts so per-turn RAG latency stays bounded (T1 backend optimization).
+MEMORY_SCAN_CAP = 200
+
+
+def _mtime_of(c: dict) -> float:
+    """Last-modified time of a concept's backing file (for the scan cap)."""
+    p = ROOT / c.get("file", "")
+    try:
+        return p.stat().st_mtime
+    except Exception:
+        return 0.0
+
+
 def retrieve(question: str, k: int = 4) -> list:
-    """Return the top-k concepts ranked by keyword overlap with `question`."""
+    """Return the top-k concepts ranked by keyword overlap with `question`.
+
+    Short-circuit: if the store is large (> MEMORY_SCAN_CAP concepts), only
+    score the most recently modified concepts — bounds per-turn cost without
+    any external dependency.
+    """
     ensure_seed()
     concepts = list_concepts()
     if not concepts:
         return []
+    # Short-circuit: bound the scoring pass when the store is large.
+    if len(concepts) > MEMORY_SCAN_CAP:
+        concepts = sorted(concepts, key=_mtime_of, reverse=True)[:MEMORY_SCAN_CAP]
     q = set(re.findall(r"[a-z0-9]+", (question or "").lower()))
     ranked = []
     for c in concepts:
