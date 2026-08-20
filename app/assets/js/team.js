@@ -262,8 +262,8 @@ function maybeEmitArtifact(a, st){
     : `📎 ${label}`;
   pushMessage('assistant', text, who);
 }
-async function startMission(){
-  const goal = ($('#mission-goal').value||'').trim();
+async function startMission(goalOverride){
+  const goal = (goalOverride || $('#mission-goal').value || '').trim();
   if(!goal){ alert('Enter a mission goal first.'); return; }
   const room = activeRoom();
   const lineup = roomPersonas(room).map(personaByName).filter(Boolean);
@@ -278,7 +278,6 @@ async function startMission(){
     if(!res.ok || !data.ok){ throw new Error(data.error||('HTTP '+res.status)); }
     __activeMissionId = data.mission_id;
     $('#mission-state').innerHTML = `Mission <b>${data.mission_id}</b> · <b id="mission-status">${data.status||'running'}</b> · planner <b>${data.planner||''}</b>`;
-    $('#mission-events').innerHTML = '';
     if(__missionStream){ try{__missionStream.close();}catch(e){} }
     __missionStream = new EventSource(API.base + data.stream_url);
     __missionStream.onmessage = (ev)=>{
@@ -286,7 +285,6 @@ async function startMission(){
         const st = JSON.parse(ev.data);
         const statusEl = $('#mission-status');
         if(statusEl) statusEl.textContent = st.status || statusEl.textContent;
-        appendMissionEvent(st.event || 'state', st.planner || 'system', JSON.stringify(st).slice(0,180));
         // Render the mission's planned tasks onto the Kanban board.
         renderMissionBoard(st, goal);
         // Surface any tool calls (from the live event stream) in the tool-call log.
@@ -308,7 +306,6 @@ async function startMission(){
         if(Array.isArray(st.artifacts)) st.artifacts.forEach(a=>maybeEmitArtifact(a, st));
         if(st.status==='completed' || st.status==='failed' || st.status==='cancelled'){
           stopMission(false);
-          if(st.final_result) appendMissionEvent('final', data.planner||'system', (typeof st.final_result==='string'?st.final_result:JSON.stringify(st.final_result)).slice(0,400));
         }
       }catch(e){}
     };
@@ -324,16 +321,6 @@ function stopMission(notify=true){
   __activeMissionId = null;
   $('#btn-mission-start').classList.remove('hidden');
   $('#btn-mission-stop').classList.add('hidden');
-  if(notify) appendMissionEvent('system','system','Mission stopped.');
-}
-function appendMissionEvent(evt, agent, text){
-  const el = $('#mission-events');
-  if(!el) return;
-  const row = document.createElement('div');
-  row.style.cssText = 'padding:3px 0;border-bottom:1px dashed var(--border)';
-  row.textContent = `[${new Date().toLocaleTimeString()}] ${agent||'?'}: ${evt} — ${text}`;
-  el.prepend(row);
-  while(el.children.length>200) el.removeChild(el.lastChild);
 }
 async function loadMissionsList(){
   try{

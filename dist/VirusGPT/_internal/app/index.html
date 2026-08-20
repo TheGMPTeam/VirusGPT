@@ -74,6 +74,17 @@
             Type <kbd>/</kbd> <kbd>@</kbd> <kbd>#</kbd> for commands/personas/tags — and free text shows AI completions.
           </div>
         </div>
+        <div id="mission-panel" style="padding-top:0">
+          <h3 style="margin:0 0 8px">🚀 Autonomous Mission</h3>
+          <textarea id="mission-goal" rows="2" placeholder="Mission goal — e.g. 'Build a YouTube automation pipeline'" style="width:100%;resize:vertical;font:inherit;background:var(--panel2);color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:8px"></textarea>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button id="btn-mission-start" class="btn-accent" style="flex:1">▶ Start</button>
+            <button id="btn-mission-stop" class="btn-danger hidden" style="flex:1">■ Stop</button>
+            <button id="btn-mission-refresh" class="accent">⟳</button>
+          </div>
+          <div id="mission-state" style="font-size:12px;color:var(--txt-dim);margin-top:8px">No active mission.</div>
+        </div>
+
         <div id="team-plan-panel">
           <h3 style="margin:0 0 8px;display:flex;align-items:center;gap:8px">🧠 Team Board <span id="team-plan-status" style="color:var(--neon2);font-size:12px;font-weight:400"></span></h3>
           <div id="kanban" class="kanban">
@@ -87,18 +98,6 @@
           <h3 style="margin:0 0 8px">🛠 Agent Tools <span id="tools-count" style="color:var(--neon2);font-size:12px;font-weight:400"></span></h3>
           <div id="tools-list" style="display:flex;flex-wrap:wrap;gap:5px"></div>
           <div id="tool-call-log" style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;color:var(--txt-dim);border-top:1px dashed var(--border);padding-top:6px"></div>
-        </div>
-
-        <div id="mission-panel" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-          <h3 style="margin:0 0 8px">🚀 Autonomous Mission</h3>
-          <textarea id="mission-goal" rows="2" placeholder="Mission goal — e.g. 'Build a YouTube automation pipeline'" style="width:100%;resize:vertical;font:inherit;background:var(--panel2);color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:8px"></textarea>
-          <div style="display:flex;gap:6px;margin-top:8px">
-            <button id="btn-mission-start" class="btn-accent" style="flex:1">▶ Start</button>
-            <button id="btn-mission-stop" class="btn-danger hidden" style="flex:1">■ Stop</button>
-            <button id="btn-mission-refresh" class="accent">⟳</button>
-          </div>
-          <div id="mission-state" style="font-size:12px;color:var(--txt-dim);margin-top:8px">No active mission.</div>
-          <div id="mission-events" style="max-height:160px;overflow-y:auto;font-size:11.5px;color:var(--txt-dim);margin-top:6px;border-top:1px dashed var(--border);padding-top:6px">Start a mission to see live events.</div>
         </div>
       </aside>
     </div>
@@ -148,17 +147,17 @@
 
 
 
-  <script src="/assets/js/config.js?v=6"></script>
-  <script src="/assets/js/utils.js?v=6"></script>
-  <script src="/assets/js/tts.js?v=6"></script>
-  <script src="/assets/js/messages.js?v=6"></script>
-  <script src="/assets/js/personas.js?v=6"></script>
-  <script src="/assets/js/sessions.js?v=6"></script>
-  <script src="/assets/js/chat.js?v=6"></script>
-  <script src="/assets/js/autocomplete.js?v=6"></script>
-  <script src="/assets/js/team.js?v=6"></script>
-  <script src="/assets/js/memory.js?v=6"></script>
-  <script src="/assets/js/ui.js?v=6"></script>
-  <script src="/assets/js/main.js?v=6"></script>
+  <script src="/assets/js/config.js?v=7"></script>
+  <script src="/assets/js/utils.js?v=7"></script>
+  <script src="/assets/js/tts.js?v=7"></script>
+  <script src="/assets/js/messages.js?v=7"></script>
+  <script src="/assets/js/personas.js?v=7"></script>
+  <script src="/assets/js/sessions.js?v=7"></script>
+  <script src="/assets/js/chat.js?v=7"></script>
+  <script src="/assets/js/autocomplete.js?v=7"></script>
+  <script src="/assets/js/team.js?v=7"></script>
+  <script src="/assets/js/memory.js?v=7"></script>
+  <script src="/assets/js/ui.js?v=7"></script>
+  <script src="/assets/js/main.js?v=7"></script>
 </body>
 </html>

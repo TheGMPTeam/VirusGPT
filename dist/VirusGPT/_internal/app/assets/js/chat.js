@@ -62,11 +62,27 @@ async function runSlashCommand(raw){
   pushMessage('system','⚠ unknown command: /'+cmd+'  (try /help)');
 }
 
+function extractTeamGoal(text){
+  const m = String(text||'').trim().match(/^(?:\/team|@team|team:|#team)\b\s*(.*)$/i);
+  return m ? (m[1] || '').trim() : '';
+}
+
 async function send(text){
   text=(text||'').trim(); if(!text) return;
   $('#cmd-popup').classList.remove('show'); cpItems=[]; cpActive=-1; sugItems=[]; cpMode='none';
 
   // Team rounds now run through Autonomous Mission (right-side panel).
+  if(/^(?:\/team|@team|team:|#team)\b/i.test(text)){
+    const goal = extractTeamGoal(text) || text.replace(/^(?:\/team|@team|team:|#team)\b\s*/i,'').trim();
+    const room = activeRoom();
+    const lineup = roomPersonas(room).map(personaByName).filter(Boolean);
+    if(lineup.length < 2){ alert('Add at least 2 personas to the room for a team mission.'); return; }
+    pushMessage('user', text);
+    $('#mission-goal').value = goal;
+    await startMission(goal);
+    return;
+  }
+
   // Slash commands: /new, /clear, /help
   if(text.startsWith('/')){
     await runSlashCommand(text);
