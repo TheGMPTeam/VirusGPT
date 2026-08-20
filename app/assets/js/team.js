@@ -1,15 +1,87 @@
-/* team.js — agent-to-agent autonomous mission: Planner decomposes in the team
-   board and Workers execute in the chat with TTS, then the Planner synthesizes. */
+/* team.js — two team modes:
+   • TEAM ROUND (@team / /team / team: / #team): a visible multi-agent chat
+     round. The Planner lays out a sequence of turns; each agent speaks IN CHAT
+     (with TTS) in turn; the Planner synthesizes at the end. Turns are shown on
+     the kanban board too.
+   • AUTONOMOUS MISSION (right-panel Start): long-running backend mission. */
 
-/* Team Workflow now points to Autonomous Mission; auto-chat removed. */
+let __teamActive = false;   // a chat team-round is in flight
+
 function stopAll(){
   // Stop any in-flight streamed turn and all speech.
   runToken++;                 // invalidates in-flight teamTurn
+  __teamActive = false;
   if(currentBot){ try{ currentBot.cur.textContent='⏹ stopped'; }catch(e){} currentBot=null; }
   stopTTS();
   $('#message-input').disabled=false;
   $('#btn-send').disabled=false;
   try{ updatePlanPanel('stopped'); }catch(e){}
+}
+
+/* Parse a Planner's turn sequence. Unlike the old plan parser, this KEEPS
+   every @Name line IN ORDER (repeats allowed) so agents can take multiple
+   turns — e.g. A: ..., B: ..., A: ..., which reads as a real conversation. */
+function parseTurns(text, lineup){
+  const out=[];
+  for(const ln of (text||'').split('\n')){
+    const m=ln.match(/@([^:]+):\s*(.+)/);
+    if(!m) continue;
+    const name=m[1].trim(); const task=m[2].trim();
+    if(!task) continue;
+    const w=lineup.find(p=>p.name.toLowerCase()===name.toLowerCase())
+         || lineup.find(p=>name.toLowerCase().includes(p.name.toLowerCase()))
+         || lineup.find(p=>p.name.toLowerCase().includes(name.toLowerCase()));
+    out.push({worker: w || {name}, task});
+  }
+  return out;
+}
+
+/* The visible team round: Planner -> sequence of agent chat turns -> synthesis.
+   Each agent speaks in the chat panel (with TTS) so the team "works" live. */
+async function runTeamRound(task){
+  const rm=activeRoom();
+  const lineup=roomPersonas(rm).map(personaByName).filter(Boolean);
+  if(lineup.length<2){ alert('Add at least 2 personas to the room for a team round.'); return; }
+  __teamActive=true;
+  $('#message-input').disabled=true;
+  $('#btn-send').disabled=true;
+  updatePlanPanel('planning…');
+  kbReset();
+  const planner = lineup.find(p=>(p.role||'worker')==='planner') || lineup[0];
+  const workers = lineup.filter(p=>p!==planner);
+  kbAdd('backlog','Task', task, 'progress');
+  pushMessage('user', task, 'YOU');
+  // 1) Planner lays out an ordered turn sequence (rotation across agents).
+  const plan = await silentStream(planner,
+    `Team members: ${lineup.map(p=>p.name).join(', ')}.\nGoal: ${task}\n\nProduce an ORDERED sequence of turns that completes the goal. Rotate among team members so each takes a turn. Output ONE turn per line, format:\n@<PersonName>: <what they should say or do>\nDo NOT do the work yourself — only delegate. Aim for several turns so the team collaborates.`,
+    `You are ${planner.name}, the PLANNER and team lead. Decompose the goal into an ordered list of agent turns. Never answer the task yourself.`,
+    null);
+  updatePlanPanel('✓ plan ready');
+  const turns=parseTurns(plan, lineup);
+  kbReset(); kbAdd('backlog','Task', task, 'progress');
+  // 2) Each agent takes its turn IN CHAT (with TTS).
+  for(let i=0;i<turns.length;i++){
+    if(!__teamActive){ updatePlanPanel('stopped'); break; }
+    const t=turns[i];
+    const persona = personaByName(t.worker.name) || t.worker;
+    const card = kbAdd('progress', persona.name, t.task);
+    const r = await teamTurn(persona, t.task,
+      { systemExtra:`You are ${persona.name}. It is your turn in the team round. Speak/act as ${persona.name} and keep your turn concise.`,
+        connector:`🔁 ${planner.name} → ${persona.name}`, connectorWho:'System' });
+    if(card){ kbMove(card,'done'); }
+    await new Promise(r=>setTimeout(r, 300));
+  }
+  if(!__teamActive){ $('#message-input').disabled=false; $('#btn-send').disabled=false; return; }
+  // 3) Planner synthesizes a final wrap-up in chat.
+  updatePlanPanel('✓ synthesizing');
+  await teamTurn(planner,
+    `Original goal: ${task}\n\nThe team has taken their turns above. Give a short final synthesis as ${planner.name}.`,
+    { systemExtra:`You are ${planner.name}, the team lead. Summarize the team's work concisely, speaking as ${planner.name}.`,
+      connector:`🧠 ${planner.name} is synthesizing…`, connectorWho:'System' });
+  updatePlanPanel('✓ done');
+  __teamActive=false;
+  $('#message-input').disabled=false;
+  $('#btn-send').disabled=false;
 }
 
 /* Update the Kanban team board (right sidebar). status shown in the header;

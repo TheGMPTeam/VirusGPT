@@ -71,15 +71,14 @@ async function send(text){
   text=(text||'').trim(); if(!text) return;
   $('#cmd-popup').classList.remove('show'); cpItems=[]; cpActive=-1; sugItems=[]; cpMode='none';
 
-  // Team rounds now run through Autonomous Mission (right-side panel).
+  // Team rounds now run as a visible chat team-round (each agent takes a turn).
   if(/^(?:\/team|@team|team:|#team)\b/i.test(text)){
     const goal = extractTeamGoal(text) || text.replace(/^(?:\/team|@team|team:|#team)\b\s*/i,'').trim();
     const room = activeRoom();
     const lineup = roomPersonas(room).map(personaByName).filter(Boolean);
-    if(lineup.length < 2){ alert('Add at least 2 personas to the room for a team mission.'); return; }
+    if(lineup.length < 2){ alert('Add at least 2 personas to the room for a team round.'); return; }
     pushMessage('user', text);
-    $('#mission-goal').value = goal;
-    await startMission(goal);
+    await runTeamRound(goal);
     return;
   }
 
