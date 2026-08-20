@@ -76,3 +76,12 @@ def memory_autolink() -> dict:
     except Exception as exc:  # noqa: BLE001
         logger.warning("memory_autolink failed: %s", exc)
         return {"ok": False, "error": str(exc)}
+
+
+def retrieve_context(question: str, k: int = 4) -> str:
+    """Keyword-ranked relevant concepts as a compact system-prompt block."""
+    try:
+        return _store.retrieve_context(question, k=k)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("retrieve_context failed: %s", exc)
+        return ""

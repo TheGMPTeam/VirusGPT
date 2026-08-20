@@ -1,0 +1,86 @@
+# VirusGPT — Build Status
+
+> Accurate as of `main` HEAD. Green = live & verified. Amber = built in module,
+> partial wiring. Red = not started. Sub-agents: pick an amber/red item, read
+> `ARCHITECTURE.md`, implement, verify against `:8500`, commit, push.
+
+## Legend
+✅ live & verified · 🟡 built-but-partial · 🔴 not started
+
+## Chat / context engine
+| Feature | Status | Notes |
+|---|---|---|
+| Small-context window (history trim) | ✅ | `chat.max_history=24`, `max_history_tokens=2800` in config.json |
+| Default system prompt (context) | ✅ | injected on every turn; persona context preserved from frontend |
+| Memory graph as DEFAULT context (RAG) | ✅ | `memory.retrieve_context()` keyword-ranked top-k injected every turn |
+| Retrieval (no extra LLM call) | ✅ | `memory/store.py: retrieve()/retrieve_context()` |
+| Memory query endpoint | ✅ | `/api/memory/query` |
+
+## Memory (own graph)
+| Feature | Status | Notes |
+|---|---|---|
+| Concept store (OKF md) | ✅ | `memory/store.py`, 18 concepts, 0 orphans |
+| Graph endpoint | ✅ | `/api/memory/graph` |
+| Query endpoint | ✅ | `/api/memory/query` (Ollama RAG over concepts) |
+| CRUD: get/update/remove/autolink | ✅ | endpoints + store fns live |
+| Living force-directed UI | ✅ | `memory.js`: drag/pan/zoom, legend, detail w/ relink/remove/dream/fact-check |
+| No Hermes/Understory refs | ✅ | self-contained; blocklist as safety net |
+
+## Autonomous engine
+| Feature | Status | Notes |
+|---|---|---|
+| Mission supervisor | ✅ | `orchestrator.py`, `/api/autonomous/start|stop|stream|status` |
+| ReAct runtime (Ollama tools) | ✅ | `agents/runtime.py` |
+| Self-contained tool harness | ✅ | `tools.py`: 8 tools, no Hermes dep |
+| Live tool-call list in UI | ✅ | `/api/tools` + team.js log |
+| Mission → Kanban board | ✅ | planner tasks → cards Backlog→Done |
+| Event/task persistence | ✅ | `database.py` Repository (SQLite) |
+
+## Self-dev (Dreamer)
+| Feature | Status | Notes |
+|---|---|---|
+| research_topic (web→store) | ✅ | `/api/selfdev/research` verified live |
+| fact_check_concept | ✅ | `/api/selfdev/factcheck` |
+| dream_cycle (trim/link/insight) | ✅ | `/api/selfdev/dream` |
+| full cycle | ✅ | `/api/selfdev/cycle` |
+| hourly cron | ✅ | gateway selfdev job |
+| status endpoint | ✅ | `/api/selfdev/status` |
+
+## DB resilience
+| Feature | Status | Notes |
+|---|---|---|
+| backup_db (snapshot + prune) | ✅ | `data/db_backups/`, keeps 10 |
+| verify_db (integrity_check) | ✅ | |
+| auto_heal on corruption | ✅ | ran at startup; verified restores good backup |
+| endpoints | ✅ | `/api/db/status|backup|restore` |
+| daily cron backup | ✅ | gateway db_backup job |
+
+## Gateway / ops
+| Feature | Status | Notes |
+|---|---|---|
+| heartbeat + revive | ✅ | `gateway/service.py`, `/api/gateway/status` |
+| cron scheduler | ✅ | launch_check/memory_maintain/db_backup/selfdev |
+| install.sh (modular flags) | ✅ | --core/--tts/--stt/--models/--autonomous/--memory/--gateway/--docker |
+| Windows via Docker | ✅ | docs + --docker flag; compose stack is canonical Win path |
+| vgctl CLI | ✅ | health/doctor/fix/settings (+ memory/gateway planned) |
+| GitHub Actions CI | ✅ | green on push |
+
+## Creative / publishing pipeline (the big next build)
+| Feature | Status | Notes |
+|---|---|---|
+| Architecture + phased plan | ✅ | `docs/INTEGRATIONS_PLAN.md` |
+| Windows-box findings (Hermes memory) | ✅ | recorded as graph node; ComfyUI/Blender/FFmpeg/n8n already on Win box |
+| service clients (n8n/comfyui/blender/ffmpeg/marton) | 🔴 | planned ONE file per service; NOT built yet |
+| config `services` block | 🔴 | reverted earlier; re-add when clients land |
+| `/api/services/status` | 🔴 | reverted; re-add with clients |
+| media tools in harness | 🔴 | render_image/video, edit_video, publish_* |
+| pipeline orchestration (research→build→test→check→upload) | 🔴 | `autonomous/pipeline.py` |
+| marton.ai connector (Gmail/YouTube/Snapchat) | 🔴 | the ONLY external integration not existing anywhere |
+| Studio UI tab | 🔴 | live stage tracker + preview |
+| **Desktop app build-out** | 🔴 | see ROADMAP — wrap stack in a native desktop shell |
+
+## Test status
+- CI: ✅ green (py syntax + requirements + JSON validate).
+- Live endpoint smoke tests: ✅ all core/memory/selfdev/sessions/db/gateway 200.
+- Browser E2E: previously verified (Kanban, TTS toggle, graph render) — re-run
+  after each UI change.

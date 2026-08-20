@@ -316,3 +316,35 @@ def memory_dream(title: str, body: str, typ: str = "insight") -> dict:
         p.write_text(_dump_md(fm, b), encoding="utf-8")
     return {"ok": True, "name": title, "type": typ, "dream": True}
 
+
+# -------------------------------------------------------------------------
+# Retrieval — keyword-ranked fetch of the most relevant concepts. Used to
+# inject the knowledge graph as DEFAULT context on every chat turn (RAG-style)
+# without paying for an extra LLM call. Small-context friendly.
+# -------------------------------------------------------------------------
+def retrieve(question: str, k: int = 4) -> list:
+    """Return the top-k concepts ranked by keyword overlap with `question`."""
+    ensure_seed()
+    concepts = list_concepts()
+    if not concepts:
+        return []
+    q = set(re.findall(r"[a-z0-9]+", (question or "").lower()))
+    ranked = []
+    for c in concepts:
+        body = c["body"].lower()
+        score = sum(1 for w in q if w in body) + (
+            2 if c["name"].lower() in (question or "").lower() else 0)
+        ranked.append((score, c))
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    top = [c for s, c in ranked[:k] if s > 0] or [c for _, c in ranked[:k]]
+    return top
+
+
+def retrieve_context(question: str, k: int = 4) -> str:
+    """Compact text block of the top-k relevant concepts, for a system prompt."""
+    hits = retrieve(question, k=k)
+    if not hits:
+        return ""
+    block = "\n\n".join(f"# {c['name']} ({c['type']})\n{c['body']}" for c in hits)
+    return "RELEVANT MEMORY (from your knowledge graph):\n" + block + "\n"
+

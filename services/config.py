@@ -21,6 +21,21 @@ _DEFAULTS: dict[str, Any] = {
         "bundle": "data/memory",
         "note": "VirusGPT's own OKF-style concept store (built fresh for this project; not linked to any external Docker/Hermes pool)",
     },
+    # Chat behavior: small-context by default (good for qwen2.5:3b), inject the
+    # knowledge graph as DEFAULT context, and constrain history to a window.
+    "chat": {
+        "system_prompt": (
+            "You are VirusGPT, a helpful offline AI assistant running fully local. "
+            "You have your own knowledge graph (memory) that is injected as context "
+            "when relevant. Use it. Be concise, accurate, and friendly. "
+            "Do not invent tools or claim capabilities you lack. "
+            "If you are unsure, say so."
+        ),
+        "memory_enabled": True,      # inject retrieved memory concepts by default
+        "memory_k": 4,               # top-k concepts to inject
+        "max_history": 24,           # keep only the last N messages (small context)
+        "max_history_tokens": 2800,  # hard cap on history chars sent to the model
+    },
 }
 
 

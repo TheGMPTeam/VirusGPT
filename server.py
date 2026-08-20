@@ -91,7 +91,55 @@ async def chat(req: Request):
     _bad = ("\\" in model) or ("\x00" in model) or ("\x1f" in model) or ".." in model
     if not model or _bad or len(model) > 64:
         return JSONResponse({"error": "invalid model"}, status_code=400)
-    messages = body.get("messages", [])
+
+    incoming = body.get("messages", [])
+    chat_cfg = cfg.CONFIG.get("chat", {})
+
+    # Preserve a frontend-supplied system message as PERSONA context (don't drop it).
+    frontend_system = ""
+    non_system = []
+    for m in incoming:
+        if m.get("role") == "system" and not frontend_system:
+            frontend_system = (m.get("content") or "").strip()
+        else:
+            non_system.append(m)
+
+    # --- Small-context history window (trim to last N messages / token cap) ---
+    max_hist = int(chat_cfg.get("max_history", 24))
+    max_chars = int(chat_cfg.get("max_history_tokens", 2800))
+    trimmed = non_system[-max_hist:] if len(non_system) > max_hist else non_system
+    kept = list(trimmed)
+    char_total = sum(len((m.get("content") or "")) for m in kept)
+    while kept and char_total > max_chars:
+        dropped = kept.pop(0)
+        char_total -= len(dropped.get("content") or "")
+
+    # --- System prompt (default VirusGPT context) + memory graph injection ---
+    system = (chat_cfg.get("system_prompt")
+              or "You are VirusGPT, a helpful offline AI assistant.")
+    # The most recent user turn drives memory retrieval (RAG, default-on).
+    last_user = next((m.get("content", "") for m in reversed(kept)
+                      if m.get("role") == "user"), "")
+    mem_ctx = ""
+    if chat_cfg.get("memory_enabled", True):
+        try:
+            import asyncio
+            from services import memory as _mem
+            mem_ctx = await asyncio.wait_for(
+                asyncio.to_thread(_mem.retrieve_context, last_user,
+                                  int(chat_cfg.get("memory_k", 4))),
+                timeout=5.0,
+            )
+        except Exception:
+            mem_ctx = ""
+    if mem_ctx:
+        system = system + "\n\n" + mem_ctx
+    # Append any persona-specific instructions from the frontend.
+    if frontend_system:
+        system = system + "\n\n" + frontend_system
+
+    messages = [{"role": "system", "content": system}] + kept
+
     base = cfg.CONFIG["ollama"]["base_url"]
 
     async def gen():
@@ -320,6 +368,67 @@ async def memory_query(req: Request):
     return JSONResponse({"results": res})
 
 
+# --- Memory graph management (CRUD + linking/dreaming) ---------------------
+@app.get("/api/memory/{name}")
+async def memory_get_concept(name: str):
+    c = memory.memory_get(name)
+    if not c:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(c)
+
+
+@app.post("/api/memory/update")
+async def memory_update_concept(req: Request):
+    b = await req.json()
+    res = memory.memory_update(b.get("name", ""), body=b.get("body"),
+                               typ=b.get("type"), links=b.get("links"))
+    return JSONResponse(res)
+
+
+@app.post("/api/memory/remove")
+async def memory_remove_concept(req: Request):
+    b = await req.json()
+    return JSONResponse(memory.memory_remove(b.get("name", "")))
+
+
+@app.post("/api/memory/autolink")
+async def memory_autolink_concepts():
+    return JSONResponse(memory.memory_autolink())
+
+
+# --- Self-development engine (the "Dreamer") -------------------------------
+@app.get("/api/selfdev/status")
+async def selfdev_status_ep():
+    from autonomous import selfdev
+    return JSONResponse(selfdev.selfdev_status())
+
+
+@app.post("/api/selfdev/research")
+async def selfdev_research_ep(req: Request):
+    from autonomous import selfdev
+    b = await req.json()
+    return JSONResponse(await selfdev.research_topic(b.get("topic", "")))
+
+
+@app.post("/api/selfdev/factcheck")
+async def selfdev_factcheck_ep(req: Request):
+    from autonomous import selfdev
+    b = await req.json()
+    return JSONResponse(await selfdev.fact_check_concept(b.get("name", "")))
+
+
+@app.post("/api/selfdev/dream")
+async def selfdev_dream_ep():
+    from autonomous import selfdev
+    return JSONResponse(await selfdev.dream_cycle())
+
+
+@app.post("/api/selfdev/cycle")
+async def selfdev_cycle_ep():
+    from autonomous import selfdev
+    return JSONResponse(await selfdev.run_selfdev_cycle())
+
+
 @app.get("/api/gateway/status")
 async def gateway_status():
     """Expose the local Gateway supervisor's heartbeat/cron status (read-only)."""
@@ -364,6 +473,33 @@ async def save_personas(req: Request):
     data = await req.json()
     _save_personas(data)
     return JSONResponse({"ok": True, "count": len(data)})
+
+
+@app.get("/api/sessions")
+async def get_sessions():
+    try:
+        return JSONResponse(_auto_repo.get_sessions())
+    except Exception as e:  # noqa
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/sessions")
+async def save_session(req: Request):
+    s = await req.json()
+    try:
+        _auto_repo.save_session(s)
+        return JSONResponse({"ok": True, "name": s.get("name")})
+    except Exception as e:  # noqa
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/sessions/{name}")
+async def delete_session(name: str):
+    try:
+        _auto_repo.delete_session(name)
+        return JSONResponse({"ok": True, "name": name})
+    except Exception as e:  # noqa
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # --------------------------------------------------------------------------

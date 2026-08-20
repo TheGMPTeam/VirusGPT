@@ -373,6 +373,143 @@ def cmd_memory(args):
 
 
 # --------------------------------------------------------------------------- #
+# security audit system
+# --------------------------------------------------------------------------- #
+def _audit_checks() -> list:
+    """Return list of (name, level, ok, detail). level: 'CRITICAL'|'WARN'|'INFO'."""
+    c = cfg()
+    results = []
+
+    def add(name, level, ok, detail=""):
+        results.append((name, level, ok, detail))
+
+    # 1) Secrets committed to git?
+    try:
+        out = subprocess.run(["git", "ls-files"], cwd=str(ROOT),
+                              capture_output=True, text=True, timeout=10)
+        tracked = out.stdout.splitlines()
+        secret_hits = [f for f in tracked if f.endswith((".env", ".key", "secrets.json"))]
+        add("no secrets tracked in git", "CRITICAL",
+            not secret_hits, f"tracked: {secret_hits}" if secret_hits else "clean")
+    except Exception as e:  # noqa
+        add("git tracked-file scan", "WARN", False, str(e))
+
+    # 2) marton.api_key present + non-empty in config.json (should be empty / env-only)
+    mk = (c.get("services", {}) or {}).get("marton", {}).get("api_key", "")
+    add("marton.api_key not hardcoded in config", "CRITICAL",
+        not mk, "api_key is set in config.json — move to VG_MARTON_KEY env" if mk else "ok")
+
+    # 3) .gitignore covers data/, .venv, secrets
+    gi = ROOT / ".gitignore"
+    gi_text = gi.read_text() if gi.exists() else ""
+    for pat, label in (("data/", "runtime data"), (".venv/", "venv"),
+                        (".env", "env files"), ("secrets.json", "secrets")):
+        add(f".gitignore excludes {label}", "WARN", pat in gi_text,
+            "" if pat in gi_text else f"missing rule: {pat}")
+
+    # 4) SQL/command-injection surface in tool harness (shell tool should be sandboxed)
+    tools_py = ROOT / "autonomous" / "tools.py"
+    if tools_py.exists():
+        t = tools_py.read_text()
+        sandboxed = ("_confine" in t) or ("ALLOWED" in t) or ("allowlist" in t.lower())
+        add("agent shell tool sandboxed/allowlisted", "CRITICAL", sandboxed,
+            "no confinement found" if not sandboxed else "confinement present")
+        # no raw eval/exec of model output
+        bad = ("eval(model" in t) or ("exec(model" in t)
+        add("no eval/exec of model output", "CRITICAL", not bad,
+            "model output passed to eval/exec" if bad else "ok")
+
+    # 5) Server debug / CORS
+    srv = ROOT / "server.py"
+    if srv.exists():
+        st = srv.read_text()
+        add("server has no debug=True", "WARN", "debug=True" not in st,
+            "uvicorn debug=True found" if "debug=True" in st else "ok")
+        # CORS: if present it should be restrictive, not '*'
+        import re
+        cors_star = bool(re.search(r"allow_origins\s*=\s*\[\s*[\"']\*[\"']", st))
+        add("CORS not wildcard '*'", "WARN", not cors_star,
+            "allow_origins=['*'] found" if cors_star else "ok or not set")
+
+    # 6) DB backups exist (resilience = security of data)
+    bdir = ROOT / "data" / "db_backups"
+    backs = list(bdir.glob("virusgpt-*.db")) if bdir.exists() else []
+    add("DB backup exists", "INFO", bool(backs),
+        f"{len(backs)} backup(s)" if backs else "no backups yet (run: vgctl db backup)")
+
+    # 7) World-readable secrets in data/ ?
+    risky = []
+    for p in (ROOT / "data").rglob("*") if (ROOT / "data").exists() else []:
+        if p.is_file() and p.suffix in (".key", ".pem", ".env") and p.stat().st_mode & 0o077:
+            risky.append(str(p))
+    add("no world-readable key files in data/", "WARN", not risky,
+        f"found: {risky}" if risky else "ok")
+
+    return results
+
+
+def cmd_audit(args):
+    print("VirusGPT security audit")
+    print("=" * 50)
+    results = _audit_checks()
+    n_crit = n_warn = n_info = n_fail = 0
+    for name, level, ok, detail in results:
+        if level == "CRITICAL":
+            n_crit += 1
+        elif level == "WARN":
+            n_warn += 1
+        else:
+            n_info += 1
+        if not ok:
+            n_fail += 1
+        mark = green("PASS") if ok else (red("FAIL") if level == "CRITICAL" else yellow("WARN"))
+        line = f"  [{mark}] ({level}) {name}"
+        if detail and (not ok):
+            line += f"  -> {detail}"
+        print(line)
+    print("-" * 50)
+    print(f"  CRITICAL: {n_crit}   WARN: {n_warn}   INFO: {n_info}   "
+          f"FAILURES: {n_fail}")
+    if n_fail:
+        print(red(f"  {n_fail} check(s) need attention."))
+        return 1
+    print(green("  all clear."))
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# desktop app control
+# --------------------------------------------------------------------------- #
+def cmd_desktop(args):
+    action = args.action
+    run = ROOT / "desktop" / "run.py"
+    if action == "run":
+        if not run.exists():
+            print(red("desktop/run.py missing"))
+            return 1
+        print("launching VirusGPT desktop (native window)...")
+        return subprocess.call([sys.executable, str(run)])
+    if action == "build":
+        plat = args.platform or _detect_platform()
+        script = ROOT / f"desktop/build-{plat}.py"
+        if not script.exists():
+            print(red(f"no build script for '{plat}' ({script} missing)"))
+            return 1
+        return subprocess.call([sys.executable, str(script)])
+    if action == "install-deps":
+        req = ROOT / "desktop" / "requirements.txt"
+        return subprocess.call([sys.executable, "-m", "pip", "install", "-r", str(req)])
+    print(red("unknown desktop action"))
+    return 1
+
+
+def _detect_platform() -> str:
+    import platform
+    s = platform.system().lower()
+    return {"darwin": "macos", "windows": "windows", "linux": "linux"}.get(s, s)
+
+
+# --------------------------------------------------------------------------- #
 # entrypoint
 # --------------------------------------------------------------------------- #
 def build_parser():
@@ -404,6 +541,15 @@ def build_parser():
     mp.add_argument("action", choices=["status", "seed", "reset", "query"])
     mp.add_argument("question", nargs="?", help="question for 'query'")
     mp.set_defaults(func=cmd_memory)
+
+    ap = sub.add_parser("audit", help="security audit of the local stack + config")
+    ap.set_defaults(func=cmd_audit)
+
+    dp = sub.add_parser("desktop", help="build/run the cross-platform desktop app")
+    dp.add_argument("action", choices=["run", "build", "install-deps"])
+    dp.add_argument("--platform", choices=["macos", "windows", "linux"],
+                    help="target platform for 'build' (default: current OS)")
+    dp.set_defaults(func=cmd_desktop)
     return p
 
 
