@@ -16,7 +16,11 @@ _DEFAULTS: dict[str, Any] = {
     "ollama": {"base_url": "http://10.0.0.120:11434", "default_model": "qwen2.5:3b"},
     "tts": {"enabled": True, "base_url": "http://localhost:49152", "default_voice": "nova", "timeout": 120},
     "stt": {"enabled": True, "base_url": "http://localhost:8181", "timeout": 30},
-    "memory_mcp": {"url": "http://10.0.0.120:3800/mcp"},
+    "memory": {
+        "enabled": True,
+        "bundle": "data/memory",
+        "note": "VirusGPT's own OKF-style concept store (built fresh for this project; not linked to any external Docker/Hermes pool)",
+    },
 }
 
 

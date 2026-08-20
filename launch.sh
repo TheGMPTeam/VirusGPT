@@ -83,3 +83,17 @@ else
 fi
 
 echo "[launch $(ts)] done"
+
+# --- VirusGPT Gateway (heartbeats + cron) ---
+if health_ok 8500 "http://localhost:8500/api/health"; then
+  GW_PID=$(pgrep -f "gateway/service.py" || true)
+  if [ -z "$GW_PID" ]; then
+    ( env -i PATH="$VGPT_VENV:/usr/bin:/bin" HOME="$HOME" \
+        "$VGPT_VENV/python" "$ROOT/gateway/service.py" >>"$LOGDIR/gateway.log" 2>&1 & )
+    echo "[launch $(ts)] gateway started"
+  else
+    echo "[launch $(ts)] gateway already running (pid $GW_PID)"
+  fi
+else
+  echo "[launch $(ts)] server not up — gateway not started (relaunch after server is healthy)"
+fi

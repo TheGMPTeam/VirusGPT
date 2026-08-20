@@ -16,6 +16,8 @@
 #   --stt           Whisper STT server (faster-whisper)
 #   --models        pull the Ollama LLM model(s)
 #   --autonomous    mission engine (no extra deps; bundled with --core)
+#   --memory        VirusGPT's own local concept-memory store (data/memory/; bundled with --core)
+#   --gateway       Gateway supervisor: heartbeats + cron jobs (auto-heals the stack)
 #   --ollama-url    Ollama base URL for --models (default http://localhost:11434)
 #   --model         model to pull (default from config.json or qwen2.5:3b)
 #   --prefix DIR    install venvs under DIR (default: repo root)
@@ -23,7 +25,12 @@
 #   --dry-run       print what would happen, make no changes
 #   -h, --help      show this help
 #
-# Supported: macOS, Linux (apt-based). Windows: not supported.
+# Platforms:
+#   macOS / Linux : full native install (this script).
+#   Windows       : use Docker — see docker-compose.yml (docker compose up -d --build).
+#                   Native Windows is not supported (torch/PocketTTS need a POSIX env).
+#
+# Supported: macOS, Linux (apt-based). Windows: use the Docker Compose stack.
 
 set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -31,7 +38,7 @@ cd "$ROOT"
 
 # ---------- defaults ----------
 DO_ALL=1
-DO_CORE=0; DO_TTS=0; DO_STT=0; DO_MODELS=0; DO_AUTO=0
+DO_CORE=0; DO_TTS=0; DO_STT=0; DO_MODELS=0; DO_AUTO=0; DO_MEM=0; DO_GW=0; DO_DOCKER=0
 OLLAMA_URL="http://localhost:11434"
 MODEL=""
 PREFIX="$ROOT"
@@ -47,6 +54,9 @@ while [ $# -gt 0 ]; do
     --stt)        DO_ALL=0; DO_STT=1 ;;
     --models)     DO_ALL=0; DO_MODELS=1 ;;
     --autonomous) DO_ALL=0; DO_AUTO=1 ;;
+    --memory)     DO_ALL=0; DO_MEM=1 ;;
+    --gateway)    DO_ALL=0; DO_GW=1 ;;
+    --docker)     DO_DOCKER=1 ;;
     --ollama-url) OLLAMA_URL="$2"; shift ;;
     --model)      MODEL="$2"; shift ;;
     --prefix)     PREFIX="$2"; shift ;;
@@ -59,7 +69,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$DO_ALL" = "1" ]; then
-  DO_CORE=1; DO_TTS=1; DO_STT=1; DO_MODELS=1; DO_AUTO=1
+  DO_CORE=1; DO_TTS=1; DO_STT=1; DO_MODELS=1; DO_AUTO=1; DO_MEM=1; DO_GW=1
 fi
 
 # ---------- helpers ----------
@@ -72,8 +82,27 @@ OS="$(uname -s)"
 case "$OS" in
   Darwin) PKG="macos" ;;
   Linux)  PKG="linux" ;;
-  *) echo "ERROR: unsupported OS '$OS' (Windows not supported)"; exit 1 ;;
+  MINGW*|CYGWIN*|MSYS*|Windows_NT) PKG="windows" ;;
+  *) echo "ERROR: unsupported OS '$OS'"; exit 1 ;;
 esac
+
+# Windows has no native POSIX env for torch/PocketTTS — route to Docker.
+if [ "$PKG" = "windows" ]; then
+  if [ "$DO_DOCKER" = "1" ]; then
+    log "detected OS: windows (Docker mode requested)"
+  else
+    echo
+    echo "ERROR: native install is not supported on Windows."
+    echo "        Run the full stack with Docker instead:"
+    echo
+    echo "            docker compose up -d --build"
+    echo
+    echo "        (requires Docker Desktop for Windows + WSL2)"
+    echo "        Re-run with:  ./install.sh --docker   to acknowledge and exit cleanly."
+    echo
+    exit 3
+  fi
+fi
 log "detected OS: $PKG ($OS)"
 
 need python3
@@ -112,6 +141,44 @@ install_core() {
 install_autonomous() {
   log "== autonomous mission engine =="
   log "no extra deps — bundled with --core (uses services/ + autonomous/)."
+}
+
+install_memory() {
+  log "== local concept-memory store (data/memory/) =="
+  log "self-contained OKF-style store; no external Docker/Hermes pool."
+  local v="$PREFIX/.venv"
+  # Seed fresh VirusGPT concepts on first launch (server does this automatically,
+  # but we touch the bundle now so it exists and is LAN-reachable like the rest).
+  run "'$v/bin/python' -c \"import asyncio, services.memory as m; print('memory concepts:', (asyncio.run(m.memory_status()) or {}).get('concepts'))\""
+  log "memory ready. It is served through the main server port (like TTS/STT)."
+}
+
+install_gateway() {
+  log "== gateway supervisor (heartbeats + cron) =="
+  log "no extra deps — uses the server venv + launch.sh. Starts automatically with launch.sh."
+  local v="$PREFIX/.venv"
+  run "'$v/bin/python' -c \"import ast; ast.parse(open('gateway/service.py').read()); print('gateway syntax ok')\""
+  log "gateway ready. Start the full stack with: ./launch.sh  (it launches the gateway too)"
+}
+
+install_docker() {
+  log "== Docker stack (cross-platform, includes Windows) =="
+  if ! command -v docker >/dev/null 2>&1; then
+    log "docker CLI not found. Install Docker Desktop first:"
+    case "$PKG" in
+      windows) log "   https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" ;;
+      macos)   log "   https://desktop.docker.com/mac/main/amd64/Docker.dmg (or: brew install --cask docker)" ;;
+      linux)   log "   https://docs.docker.com/engine/install/" ;;
+    esac
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+    log "docker compose plugin missing. See https://docs.docker.com/compose/install/"
+    return 0
+  fi
+  log "Building + starting the full stack (virusgpt + pockettts + whisper + ollama)..."
+  run "docker compose up -d --build"
+  log "Stack up. Web UI: http://localhost:8500  (TTS :49152, STT :8181, Ollama :11434)"
 }
 
 install_tts() {
@@ -154,6 +221,9 @@ install_models() {
 # ---------- run selected ----------
 [ "$DO_CORE"   = "1" ] && install_core
 [ "$DO_AUTO"   = "1" ] && install_autonomous
+[ "$DO_MEM"    = "1" ] && install_memory
+[ "$DO_GW"     = "1" ] && install_gateway
+[ "$DO_DOCKER" = "1" ] && install_docker
 [ "$DO_TTS"    = "1" ] && install_tts
 [ "$DO_STT"    = "1" ] && install_stt
 [ "$DO_MODELS" = "1" ] && install_models

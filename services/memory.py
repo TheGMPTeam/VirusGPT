@@ -1,72 +1,45 @@
-"""Memory MCP client — talks to the shared understory (OKF) memory server.
+"""Memory service for VirusGPT.
 
-The memory pool is shared across machines (this Mac + Windows). Uses the MCP
-JSON-RPC protocol over HTTP (SSE transport: must Accept both application/json
-and text/event-stream). All calls go through `tools/call`. Uses the shared
-pooled httpx client.
+VirusGPT owns its memory: a self-contained, OKF-style concept store
+(see memory/store.py) that lives under data/memory/. This module is a thin async
+wrapper so the rest of the server talks to memory the same way, but the data never
+leaves this machine / this project — it's reachable on the LAN through the main
+server port, like TTS and STT.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional
 
-from services import get_client
+from memory import store as _store
 
 logger = logging.getLogger("vg.memory")
 
 
-async def mcp_call(method: str, params: Optional[dict] = None, base_url: str = "",
-                   timeout: float = 12.0) -> Optional[dict]:
-    """Call an MCP method (tools/call or tools/list). Returns the `result` dict."""
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+async def memory_status(base_url: str = "") -> Optional[dict]:
+    """Return the local OKF status blob. (base_url kept for call-compat.)"""
     try:
-        r = await get_client().post(base_url, json=payload, headers=headers, timeout=timeout)
-        if r.status_code != 200:
-            logger.warning("MCP %d: %s", r.status_code, r.text[:200])
-            return None
-        body = r.json()
-        if "error" in body:
-            logger.warning("MCP error: %s", body["error"])
-            return None
-        return body.get("result")
+        return _store.memory_status()
     except Exception as exc:  # noqa: BLE001
-        logger.warning("MCP call failed: %s", exc)
+        logger.warning("memory_status failed: %s", exc)
         return None
 
 
-def _text_of(result: Optional[dict]) -> str:
-    """Extract the text payload from an MCP tool result."""
-    if not result:
-        return ""
-    content = result.get("content", [])
-    if content and isinstance(content, list):
-        return content[0].get("text", "") if isinstance(content[0], dict) else str(content[0])
-    return ""
-
-
-async def memory_status(base_url: str) -> Optional[dict]:
-    """Deterministic OKF stats (no LLM). Returns parsed JSON dict or None."""
-    res = await mcp_call("tools/call", {"name": "memory_status", "arguments": {}}, base_url)
-    if not res:
-        return None
-    txt = _text_of(res)
+async def memory_query(question: str, base_url: str = "") -> str:
     try:
-        return json.loads(txt)
-    except (json.JSONDecodeError, TypeError):
-        return {"raw": txt}
-
-
-async def memory_query(question: str, base_url: str) -> str:
-    res = await mcp_call("tools/call", {"name": "memory_query", "arguments": {"question": question}}, base_url)
-    if not res:
+        return await _store.memory_query(question)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_query failed: %s", exc)
         return ""
-    return _text_of(res)
 
 
-async def memory_health(base_url: str) -> bool:
+async def memory_add(name: str, text: str, typ: str = "concept") -> dict:
+    try:
+        return _store.memory_add(name, text, typ)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_add failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
+async def memory_health(base_url: str = "") -> bool:
     return await memory_status(base_url) is not None

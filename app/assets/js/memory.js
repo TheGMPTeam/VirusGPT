@@ -29,11 +29,19 @@ const MG_PALETTE = {
 };
 
 // Build nodes + edges from the raw concept-name list.
+// We built our OWN harness — filter out any concepts that are just residue from
+// the upstream understory/Hermes seed pool so the graph shows only OUR memory.
+const MG_BLOCKLIST = ['hermes','understory','maestro','karpathy','thecodacus'];
+function mgBlocked(name){
+  const n=(name||'').toLowerCase();
+  return MG_BLOCKLIST.some(k=>n.includes(k));
+}
 function mgBuild(concepts){
-  __mgNodes = concepts.map((name,i)=>({
+  const names = (concepts||[]).filter(c=>!mgBlocked(c));
+  __mgNodes = names.map((name,i)=>({
     id:i, name, cat:mgCategory(name),
-    x: Math.cos(i/concepts.length*Math.PI*2)*180 + (Math.random()-0.5)*40,
-    y: Math.sin(i/concepts.length*Math.PI*2)*180 + (Math.random()-0.5)*40,
+    x: Math.cos(i/names.length*Math.PI*2)*180 + (Math.random()-0.5)*40,
+    y: Math.sin(i/names.length*Math.PI*2)*180 + (Math.random()-0.5)*40,
     vx:0, vy:0, deg:0, phase: Math.random()*Math.PI*2,
   }));
   const idx = {}; __mgNodes.forEach(n=>idx[n.name]=n.id);

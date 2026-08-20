@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Serve the client and proxy to Ollama (LLM), PocketTTS (TTS + clone),
-Whisper (STT), and the shared Memory MCP. Reads CONFIG at startup and
-renders client config inline via CFGJS injected into the HTML head.
+Whisper (STT), and VirusGPT's own local concept-memory store. Reads CONFIG at
+startup and renders client config inline via CFGJS injected into the HTML head.
 """
 from __future__ import annotations
 
@@ -296,9 +296,9 @@ async def stt_proxy(req: Request):
 # --------------------------------------------------------------------------
 @app.get("/api/memory/graph")
 async def memory_graph():
-    status = await memory.memory_status(cfg.CONFIG["memory_mcp"]["url"])
+    status = await memory.memory_status()
     if status is None:
-        return JSONResponse({"ok": False, "error": "memory MCP unreachable"}, status_code=502)
+        return JSONResponse({"ok": False, "error": "memory store unavailable"}, status_code=502)
     # Normalize the OKF status blob into graph-friendly shape.
     return JSONResponse({
         "ok": True,
@@ -316,8 +316,26 @@ async def memory_graph():
 async def memory_query(req: Request):
     body = await req.json()
     q = body.get("question", "")
-    res = await memory.memory_query(q, cfg.CONFIG["memory_mcp"]["url"])
+    res = await memory.memory_query(q)
     return JSONResponse({"results": res})
+
+
+@app.get("/api/gateway/status")
+async def gateway_status():
+    """Expose the local Gateway supervisor's heartbeat/cron status (read-only)."""
+    hb = None
+    p = ROOT / "data" / "gateway" / "heartbeat.json"
+    if p.exists():
+        try:
+            hb = json.loads(p.read_text())
+        except Exception:
+            hb = None
+    return JSONResponse({
+        "ok": True,
+        "gateway": bool(hb),
+        "heartbeat": hb,
+        "crontab": (ROOT / "data" / "gateway" / "crontab.json").exists(),
+    })
 
 
 # --------------------------------------------------------------------------
@@ -576,7 +594,7 @@ def main():
     import uvicorn
     print(f"[VirusGPT] macOS server on http://{cfg.CONFIG['host']}:{cfg.CONFIG['port']}")
     print(f"[VirusGPT] Ollama -> {cfg.CONFIG['ollama']['base_url']}")
-    print(f"[VirusGPT] Memory MCP -> {cfg.CONFIG['memory_mcp']['url']}")
+    print("[VirusGPT] Memory: local concept store (data/memory/)")
     uvicorn.run(app, host=cfg.CONFIG["host"], port=int(cfg.CONFIG["port"]))
 
 

@@ -325,6 +325,54 @@ def cmd_settings(args):
 
 
 # --------------------------------------------------------------------------- #
+# memory — manage VirusGPT's own local concept store (data/memory/)
+# --------------------------------------------------------------------------- #
+def cmd_memory(args):
+    try:
+        import asyncio
+        from memory import store as ms
+    except Exception as e:  # noqa
+        print(red(f"could not import memory store: {e}"))
+        return 1
+    act = args.action
+    if act == "status":
+        s = ms.memory_status()
+        if not s:
+            print(red("memory store unavailable"))
+            return 1
+        g = s.get("graph", {})
+        print("VirusGPT local memory (OKF concept store)")
+        print(f"  concepts : {s.get('concepts')}")
+        print(f"  types    : {s.get('directories')}")
+        print(f"  links    : {g.get('links')}")
+        print(f"  orphans  : {g.get('orphans')}")
+        print(f"  healthy  : {g.get('healthy')}")
+        print(f"  conformant: {s.get('conformant')}")
+        return 0
+    if act == "seed":
+        print(f"concepts before: {ms.memory_status().get('concepts')}")
+        ms.ensure_seed()
+        print(f"concepts after : {ms.memory_status().get('concepts')}")
+        print(green("memory store ready (served via the main server port)."))
+        return 0
+    if act == "reset":
+        import shutil
+        b = ms.BUNDLE
+        if b.exists():
+            shutil.rmtree(b)
+            print(f"removed bundle: {b}")
+        ms.memory_status()  # re-seed fresh
+        print(green("memory store reset to fresh seed."))
+        return 0
+    if act == "query":
+        ans = asyncio.run(ms.memory_query(args.question))
+        print(ans)
+        return 0
+    print(red("unknown memory action"))
+    return 1
+
+
+# --------------------------------------------------------------------------- #
 # entrypoint
 # --------------------------------------------------------------------------- #
 def build_parser():
@@ -351,6 +399,11 @@ def build_parser():
     sp.add_argument("key", nargs="?", help="dotted key e.g. ollama.default_model")
     sp.add_argument("value", nargs="?", help="value for 'set' (auto-typed: bool/int/float/str)")
     sp.set_defaults(func=cmd_settings)
+
+    mp = sub.add_parser("memory", help="manage the local concept store (data/memory/)")
+    mp.add_argument("action", choices=["status", "seed", "reset", "query"])
+    mp.add_argument("question", nargs="?", help="question for 'query'")
+    mp.set_defaults(func=cmd_memory)
     return p
 
 

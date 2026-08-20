@@ -66,9 +66,18 @@ GPU/torch and another is light.
 ```
 
 Flags: `--all` (default), `--core`, `--tts`, `--stt`, `--models`, `--autonomous`,
-`--ollama-url URL`, `--model NAME`, `--prefix DIR`, `--skip-deps`, `--dry-run`.
-Run `./install.sh --help` for the full list. macOS and Linux (apt) are supported;
-Windows is not. The script is idempotent and safe to re-run.
+`--memory`, `--gateway`, `--ollama-url URL`, `--model NAME`, `--prefix DIR`,
+`--skip-deps`, `--dry-run`, `--docker`.
+Run `./install.sh --help` for the full list. macOS and Linux (apt) are supported
+natively; **Windows uses the Docker stack** (native Windows can't run the torch/
+PocketTTS POSIX build). The script is idempotent and safe to re-run.
+
+```bash
+# Windows (WSL2 + Docker Desktop):
+docker compose up -d --build
+# or acknowledge the Docker path via the installer:
+./install.sh --docker
+```
 
 After install, launch with `./run.sh` (server only) or `./launch.sh` (full stack:
 server + PocketTTS + Whisper, health-aware, safe for cron).
