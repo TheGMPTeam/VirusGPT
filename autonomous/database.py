@@ -224,6 +224,17 @@ def init_db():
                 meta TEXT,
                 created_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS personas (
+                id TEXT PRIMARY KEY,
+                name TEXT UNIQUE,
+                data TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS sessions (
+                name TEXT PRIMARY KEY,
+                data TEXT,
+                updated_at TEXT
+            );
             CREATE INDEX IF NOT EXISTS idx_tasks_mission ON tasks(mission_id);
             CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
             CREATE INDEX IF NOT EXISTS idx_memory_agent ON agent_memory(agent);
@@ -547,6 +558,68 @@ class Repository:
             )
             rows = _fetchall(conn, sql, (agent, limit))
             return [AgentMemory(**r) for r in rows]
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    # ------------------------------------------------------------------
+    # Personas — server-persisted (replaces localStorage vg_personas)
+    # ------------------------------------------------------------------
+    def get_personas(self) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            rows = _fetchall(conn, "SELECT * FROM personas ORDER BY updated_at ASC")
+            return [json.loads(r["data"]) for r in rows if r.get("data")]
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def save_personas(self, personas: List[Dict[str, Any]]) -> None:
+        conn = self._conn()
+        try:
+            _execute(conn, "DELETE FROM personas")
+            now = _now()
+            for p in personas:
+                pid = p.get("id") or f"P-{uuid.uuid4().hex[:8]}"
+                _execute(
+                    conn,
+                    "INSERT INTO personas (id,name,data,updated_at) VALUES (?,?,?,?)",
+                    (pid, p.get("name", pid), json.dumps(p), now),
+                )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    # ------------------------------------------------------------------
+    # Sessions (browser/chat rooms) — server-persisted
+    # ------------------------------------------------------------------
+    def get_sessions(self) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            rows = _fetchall(conn, "SELECT * FROM sessions ORDER BY updated_at ASC")
+            return [json.loads(r["data"]) for r in rows if r.get("data")]
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def save_session(self, session: Dict[str, Any]) -> None:
+        conn = self._conn()
+        try:
+            name = session.get("name") or "default"
+            _execute(
+                conn,
+                "INSERT INTO sessions (name,data,updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(name) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+                (name, json.dumps(session), _now()),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def delete_session(self, name: str) -> None:
+        conn = self._conn()
+        try:
+            _execute(conn, "DELETE FROM sessions WHERE name=?", (name,))
         finally:
             if DB_BACKEND not in ("planetscale", "mysql"):
                 conn.close()

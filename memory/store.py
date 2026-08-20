@@ -188,3 +188,131 @@ async def memory_query(question: str) -> str:
 def _cfg():
     from services import config as _c
     return _c.CONFIG
+
+
+# --------------------------------------------------------------------------
+# CRUD + graph operations (used by the self-dev / Dreamer engine and the UI)
+# --------------------------------------------------------------------------
+def concept_path(typ: str, name: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9 _.\-]", "", name).strip() or "Concept"
+    return BUNDLE / typ / (safe + ".md")
+
+
+def memory_get(name: str) -> Optional[dict]:
+    ensure_seed()
+    concepts = list_concepts()
+    for c in concepts:
+        if c["name"].lower() == (name or "").lower():
+            return c
+    return None
+
+
+def memory_update(name: str, body: Optional[str] = None, typ: Optional[str] = None,
+                  links: Optional[list] = None) -> dict:
+    """Rewrite a concept's body / type / links. Preserves identity by name."""
+    ensure_seed()
+    c = memory_get(name)
+    if not c:
+        return {"ok": False, "error": "not found", "name": name}
+    cur_typ = typ or c["type"]
+    cur_body = body if body is not None else c["body"]
+    # Re-embed [[links]] into the body too, so the parser + graph stay consistent.
+    if links is not None:
+        clean = _strip_links(cur_body)
+        link_lines = "\n".join(f"[[{l}]]" for l in links)
+        cur_body = (clean + ("\n\n" + link_lines if link_lines else "")).strip()
+    old_path = ROOT / c["file"]
+    new_path = concept_path(cur_typ, c["name"])
+    fm = {"type": cur_typ, "title": c["name"]}
+    if links is not None:
+        fm["links"] = ", ".join(links)
+    text = _dump_md(fm, cur_body)
+    # If the type changed, remove the old file so we don't leave a duplicate.
+    if old_path.resolve() != new_path.resolve() and old_path.exists():
+        old_path.unlink()
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    new_path.write_text(text, encoding="utf-8")
+    return {"ok": True, "name": c["name"], "type": cur_typ, "file": str(new_path.relative_to(ROOT))}
+
+
+def memory_remove(name: str) -> dict:
+    """Delete a concept and prune its [[links]] from every other concept (trimming)."""
+    ensure_seed()
+    c = memory_get(name)
+    if not c:
+        return {"ok": False, "error": "not found", "name": name}
+    p = ROOT / c["file"]
+    if p.exists():
+        p.unlink()
+    # Trim references to this concept from other bodies.
+    pruned = 0
+    for other in list_concepts():
+        if other["name"].lower() == c["name"].lower():
+            continue
+        if name in other["links"] or c["name"] in other["links"]:
+            new_links = [l for l in other["links"]
+                         if l.split("/")[-1].lower() != c["name"].lower()]
+            memory_update(other["name"], links=new_links)
+            pruned += 1
+    return {"ok": True, "name": name, "pruned_refs": pruned}
+
+
+def memory_relink(name: str, links: list) -> dict:
+    return memory_update(name, links=links)
+
+
+def _strip_links(body: str) -> str:
+    """Remove trailing [[link]] lines so we can re-embed a clean link set."""
+    lines = body.splitlines()
+    kept = []
+    for ln in lines:
+        if _LINK_RE.fullmatch(ln.strip()):
+            continue
+        kept.append(ln)
+    return "\n".join(kept).strip()
+
+
+def memory_autolink() -> dict:
+    """Reconcile frontmatter links with real [[links]] in bodies, and propose
+    new links between concepts that share strong token overlap (graph linking)."""
+    ensure_seed()
+    concepts = list_concepts()
+    by_name = {c["name"].lower(): c for c in concepts}
+    changed = 0
+    proposals = []
+    # 1) normalize: ensure body [[links]] == frontmatter links
+    for c in concepts:
+        body_links = _links_of(c["body"])
+        if sorted(body_links, key=str.lower) != sorted(c["links"], key=str.lower):
+            memory_update(c["name"], links=body_links)
+            changed += 1
+    # 2) propose token-overlap links not yet present
+    stop = {"the", "and", "for", "with", "that", "this", "from", "into", "via",
+            "our", "its", "are", "was", "can", "has", "use", "uses"}
+    for c in concepts:
+        toks = set(re.findall(r"[a-z0-9]{4,}", c["body"].lower())) - stop
+        for o in concepts:
+            if o["name"].lower() == c["name"].lower():
+                continue
+            if o["name"] in c["links"] or c["name"] in o["links"]:
+                continue
+            otoks = set(re.findall(r"[a-z0-9]{4,}", o["body"].lower())) - stop
+            overlap = toks & otoks
+            if len(overlap) >= 3:
+                proposals.append({"from": c["name"], "to": o["name"],
+                                   "shared": sorted(overlap)})
+    return {"ok": True, "normalized": changed, "proposals": proposals}
+
+
+def memory_dream(title: str, body: str, typ: str = "insight") -> dict:
+    """Record a synthesized 'dreamed' concept (generated by the agent, not scraped)."""
+    ensure_seed()
+    _write_concept(typ, title, body)
+    # tag as dreamed via a marker link-less frontmatter flag
+    p = concept_path(typ, title)
+    if p.exists():
+        fm, b = _parse_md(p.read_text(encoding="utf-8"))
+        fm["dream"] = "true"
+        p.write_text(_dump_md(fm, b), encoding="utf-8")
+    return {"ok": True, "name": title, "type": typ, "dream": True}
+

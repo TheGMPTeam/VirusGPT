@@ -50,7 +50,36 @@ def load_config() -> dict:
             cfg["port"] = int(os.environ["VG_PORT"])
         except ValueError:
             pass
+    # Modular media/automation services (run on the Windows Docker box, LAN).
+    for svc, env in (
+        ("n8n", "VG_N8N_URL"),
+        ("comfyui", "VG_COMFYUI_URL"),
+        ("blender", "VG_BLENDER_URL"),
+        ("ffmpeg", "VG_FFMPEG_URL"),
+    ):
+        if os.environ.get(env) and isinstance(cfg.get("services"), dict) and svc in cfg["services"]:
+            cfg["services"][svc]["base_url"] = os.environ[env]
+    if os.environ.get("VG_MARTON_KEY") and isinstance(cfg.get("services"), dict) and "marton" in cfg["services"]:
+        cfg["services"]["marton"]["api_key"] = os.environ["VG_MARTON_KEY"]
     return cfg
+
+
+def service_cfg(name: str) -> dict:
+    """Return a service block from config, defaulting to disabled/empty."""
+    svcs = CONFIG.get("services") or {}
+    return svcs.get(name, {}) or {}
+
+
+def service_url(name: str) -> str:
+    return (service_cfg(name).get("base_url") or "").strip()
+
+
+def service_timeout(name: str, default: float = 120.0) -> float:
+    try:
+        return float(service_cfg(name).get("timeout", default))
+    except (TypeError, ValueError):
+        return default
+
 
 
 def _deep_merge(base: dict, override: dict) -> None:

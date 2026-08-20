@@ -43,3 +43,36 @@ async def memory_add(name: str, text: str, typ: str = "concept") -> dict:
 
 async def memory_health(base_url: str = "") -> bool:
     return await memory_status(base_url) is not None
+
+
+# --- graph management (sync store ops exposed for the server/UI) -----------
+def memory_get(name: str) -> Optional[dict]:
+    try:
+        return _store.memory_get(name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_get failed: %s", exc)
+        return None
+
+
+def memory_update(name: str, body=None, typ=None, links=None) -> dict:
+    try:
+        return _store.memory_update(name, body=body, typ=typ, links=links)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_update failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def memory_remove(name: str) -> dict:
+    try:
+        return _store.memory_remove(name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_remove failed: %s", exc)
+        return {"ok": False, "error": str(exc)}
+
+
+def memory_autolink() -> dict:
+    try:
+        return _store.memory_autolink()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_autolink failed: %s", exc)
+        return {"ok": False, "error": str(exc)}

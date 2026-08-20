@@ -209,4 +209,9 @@
   #mg-detail .mg-d-neigh{display:flex;flex-wrap:wrap;gap:5px}
   #mg-detail .mg-d-neigh span{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:2px 8px;font-size:11px}
   #mg-detail .mg-d-res{margin-top:8px;color:var(--txt);font-size:12px;line-height:1.45;white-space:pre-wrap;max-height:160px;overflow:auto}
+  #mg-detail .mg-link-chip{cursor:pointer;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:2px 8px;font-size:11px}
+  #mg-detail .mg-link-chip:hover{border-color:var(--neon2);color:var(--neon2)}
+  #mg-detail input{background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--txt);padding:5px 8px;font-size:12px}
+  #mg-detail button.danger{border-color:#ff4d4d;color:#ff4d4d}
+  #mg-detail button.danger:hover{background:rgba(255,77,77,0.12)}
   #mem-hint{margin-top:8px;font-size:10.5px;color:var(--txt-dim);text-align:center}

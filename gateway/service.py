@@ -124,6 +124,8 @@ def builtin_jobs():
         {"name": "launch_check", "every_sec": 60, "fn": lambda: _ensure_stack()},
         {"name": "memory_maintain", "every_sec": 1800,
          "fn": lambda: _memory_maintain()},
+        {"name": "selfdev", "every_sec": 3600,
+         "fn": lambda: _selfdev_cycle()},
     ]
 
 
@@ -148,6 +150,19 @@ def _memory_maintain():
                 f"orphans={s.get('graph', {}).get('orphans')}")
     except Exception as e:  # noqa
         log(f"memory_maintain error: {e}")
+
+
+def _selfdev_cycle():
+    # Continuous self-improvement: research + fact-check + dream (the "Dreamer").
+    try:
+        import asyncio
+        from autonomous import selfdev
+        res = asyncio.run(selfdev.run_selfdev_cycle())
+        r = res.get("research", {})
+        log(f"selfdev: researched '{r.get('topic')}' -> stored '{r.get('stored')}'; "
+            f"dream trimmed {res.get('dream', {}).get('trimmed')}")
+    except Exception as e:  # noqa
+        log(f"selfdev error: {e}")
 
 
 def heartbeat(base: str):

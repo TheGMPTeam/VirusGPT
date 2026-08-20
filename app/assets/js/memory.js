@@ -17,6 +17,9 @@ function mgCategory(name){
   if(n.includes('test')||n.includes('result')) return 'test';
   if(n.includes('system')||n.includes('arch')||n.includes('component')||n.includes('integration')) return 'system';
   if(n.includes('user')||n.includes('profile')) return 'user';
+  if(n.includes('dream')||n.includes('synthesis')||n.includes('insight')) return 'insight';
+  if(n.includes('learned')||n.includes('research')) return 'learned';
+  if(n.includes('self optimization')||n.includes('meta')) return 'meta';
   return 'concept';
 }
 const MG_PALETTE = {
@@ -26,6 +29,9 @@ const MG_PALETTE = {
   system:  '#33ff99',  // neon
   user:    '#ff7a59',  // orange
   concept: '#9b8cff',  // violet
+  insight: '#ff9ff3',  // pink (dreamed)
+  learned: '#74f0c0',  // mint (researched)
+  meta:    '#c0c0ff',  // light violet (self-reflection)
 };
 
 // Build nodes + edges from the raw concept-name list.
@@ -143,13 +149,40 @@ function mgShowDetail(id){
   const n=__mgNodes[id]; if(!n) return;
   const panel=$('#mg-detail'); if(!panel) return;
   const neighbors=__mgAdj[id].map(j=>__mgNodes[j].name);
-  panel.innerHTML = `<div class="mg-d-title" style="color:${MG_PALETTE[n.cat]}">${n.name}</div>
+  panel.innerHTML = `<div class="mg-d-title" style="color:${MG_PALETTE[n.cat]||'#fff'}">${n.name}</div>
     <div class="mg-d-meta">type: ${n.cat} · links: ${n.deg}${n.orphan?' · <span style="color:#ff4d4d">orphan</span>':''}</div>
     <div class="mg-d-sub">connected to</div>
-    <div class="mg-d-neigh">${neighbors.length?neighbors.map(x=>`<span>${x}</span>`).join(''):'<i>none</i>'}</div>
-    <div class="mg-d-sub">ask the memory about this</div>
+    <div class="mg-d-neigh">${neighbors.length?neighbors.map(x=>`<span class="mg-link-chip" data-n="${x}">${x}</span>`).join(''):'<i>none</i>'}</div>
+    <div class="mg-d-sub">links (comma separated)</div>
+    <input id="mg-links" value="${neighbors.join(', ')}" style="width:100%"/>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button id="mg-relink" class="accent">relink</button>
+      <button id="mg-remove" class="danger">remove</button>
+      <button id="mg-dream" class="accent">dream ↻</button>
+      <button id="mg-fact" class="accent">fact-check</button>
+    </div>
+    <div class="mg-d-sub" style="margin-top:10px">ask the memory about this</div>
     <div style="display:flex;gap:6px"><input id="mg-q" placeholder="e.g. what is ${n.name}?" style="flex:1"/><button id="mg-q-go" class="accent">↵</button></div>
     <div id="mg-q-res" class="mg-d-res"></div>`;
+
+  // click a neighbor chip to jump to it
+  panel.querySelectorAll('.mg-link-chip').forEach(ch=>{
+    ch.onclick=()=>{ const id=Object.keys(__mgNodes).find(k=>__mgNodes[k].name===ch.dataset.n); if(id){ __mgSel=id; mgShowDetail(id); } };
+  });
+  $('#mg-relink').onclick=async ()=>{
+    const links=$('#mg-links').value.split(',').map(s=>s.trim()).filter(Boolean);
+    await fetch(API.base+'/api/memory/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.name,links})});
+    location.reload();
+  };
+  $('#mg-remove').onclick=async ()=>{
+    if(!confirm('Remove "'+n.name+'" and prune its links?')) return;
+    await fetch(API.base+'/api/memory/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.name})});
+    location.reload();
+  };
+  $('#mg-dream').onclick=async ()=>{ const r=$('#mg-q-res'); r.textContent='…researching + dreaming';
+    try{ const res=await fetch(API.base+'/api/selfdev/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:n.name})}); const d=await res.json(); r.textContent='researched: '+(d.stored||d.error||'?'); setTimeout(()=>location.reload(),800);}catch(e){ r.textContent='error'; } };
+  $('#mg-fact').onclick=async ()=>{ const r=$('#mg-q-res'); r.textContent='…verifying';
+    try{ const res=await fetch(API.base+'/api/selfdev/factcheck',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.name})}); const d=await res.json(); r.textContent='corroboration='+(d.corroboration??'?')+(d.stale?' (stale)':'');}catch(e){ r.textContent='error'; } };
   $('#mg-q-go').onclick=async ()=>{
     const q=$('#mg-q').value.trim(); if(!q) return;
     const res=$('#mg-q-res'); res.textContent='…thinking';
