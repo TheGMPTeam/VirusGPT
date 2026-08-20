@@ -4,6 +4,10 @@
 <dict>
 	<key>files</key>
 	<dict>
+		<key>Resources/VirusGPT.icns</key>
+		<data>
+		Hk3YhUa3/xLJU/HkdU2Cb2MszPQ=
+		</data>
 		<key>Resources/app/assets/css/styles.css</key>
 		<data>
 		L7ML6E67618H7pfhyF0IoJNH8gw=
@@ -34,7 +38,7 @@
 		</data>
 		<key>Resources/app/assets/js/chat.js</key>
 		<data>
-		i3GKO1ZarFN4H6hLT5moyBuzWno=
+		apB1uax42z2ZQIpyYRXU97xYPsY=
 		</data>
 		<key>Resources/app/assets/js/config.js</key>
 		<data>
@@ -62,7 +66,7 @@
 		</data>
 		<key>Resources/app/assets/js/team.js</key>
 		<data>
-		/T/D5lTKuYRGNPewP9+typGuE5E=
+		PQCc6JjPeyzCzwC1M44Yqop3Fd8=
 		</data>
 		<key>Resources/app/assets/js/tts.js</key>
 		<data>
@@ -78,11 +82,11 @@
 		</data>
 		<key>Resources/app/index.html</key>
 		<data>
-		VgdfGRn0Lnn7h9a/K24KZKEFUsg=
+		8cqbgfPIQWn9aFwrw4MlANcEZtU=
 		</data>
 		<key>Resources/base_library.zip</key>
 		<data>
-		xP7VPXam0fqEsyeXXZBVgJD+cTE=
+		eAoRR8Qujd9+XRdeKRvbt5LN7GE=
 		</data>
 		<key>Resources/certifi/cacert.pem</key>
 		<data>
@@ -114,11 +118,15 @@
 		</data>
 		<key>Resources/config.json/config.json</key>
 		<data>
-		XYmDWfRBY1gJlbZLdO82D5tHmpM=
+		u6f5fzUmCplFk66Xl4seUN1t8dQ=
 		</data>
 		<key>Resources/desktop/README.md</key>
 		<data>
 		gd1Xp6ugz4/wdDbzwgfKnlzjBHM=
+		</data>
+		<key>Resources/desktop/VirusGPT.icns</key>
+		<data>
+		Hk3YhUa3/xLJU/HkdU2Cb2MszPQ=
 		</data>
 		<key>Resources/desktop/__init__.py</key>
 		<data>
@@ -130,7 +138,7 @@
 		</data>
 		<key>Resources/desktop/__pycache__/app.cpython-311.pyc</key>
 		<data>
-		vBhERXQO4peWJ9i+J3LDVyR3+MQ=
+		31uLbtm9m34fl7giQuDGi05ZiTg=
 		</data>
 		<key>Resources/desktop/__pycache__/build-linux.cpython-311.pyc</key>
 		<data>
@@ -138,7 +146,7 @@
 		</data>
 		<key>Resources/desktop/__pycache__/build-macos.cpython-311.pyc</key>
 		<data>
-		dlbs0ia9B9H3pf7ZWCm2vHv9g+Q=
+		+pUwON4wo56rsWjLJVxMilhDd7k=
 		</data>
 		<key>Resources/desktop/__pycache__/build-windows.cpython-311.pyc</key>
 		<data>
@@ -150,7 +158,7 @@
 		</data>
 		<key>Resources/desktop/app.py</key>
 		<data>
-		yza88Hs24Op5KM+PeTWv9EVDRXE=
+		0JiORImkDn/BuMTIWJL3VVe0Fso=
 		</data>
 		<key>Resources/desktop/build-linux.py</key>
 		<data>
@@ -158,23 +166,67 @@
 		</data>
 		<key>Resources/desktop/build-macos.py</key>
 		<data>
-		/qv8Og3DM1RK39u3meRO6TDN1vk=
+		CQMEJLFVgJwj8gzuXcazmcWbSnk=
 		</data>
 		<key>Resources/desktop/build-windows.py</key>
 		<data>
 		AJWeDDQTFKiv0mqKsuwTN0GURFM=
 		</data>
+		<key>Resources/desktop/icon.iconset/icon_128x128.png</key>
+		<data>
+		lxpbvO/A3/VQxK6r+qxlk+CFkzo=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_128x128@2x.png</key>
+		<data>
+		xEWxe/ORJU5d+ogd8d8rJeTMbRs=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_16x16.png</key>
+		<data>
+		pftkO4ICqMMz2cDG2cNU71uUZoQ=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_16x16@2x.png</key>
+		<data>
+		uIqxtaGBDCqyS6F1gVe2oMAx3p8=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_256x256.png</key>
+		<data>
+		xEWxe/ORJU5d+ogd8d8rJeTMbRs=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_256x256@2x.png</key>
+		<data>
+		EhfYljL3ovTnLUyU1ylwWqe+Hjo=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_32x32.png</key>
+		<data>
+		uIqxtaGBDCqyS6F1gVe2oMAx3p8=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_32x32@2x.png</key>
+		<data>
+		kOtYKbbPRmJJ69tOr/farNH10fA=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_512x512.png</key>
+		<data>
+		EhfYljL3ovTnLUyU1ylwWqe+Hjo=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_512x512@2x.png</key>
+		<data>
+		5zaiPSDqnValLz8nswrdWZwzlyU=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_64x64.png</key>
+		<data>
+		kOtYKbbPRmJJ69tOr/farNH10fA=
+		</data>
+		<key>Resources/desktop/icon.iconset/icon_64x64@2x.png</key>
+		<data>
+		lxpbvO/A3/VQxK6r+qxlk+CFkzo=
+		</data>
 		<key>Resources/desktop/requirements.txt</key>
 		<data>
-		DFEhohy+twjab9Wx06iGxkUUBio=
+		7Zm3IzAbcoZMn8oBFAiJ93DJ6wg=
 		</data>
 		<key>Resources/desktop/run.py</key>
 		<data>
 		eDoymM1gc0VtouwbpQlBSRBgK5M=
-		</data>
-		<key>Resources/icon-windowed.icns</key>
-		<data>
-		eEHOuYpZLB0vKGVIWGZOh5rH8+o=
 		</data>
 		<key>Resources/pydantic-2.13.4.dist-info/INSTALLER</key>
 		<data>
@@ -199,6 +251,10 @@
 		<key>Resources/pydantic-2.13.4.dist-info/licenses/LICENSE</key>
 		<data>
 		y39czT2O9Ruf4ZGB0qyAHMWSMaQ=
+		</data>
+		<key>Resources/server.py/server.py</key>
+		<data>
+		M+X5V/X/hWRx40fOQeiPJnN9cWU=
 		</data>
 		<key>Resources/setuptools/_vendor/importlib_metadata-8.0.0.dist-info/INSTALLER</key>
 		<data>
@@ -421,6 +477,11 @@
 			<key>requirement</key>
 			<string>cdhash H"5d172f70fa420d34eda9d2f0474598def5949b71"</string>
 		</dict>
+		<key>Frameworks/server.py</key>
+		<dict>
+			<key>symlink</key>
+			<string>../Resources/server.py</string>
+		</dict>
 		<key>Frameworks/setuptools</key>
 		<dict>
 			<key>symlink</key>
@@ -445,6 +506,13 @@
 		<dict>
 			<key>symlink</key>
 			<string>../Frameworks/Foundation</string>
+		</dict>
+		<key>Resources/VirusGPT.icns</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			HzI062RFStMLMAnJ7EqUKzx/R/WkIOg0+5/2AAXSP3s=
+			</data>
 		</dict>
 		<key>Resources/WebKit</key>
 		<dict>
@@ -504,7 +572,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			wiqjKoCHd1xIfRAGYJX9Ce4aCRZeXcg8gVqSFIMu1PM=
+			PvSB+fyg0MJz+wcveydhpCDi3AdV6nZdv+28HGNm7o0=
 			</data>
 		</dict>
 		<key>Resources/app/assets/js/config.js</key>
@@ -553,7 +621,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			pGnc/KR7w5Pii3pevZyvctnWTR2SO7M18vf3rIL2uaw=
+			hx8tS8r7xE3DZ/GQoucUkl+nfLNOi5Y/FlN+d+inRAU=
 			</data>
 		</dict>
 		<key>Resources/app/assets/js/tts.js</key>
@@ -581,14 +649,14 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			Yi9VYe/oYSGrcdGtITG0nH8TDELpMlCbS7wRqYUKWSY=
+			bwQKgPXPA8ZJablG1q45m6CTgoFUrNlHzsVfu+7gLXs=
 			</data>
 		</dict>
 		<key>Resources/base_library.zip</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			8RPiWzVTpg9QMAwmljeZM2FzH468p3tAjIqZUcZrq2o=
+			ozSbhlb8gwUP5zljujaSTrazgh9V03FfYAboelARzgg=
 			</data>
 		</dict>
 		<key>Resources/certifi/cacert.pem</key>
@@ -644,7 +712,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			BnFJGBXMkXeCG3Wt5pZvZ0hdD8ei07N3baULARz2a7w=
+			8SKAEP1R71mFDr1KOJ98Sx3rNV26kU5XaOWfNbWRbQ8=
 			</data>
 		</dict>
 		<key>Resources/desktop/README.md</key>
@@ -652,6 +720,13 @@
 			<key>hash2</key>
 			<data>
 			FGm9qWO2to3GzHkMxxscmuTx7JLlXPTj70fwzv7wwWM=
+			</data>
+		</dict>
+		<key>Resources/desktop/VirusGPT.icns</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			HzI062RFStMLMAnJ7EqUKzx/R/WkIOg0+5/2AAXSP3s=
 			</data>
 		</dict>
 		<key>Resources/desktop/__init__.py</key>
@@ -672,7 +747,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			ByiCBTADPWUvJjc47S6UcR7+51MFRCAOP5uvUyKsuKo=
+			Ei/j39kqHiA+vPTvKhZFd94qkpVxQPnOKZAS2FAAP1c=
 			</data>
 		</dict>
 		<key>Resources/desktop/__pycache__/build-linux.cpython-311.pyc</key>
@@ -686,7 +761,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			gcoHSIlkcqk392DFzfoEta+hZTiMoKTjqdTXiUk7VWQ=
+			1gAcnvpoU1KcxhDtwyCsu9kWgp6r+ZcVTjxUPK9G86s=
 			</data>
 		</dict>
 		<key>Resources/desktop/__pycache__/build-windows.cpython-311.pyc</key>
@@ -707,7 +782,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			O3EQ5Sb2CzVq8tCsmKXNqGywoj1B82ix+hjq3GwUqKg=
+			iXMwGRwPge/4As9zkpOub/rN4nWm9gz169AjJBR1m2Q=
 			</data>
 		</dict>
 		<key>Resources/desktop/build-linux.py</key>
@@ -721,7 +796,7 @@
 		<dict>
 			<key>hash2</key>
 			<data>
-			Bm2lDpmyonRC9Wd2hUu5SnDJmd1n5X0mlTeUiip2IPg=
+			bLlcdWKCPHu/HiRykTAHcRfId2mbGEgcIKyBbjMa6+Y=
 			</data>
 		</dict>
 		<key>Resources/desktop/build-windows.py</key>
@@ -731,11 +806,95 @@
 			dy0KglB0g83j4MZfhTmCeCcLLvMqtrYmSMEASBgvo9I=
 			</data>
 		</dict>
+		<key>Resources/desktop/icon.iconset/icon_128x128.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			c+86ULqMMsGtF4yFTvqrtUE6Xkx4FJswB/bfc6YuPy4=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_128x128@2x.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			tYLJ+/VS22q5k8jXUf5MMn/PiAK4+nguXJYw1QPN/gs=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_16x16.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			YkaqnZ+ZsRwHV00GrgmtaPRC9x3PZxvJlqIpS/u/SfY=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_16x16@2x.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			KmpYGrofiKy1Jf7KngU/LHfcugVpHC2NGZzGNNQqrSU=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_256x256.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			tYLJ+/VS22q5k8jXUf5MMn/PiAK4+nguXJYw1QPN/gs=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_256x256@2x.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Z9foh7/JWthVgQEUdITpT834VgmrwSaTWI14PPsItuI=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_32x32.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			KmpYGrofiKy1Jf7KngU/LHfcugVpHC2NGZzGNNQqrSU=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_32x32@2x.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			OEMzAcWBOn6c2+wHLJ1zpPOiHPMnBIhR09D7/lgGHbE=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_512x512.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Z9foh7/JWthVgQEUdITpT834VgmrwSaTWI14PPsItuI=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_512x512@2x.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			Q9AkEnV5h+9jzjUwlMF6tnAzjR84dUqgRJhzGsIptl4=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_64x64.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			OEMzAcWBOn6c2+wHLJ1zpPOiHPMnBIhR09D7/lgGHbE=
+			</data>
+		</dict>
+		<key>Resources/desktop/icon.iconset/icon_64x64@2x.png</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			c+86ULqMMsGtF4yFTvqrtUE6Xkx4FJswB/bfc6YuPy4=
+			</data>
+		</dict>
 		<key>Resources/desktop/requirements.txt</key>
 		<dict>
 			<key>hash2</key>
 			<data>
-			0R9EOSYcfTnhAUMDPNLJwa1ula7JRyFiHvNnEKy/TOw=
+			XAcyhbUBk4reTgDbyQgMjEDOWxgEeWK6YrYEL9PQVVA=
 			</data>
 		</dict>
 		<key>Resources/desktop/run.py</key>
@@ -743,13 +902,6 @@
 			<key>hash2</key>
 			<data>
 			ZKkBpg2MiYqF6/CTEC9ApMayXNggbgdN/gTE2EFhWQE=
-			</data>
-		</dict>
-		<key>Resources/icon-windowed.icns</key>
-		<dict>
-			<key>hash2</key>
-			<data>
-			uQo7VuWRab4Phv4EEGmfQsyqFqDIXZgO8OtgaAMvCzY=
 			</data>
 		</dict>
 		<key>Resources/libpython3.11.dylib</key>
@@ -808,6 +960,13 @@
 		<dict>
 			<key>symlink</key>
 			<string>../Frameworks/pydantic_core</string>
+		</dict>
+		<key>Resources/server.py/server.py</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			GNOmjf9uCALs1FwjH02et5X3COnwKJb3psGYW7qqnGo=
+			</data>
 		</dict>
 		<key>Resources/setuptools/_vendor/importlib_metadata-8.0.0.dist-info/INSTALLER</key>
 		<dict>

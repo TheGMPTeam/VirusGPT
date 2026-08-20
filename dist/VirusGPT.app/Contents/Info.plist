@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>VirusGPT</string>
 	<key>CFBundleIconFile</key>
-	<string>icon-windowed.icns</string>
+	<string>VirusGPT.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>VirusGPT</string>
 	<key>CFBundleInfoDictionaryVersion</key>

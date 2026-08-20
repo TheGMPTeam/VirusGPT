@@ -66,15 +66,7 @@ async function send(text){
   text=(text||'').trim(); if(!text) return;
   $('#cmd-popup').classList.remove('show'); cpItems=[]; cpActive=-1; sugItems=[]; cpMode='none';
 
-  // Team (agent-to-agent) triggers — launch auto-chat WITHOUT the button:
-  //   /team <task> · @team <task> · team: <task> · #team <task>
-  const teamMatch = text.match(/^\s*(?:\/team|@team|#team|team\s*:)\s*([\s\S]*)$/i);
-  if(teamMatch){
-    const task = (teamMatch[1] || '').trim() || ($('#message-input').value||'').trim();
-    await runAutoTeam(task);
-    return;
-  }
-
+  // Team rounds now run through Autonomous Mission (right-side panel).
   // Slash commands: /new, /clear, /help
   if(text.startsWith('/')){
     await runSlashCommand(text);

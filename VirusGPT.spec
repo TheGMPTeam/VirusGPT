@@ -5,8 +5,8 @@ a = Analysis(
     ['desktop/run.py'],
     pathex=[],
     binaries=[],
-    datas=[('app', 'app'), ('config.json', 'config.json'), ('desktop', 'desktop')],
-    hiddenimports=['webview', 'services', 'autonomous', 'memory', 'gateway'],
+    datas=[('app', 'app'), ('config.json', 'config.json'), ('server.py', 'server.py'), ('desktop', 'desktop')],
+    hiddenimports=['webview', 'server', 'uvicorn', 'fastapi', 'starlette', 'services', 'autonomous', 'memory', 'gateway'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -32,6 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['/Users/Master/virusgpt-mac/desktop/VirusGPT.icns'],
 )
 coll = COLLECT(
     exe,
@@ -45,6 +46,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='VirusGPT.app',
-    icon=None,
+    icon='/Users/Master/virusgpt-mac/desktop/VirusGPT.icns',
     bundle_identifier=None,
 )

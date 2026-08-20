@@ -20,6 +20,8 @@ def build():
         "--name", APP_NAME,
         "--windowed",
         "--onedir",
+        "--noconfirm",
+        "--icon", str(ROOT / "desktop" / "VirusGPT.icns"),
         "--hidden-import", "webview",
         "--hidden-import", "server",
         "--hidden-import", "uvicorn",

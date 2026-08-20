@@ -2,3 +2,7 @@
 # pywebview uses the OS-native webview — no bundled Chromium, no Node.
 pywebview>=5.0
 httpx>=0.27
+# PyInstaller is required to build the distributable desktop app
+# (desktop/build-{macos,windows,linux}.py). A fresh `vgctl desktop install-deps`
+# now installs it, so the desktop app is buildable straight out of the box.
+pyinstaller>=6.0

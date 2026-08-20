@@ -1,44 +1,14 @@
-/* team.js — agent-to-agent auto-chat: Planner decomposes (silent, in the right
-   panel) and Workers execute in the chat with TTS, then the Planner synthesizes. */
+/* team.js — agent-to-agent autonomous mission: Planner decomposes in the team
+   board and Workers execute in the chat with TTS, then the Planner synthesizes. */
 
-let autoChatActive=false;
-let autoChatTimer=null;
-
-async function startAutoChat(){
-  // Auto-chat now runs as an AUTONOMOUS TEAM: a Planner decomposes the task and
-  // delegates subtasks to the Workers, then synthesizes their results.
-  const task = ($('#message-input').value||'').trim() ||
-    'Collaboratively solve: how should a small startup securely launch its first AI product? Each agent should contribute its own specialty.';
-  $('#message-input').value='';
-  $('#message-input').style.height='auto';
-  await runAutoTeam(task);
-}
-function stopAutoChat(){
-  autoChatActive=false;
-  clearTimeout(autoChatTimer);
-  autoChatTimer=null;
-  $('#btn-auto-chat').classList.remove('hidden');
-  $('#btn-auto-stop').classList.add('hidden');
-  $('#message-input').disabled=false;
-  $('#btn-send').disabled=false;
-}
-/* Global stop: halts a running auto-chat team, kills any in-flight streaming
-   turn, and stops all TTS playback. Safe to press any time. */
+/* Team Workflow now points to Autonomous Mission; auto-chat removed. */
 function stopAll(){
-  // 1) kill any running team / streamed turn
-  autoChatActive=false;
-  clearTimeout(autoChatTimer);
-  autoChatTimer=null;
-  runToken++;                 // invalidates in-flight silentStream/teamTurn
+  // Stop any in-flight streamed turn and all speech.
+  runToken++;                 // invalidates in-flight teamTurn
   if(currentBot){ try{ currentBot.cur.textContent='⏹ stopped'; }catch(e){} currentBot=null; }
-  // 2) stop all speech
   stopTTS();
-  // 3) restore UI controls
-  $('#btn-auto-chat').classList.remove('hidden');
-  $('#btn-auto-stop').classList.add('hidden');
   $('#message-input').disabled=false;
   $('#btn-send').disabled=false;
-  // 4) reflect in the plan panel if visible
   try{ updatePlanPanel('stopped'); }catch(e){}
 }
 
@@ -175,45 +145,6 @@ function parsePlan(text, workers){
   return src.map((t,i)=>({worker:workers[i%workers.length], task:t}));
 }
 
-/* The autonomous team: 1) Planner decomposes the task in the side panel (silent,
-   no chat bubble), 2) each Worker executes its subtask in the chat (with TTS),
-   3) Planner synthesizes a final answer (chat + TTS). */
-async function runAutoTeam(task){
-  const rm=activeRoom();
-  const lineup=roomPersonas(rm).map(personaByName).filter(Boolean);
-  if(lineup.length<2){ alert('Add at least 2 personas to the room for a team (a Planner + Workers).'); updatePlanPanel('idle'); return; }
-  autoChatActive=true;
-  $('#btn-auto-chat').classList.add('hidden');
-  $('#btn-auto-stop').classList.remove('hidden');
-  $('#message-input').disabled=true;
-  $('#btn-send').disabled=true;
-  const planner = lineup.find(p=>(p.role||'worker')==='planner') || lineup[0];
-  const workers = lineup.filter(p=>p!==planner);
-  pushMessage('user', task, 'YOU');
-  // 1) Planner decomposes the task into a delegated plan (shown in side panel, silent)
-  const plan = await planTurn(planner, workers, task);
-  if(!autoChatActive){ updatePlanPanel('stopped'); return; }
-  // 2) Each Worker executes its assigned subtask (chat + TTS)
-  const subs=parsePlan(plan, workers);
-  const results=[];
-  for(const s of subs){
-    if(!autoChatActive){ updatePlanPanel('stopped'); return; }
-    const r=await teamTurn(s.worker, s.task,
-      { systemExtra:`You are ${s.worker.name}. The team lead ${planner.name} assigned you this subtask. Do it yourself, as ${s.worker.name}, and report your findings concisely. Do not narrate the other agents.`,
-        connector:`${planner.name} → ${s.worker.name}: ${s.task}`, connectorWho:'System' });
-    if(r) results.push({name:s.worker.name, text:r});
-    await new Promise(r=>setTimeout(r, 400));
-  }
-  if(!autoChatActive){ updatePlanPanel('stopped'); return; }
-  // 3) Planner synthesizes the final answer from the workers' reports (chat + TTS)
-  const synth=`Original task:\n${task}\n\nTeam reports:\n`+results.map(x=>`### ${x.name}\n${x.text}`).join('\n\n')+
-    `\n\nNow synthesize everything into ONE coherent final answer to the original task, speaking as ${planner.name}.`;
-  await teamTurn(planner, synth,
-    { systemExtra:`You are ${planner.name}, the team lead. Combine your workers' reports into a single final answer to the task, speaking as ${planner.name}.`,
-      connector:`🧠 ${planner.name} (Planner) is synthesizing the final answer…`, connectorWho:'System' });
-  updatePlanPanel('✓ done');
-  stopAutoChat();
-}
 async function drainTTSQueue(){
   // Wait until the serial TTS queue is fully drained and no audio is playing.
   // This guarantees each agent's full turn finishes audio before the next agent speaks.
@@ -221,8 +152,6 @@ async function drainTTSQueue(){
 }
 
 function initTeam(){
-  $('#btn-auto-chat').onclick=startAutoChat;
-  $('#btn-auto-stop').onclick=stopAutoChat;
   $('#btn-stop-all').onclick=stopAll;
   // Mission controls now live in the Team Workflow panel.
   $('#btn-mission-start').onclick=startMission;
