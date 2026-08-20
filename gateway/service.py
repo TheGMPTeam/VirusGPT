@@ -124,6 +124,8 @@ def builtin_jobs():
         {"name": "launch_check", "every_sec": 60, "fn": lambda: _ensure_stack()},
         {"name": "memory_maintain", "every_sec": 1800,
          "fn": lambda: _memory_maintain()},
+        {"name": "db_backup", "every_sec": 86400,
+         "fn": lambda: _db_backup()},
         {"name": "selfdev", "every_sec": 3600,
          "fn": lambda: _selfdev_cycle()},
     ]
@@ -136,6 +138,19 @@ def _ensure_stack():
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
+
+
+def _db_backup():
+    # Daily snapshot of the SQLite DB into data/db_backups/ (auto-pruned to 10).
+    try:
+        from autonomous import database as db
+        path = db.backup_db(tag="cron")
+        if path:
+            log(f"db_backup: wrote {path}")
+        else:
+            log("db_backup: skipped (mysql backend or error)")
+    except Exception as e:  # noqa
+        log(f"db_backup error: {e}")
 
 
 def _memory_maintain():

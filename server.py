@@ -369,13 +369,49 @@ async def save_personas(req: Request):
 # --------------------------------------------------------------------------
 # Autonomous engine — SQLite-backed mission/task runtime + SSE stream
 # --------------------------------------------------------------------------
-from autonomous.database import init_db as _init_auto_db, Repository as AutoRepo
+from autonomous.database import init_db as _init_auto_db, Repository as AutoRepo, auto_heal_db
 from autonomous.orchestrator import Supervisor
 from autonomous.events import bus as auto_bus
+
+# Self-heal: if the SQLite DB is corrupted, restore the newest good backup
+# before any writes happen.
+_heal = auto_heal_db()
+if _heal.get("healed"):
+    print(f"[db] AUTO-HEALED: restored from {_heal.get('backup')}")
+elif _heal.get("action") == "no-good-backup":
+    print("[db] WARNING: live DB corrupt and no good backup found")
 
 _init_auto_db()
 _auto_repo = AutoRepo()
 _supervisor = Supervisor()
+
+
+@app.get("/api/db/status")
+async def db_status():
+    """DB health + available backups (read-only)."""
+    from autonomous import database as db
+    return JSONResponse({
+        "backend": db.DB_BACKEND,
+        "healthy": db.verify_db() if db._sqlite_active() else None,
+        "backups": db.list_backups(),
+        "backup_dir": str(db.BACKUP_DIR),
+    })
+
+
+@app.post("/api/db/backup")
+async def db_backup_ep():
+    from autonomous import database as db
+    path = db.backup_db(tag="manual")
+    return JSONResponse({"ok": bool(path), "path": path})
+
+
+@app.post("/api/db/restore")
+async def db_restore_ep(req: Request):
+    from autonomous import database as db
+    b = await req.json()
+    path = b.get("path", "")
+    ok = db.restore_db(path)
+    return JSONResponse({"ok": ok, "path": path})
 
 
 @app.post("/api/autonomous/start")

@@ -74,6 +74,126 @@ def _conn():
     return conn
 
 
+# ---------------------------------------------------------------------------
+# Backup + corruption recovery (SQLite only)
+# ---------------------------------------------------------------------------
+BACKUP_DIR = DATA / "db_backups"
+BACKUP_KEEP = 10  # keep the 10 most recent backups
+
+
+def _sqlite_active() -> bool:
+    return DB_BACKEND not in ("planetscale", "mysql")
+
+
+def backup_db(tag: str = "") -> Optional[str]:
+    """Snapshot virusgpt.db (+ WAL/SHM) into data/db_backups/. Returns path or None."""
+    if not _sqlite_active():
+        return None
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        # Flush WAL so the snapshot is complete + consistent.
+        try:
+            c = sqlite3.connect(str(DB_PATH))
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+        except Exception:
+            pass
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        stamp = f"{ts}{('-' + tag) if tag else ''}"
+        dst = BACKUP_DIR / f"virusgpt-{stamp}.db"
+        import shutil
+        if DB_PATH.exists():
+            shutil.copy2(DB_PATH, dst)
+            # also snapshot the -wal / -shm siblings if present
+            for ext in ("-wal", "-shm"):
+                sib = DB_PATH.parent / (DB_PATH.stem + ext)
+                if sib.exists():
+                    shutil.copy2(sib, dst.parent / (dst.stem + ext))
+        # prune old backups
+        backs = sorted(BACKUP_DIR.glob("virusgpt-*.db"), key=lambda p: p.stat().st_mtime)
+        for old in backs[:-BACKUP_KEEP]:
+            for ext in ("", "-wal", "-shm"):
+                op = old.parent / (old.stem + ext)
+                if op.exists():
+                    try:
+                        op.unlink()
+                    except Exception:
+                        pass
+        return str(dst)
+    except Exception as e:  # noqa: BLE001
+        print("db backup failed:", e)
+        return None
+
+
+def verify_db(path=None) -> bool:
+    """Run PRAGMA integrity_check; True if the DB is healthy."""
+    target = Path(path) if path else DB_PATH
+    if not target.exists():
+        return False
+    try:
+        c = sqlite3.connect(str(target))
+        c.row_factory = None
+        rows = c.execute("PRAGMA integrity_check").fetchall()
+        c.close()
+        return all(r[0] == "ok" for r in rows)
+    except Exception:
+        return False
+
+
+def list_backups() -> List[str]:
+    if not BACKUP_DIR.exists():
+        return []
+    return [str(p) for p in sorted(BACKUP_DIR.glob("virusgpt-*.db"),
+                                   key=lambda p: p.stat().st_mtime, reverse=True)]
+
+
+def restore_db(backup_path: str) -> bool:
+    """Replace the live DB with a backup (and its WAL/SHM if present)."""
+    if not _sqlite_active() or not Path(backup_path).exists():
+        return False
+    try:
+        import shutil
+        # close any open handles by forcing a checkpoint + remove live files
+        try:
+            c = sqlite3.connect(str(DB_PATH))
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            c.close()
+        except Exception:
+            pass
+        for ext in ("", "-wal", "-shm"):
+            live = DB_PATH.parent / (DB_PATH.stem + ext)
+            if live.exists():
+                live.unlink()
+        src = Path(backup_path)
+        shutil.copy2(src, DB_PATH)
+        for ext in ("-wal", "-shm"):
+            sib = src.parent / (src.stem + ext)
+            if sib.exists():
+                shutil.copy2(sib, DB_PATH.parent / (DB_PATH.stem + ext))
+        return verify_db()
+    except Exception as e:  # noqa: BLE001
+        print("db restore failed:", e)
+        return False
+
+
+def auto_heal_db() -> dict:
+    """If the live DB is corrupted, restore the newest verified backup.
+
+    Returns {healed, action, backup}. Called at startup before any writes.
+    """
+    if not _sqlite_active():
+        return {"healed": False, "action": "skip-mysql", "backup": None}
+    if verify_db():
+        return {"healed": False, "action": "ok", "backup": None}
+    # corrupted -> find newest good backup
+    for b in list_backups():
+        if verify_db(b):
+            ok = restore_db(b)
+            if ok:
+                return {"healed": True, "action": "restored", "backup": b}
+    return {"healed": False, "action": "no-good-backup", "backup": None}
+
+
 def init_db():
     conn = _conn()
     try:
