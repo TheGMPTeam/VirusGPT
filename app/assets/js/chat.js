@@ -20,14 +20,23 @@ async function choosePersona(text){
   if(mode==='selected'){ const sel=selectedPersonaObj()||personaByName(lineup[0]); return sel; }
   if(mode==='random'){ const n=lineup[Math.floor(Math.random()*lineup.length)]; return personaByName(n); }
   // mode==='router' (LLM decides): ask the model to name the best persona.
+  // OPTIMIZATION: a single-persona room needs no routing decision.
+  if(lineup.length<=1) return personaByName(lineup[0])||personas[0]||null;
   try{
     const roster=lineup.map(personaByName).filter(Boolean).map(p=>`- ${p.name}: ${(p.description||'')}`).join('\n');
     const meta=[{role:'system',content:'You are a chat router. Given the room personas and the user message, reply with ONLY the exact name of the single best persona to answer (no explanation). Personas:\n'+roster},
                 {role:'user',content:text}];
     const r=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:meta})});
-    if(r.ok){ const rd=await r.json(); const pick=(rd.choices?.[0]?.message?.content||'').trim().replace(/["'.]/g,'');
+    if(r.ok){
+      // /api/chat returns SSE (data: {content}), not JSON — accumulate the stream.
+      const reader=r.body.getReader(); const dec=new TextDecoder(); let buf=''; let pick='';
+      while(true){ const {value,done}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true});
+        let i; while((i=buf.indexOf('\n\n'))>=0){ const chunk=buf.slice(0,i); buf=buf.slice(i+2);
+          if(chunk.startsWith('data: ')){ try{ const o=JSON.parse(chunk.slice(6)); if(o.content) pick+=o.content; }catch(_){} } } }
+      pick=pick.trim().replace(/["'.]/g,'');
       const hit=lineup.map(personaByName).find(p=>p && (p.name.toLowerCase()===pick.toLowerCase() || pick.toLowerCase().includes(p.name.toLowerCase())));
-      if(hit) return hit; }
+      if(hit) return hit;
+    }
   }catch(e){ /* fall through to default */ }
   return personaByName(lineup[0]) || personas[0] || null;
 }

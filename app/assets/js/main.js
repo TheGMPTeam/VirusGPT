@@ -14,7 +14,6 @@ function boot(){
     initModals();
     initInput();
     initMic();
-    initMissions();
     initMatrix();
     $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇';
     refreshHealth(); setInterval(refreshHealth,15000);

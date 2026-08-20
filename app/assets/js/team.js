@@ -42,14 +42,27 @@ function stopAll(){
   try{ updatePlanPanel('stopped'); }catch(e){}
 }
 
-/* Update the dedicated "Team Plan" sidebar panel (the Planner's decomposition
-   is shown here live, NOT in the chat, and never spoken aloud). */
-function updatePlanPanel(status, text){
-  const panel=$('#team-plan-panel'); if(!panel) return;
-  panel.classList.remove('hidden');
-  $('#team-plan-status').textContent = status ? status : 'idle';
-  if(text!=null) $('#team-plan-text').textContent = text;
+/* Update the Kanban team board (right sidebar). status shown in the header;
+   columns: backlog / progress / done. Cards are created/moved via kbAdd/kbMove. */
+function updatePlanPanel(status){
+  const el=$('#team-plan-status'); if(el) el.textContent = status ? status : 'idle';
 }
+function _kbCounts(){
+  ['backlog','progress','done'].forEach(c=>{
+    const b=document.getElementById('kb-'+c); if(b) b.parentElement.querySelector('.kanban-count').textContent=b.children.length;
+  });
+}
+function kbCard(who, task, cls){
+  const d=document.createElement('div'); d.className='kcard'+(cls?(' '+cls):'');
+  d.innerHTML=`<div class="kc-who">${who||'Agent'}</div><div class="kc-task">${task||''}</div>`;
+  return d;
+}
+function kbAdd(col, who, task, cls){
+  const b=document.getElementById('kb-'+col); if(!b) return null;
+  const c=kbCard(who,task,cls); b.appendChild(c); _kbCounts(); return c;
+}
+function kbMove(card, col){ const b=document.getElementById('kb-'+col); if(!b||!card) return; b.appendChild(card); _kbCounts(); }
+function kbReset(){ ['backlog','progress','done'].forEach(c=>{ const b=document.getElementById('kb-'+c); if(b) b.innerHTML=''; }); _kbCounts(); }
 
 /* Silent stream: call the LLM and accumulate `acc` WITHOUT rendering a chat
    bubble or queuing any TTS. onChunk (optional) gets live text for panels. */
@@ -78,16 +91,22 @@ async function silentStream(persona, userText, systemExtra, onChunk){
   return acc;
 }
 
-/* The Planner's decomposition step: streams silently into the Team Plan panel
-   (no chat bubble, no audio). Returns the plan text. */
+/* The Planner's decomposition step: streams silently into the Team Board
+   (Backlog column), no chat bubble, no audio. Returns the plan text. */
 async function planTurn(planner, workers, task){
-  updatePlanPanel('planning…', 'The Planner is decomposing the task…');
+  updatePlanPanel('planning…'); kbReset();
   const panel=$('#team-plan-panel'); if(panel) panel.scrollIntoView({block:'nearest'});
+  // Show the task itself as the first backlog card.
+  kbAdd('backlog','Task', task, 'progress');
   const plan = await silentStream(planner,
     `Team members available: ${workers.map(w=>w.name).join(', ')}.\nTask: ${task}\n\nBreak this into subtasks and assign each to the best team member BY NAME. Output ONLY a numbered plan, one line per subtask, in this exact format:\n@<PersonName>: <what they should do>\nDo NOT do the work yourself — only delegate.`,
     `You are ${planner.name}, the PLANNER and team lead. Delegate to teammates by name using the @Name: format. Never answer the task yourself.`,
-    (live)=>updatePlanPanel('planning…', live));
-  updatePlanPanel('✓ plan ready', plan);
+    null);
+  updatePlanPanel('✓ plan ready');
+  // Render each parsed subtask as a backlog card.
+  const subs=parsePlan(plan, workers);
+  kbReset(); kbAdd('backlog','Task', task, 'progress');
+  subs.forEach(s=> kbAdd('backlog', s.worker.name, s.task));
   if(panel) panel.scrollIntoView({block:'nearest'});
   return plan;
 }
@@ -205,5 +224,79 @@ function initTeam(){
   $('#btn-auto-chat').onclick=startAutoChat;
   $('#btn-auto-stop').onclick=stopAutoChat;
   $('#btn-stop-all').onclick=stopAll;
+  // Mission controls now live in the Team Workflow panel.
+  $('#btn-mission-start').onclick=startMission;
+  $('#btn-mission-stop').onclick=()=>stopMission(true);
+  $('#btn-mission-refresh').onclick=loadMissionsList;
   document.addEventListener('keydown', (e)=>{ if(e.key==='Escape'){ try{ stopAll(); }catch(_){} } });
 }
+
+/* ---------- autonomous mission (now part of the Team board) ---------- */
+let __missionStream = null;
+let __activeMissionId = null;
+let __missionCard = null;
+async function startMission(){
+  const goal = ($('#mission-goal').value||'').trim();
+  if(!goal){ alert('Enter a mission goal first.'); return; }
+  const room = activeRoom();
+  const lineup = roomPersonas(room).map(personaByName).filter(Boolean);
+  if(lineup.length<2){ alert('Add at least 2 personas to the room for a team mission.'); return; }
+  $('#mission-state').innerHTML = 'Starting mission…';
+  kbReset();
+  __missionCard = kbAdd('progress','Mission (Planner)', goal, 'progress thinking');
+  try{
+    const res = await fetch(API.base+'/api/autonomous/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal, room_personas: lineup})});
+    const data = await res.json();
+    if(!res.ok || !data.ok){ throw new Error(data.error||('HTTP '+res.status)); }
+    __activeMissionId = data.mission_id;
+    $('#mission-state').innerHTML = `Mission <b>${data.mission_id}</b> · <b id="mission-status">${data.status||'running'}</b> · planner <b>${data.planner||''}</b>`;
+    $('#mission-events').innerHTML = '';
+    if(__missionStream){ try{__missionStream.close();}catch(e){} }
+    __missionStream = new EventSource(API.base + data.stream_url);
+    __missionStream.onmessage = (ev)=>{
+      try{
+        const st = JSON.parse(ev.data);
+        const statusEl = $('#mission-status');
+        if(statusEl) statusEl.textContent = st.status || statusEl.textContent;
+        appendMissionEvent(st.event || 'state', st.planner || 'system', JSON.stringify(st).slice(0,180));
+        if(__missionCard){ if(st.status==='completed'||st.status==='failed'||st.status==='cancelled'){ kbMove(__missionCard,'done'); __missionCard.classList.remove('thinking','progress'); __missionCard.classList.add('done'); } else { kbMove(__missionCard,'progress'); } }
+        if(st.status==='completed' || st.status==='failed' || st.status==='cancelled'){
+          stopMission(false);
+          if(st.final_result) appendMissionEvent('final', data.planner||'system', (typeof st.final_result==='string'?st.final_result:JSON.stringify(st.final_result)).slice(0,400));
+        }
+      }catch(e){}
+    };
+    $('#btn-mission-start').classList.add('hidden');
+    $('#btn-mission-stop').classList.remove('hidden');
+  }catch(err){ $('#mission-state').textContent = '⚠ '+(err.message||'error'); }
+}
+function stopMission(notify=true){
+  if(__missionStream){ try{__missionStream.close();}catch(e){} __missionStream=null; }
+  if(__activeMissionId){
+    fetch(API.base+'/api/autonomous/stop/'+encodeURIComponent(__activeMissionId),{method:'POST'}).catch(()=>{});
+  }
+  __activeMissionId = null;
+  $('#btn-mission-start').classList.remove('hidden');
+  $('#btn-mission-stop').classList.add('hidden');
+  if(notify) appendMissionEvent('system','system','Mission stopped.');
+}
+function appendMissionEvent(evt, agent, text){
+  const el = $('#mission-events');
+  if(!el) return;
+  const row = document.createElement('div');
+  row.style.cssText = 'padding:3px 0;border-bottom:1px dashed var(--border)';
+  row.textContent = `[${new Date().toLocaleTimeString()}] ${agent||'?'}: ${evt} — ${text}`;
+  el.prepend(row);
+  while(el.children.length>200) el.removeChild(el.lastChild);
+}
+async function loadMissionsList(){
+  try{
+    const r = await fetch(API.base+'/api/missions');
+    const list = await r.json();
+    const el = $('#mission-state');
+    if(!el) return;
+    if(!Array.isArray(list) || !list.length){ el.textContent = 'No missions yet.'; return; }
+    el.innerHTML = list.slice(0,20).map(m=>`<div><b>${m.id}</b> · ${m.status} · ${(m.goal||'').slice(0,60)} · ${m.updated_at||''}</div>`).join('');
+  }catch(e){ const el=$('#mission-state'); if(el) el.textContent='⚠ missions unavailable'; }
+}
+

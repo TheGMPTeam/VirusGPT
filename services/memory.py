@@ -2,7 +2,8 @@
 
 The memory pool is shared across machines (this Mac + Windows). Uses the MCP
 JSON-RPC protocol over HTTP (SSE transport: must Accept both application/json
-and text/event-stream). All calls go through `tools/call`.
+and text/event-stream). All calls go through `tools/call`. Uses the shared
+pooled httpx client.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ import json
 import logging
 from typing import Optional
 
-import httpx
+from services import get_client
 
 logger = logging.getLogger("vg.memory")
 
@@ -24,16 +25,15 @@ async def mcp_call(method: str, params: Optional[dict] = None, base_url: str = "
     }
     payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
     try:
-        async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
-            r = await client.post(base_url, json=payload, headers=headers)
-            if r.status_code != 200:
-                logger.warning("MCP %d: %s", r.status_code, r.text[:200])
-                return None
-            body = r.json()
-            if "error" in body:
-                logger.warning("MCP error: %s", body["error"])
-                return None
-            return body.get("result")
+        r = await get_client().post(base_url, json=payload, headers=headers, timeout=timeout)
+        if r.status_code != 200:
+            logger.warning("MCP %d: %s", r.status_code, r.text[:200])
+            return None
+        body = r.json()
+        if "error" in body:
+            logger.warning("MCP error: %s", body["error"])
+            return None
+        return body.get("result")
     except Exception as exc:  # noqa: BLE001
         logger.warning("MCP call failed: %s", exc)
         return None

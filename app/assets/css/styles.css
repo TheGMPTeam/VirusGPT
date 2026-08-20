@@ -168,3 +168,18 @@
   .session-row .sname{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .session-row .sbtn{background:none;border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:11px;cursor:pointer;color:var(--txt)}
   .session-row .sbtn:hover{color:var(--warn);border-color:var(--warn)}
+
+  /* KANBAN team board (right sidebar) */
+  .kanban{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+  .kanban-col{border:1px solid var(--border);border-radius:10px;background:var(--panel2);overflow:hidden}
+  .kanban-h{display:flex;align-items:center;justify-content:space-between;padding:6px 9px;font-size:12px;font-weight:700;color:var(--txt);background:rgba(255,255,255,.03);border-bottom:1px solid var(--border)}
+  .kanban-count{font-size:10px;font-weight:700;color:var(--txt-dim);background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:0 7px;min-width:18px;text-align:center}
+  .kanban-body{display:flex;flex-direction:column;gap:6px;padding:8px;max-height:190px;overflow-y:auto;min-height:30px}
+  .kcard{border:1px solid var(--border);border-left:3px solid var(--neon2);border-radius:8px;background:var(--panel);padding:7px 9px;font-size:12px;line-height:1.4;animation:kcard-in .25s ease}
+  .kcard .kc-who{font-weight:700;color:var(--neon);font-size:11px;margin-bottom:2px}
+  .kcard .kc-task{color:var(--txt)}
+  .kcard.thinking{opacity:.75}
+  .kcard.thinking .kc-who::after{content:' · …';color:var(--neon3)}
+  .kcard.done{border-left-color:var(--ok,#33ff99)}
+  .kcard.progress{border-left-color:var(--neon3)}
+  @keyframes kcard-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}

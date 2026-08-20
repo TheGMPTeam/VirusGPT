@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from services import config as cfg
 from services import llm, tts, stt, memory
+from services import close_client
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -512,6 +513,11 @@ async def get_mission(mission_id: str):
             for e in events
         ],
     })
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await close_client()
 
 
 def main():
