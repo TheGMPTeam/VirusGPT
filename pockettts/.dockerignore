@@ -1,0 +1,44 @@
+# Docker build artifacts
+.git
+.gitignore
+.env
+*.md
+!README.md
+*.pyc
+__pycache__
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs
+*.egg-info
+*.egg
+dist
+build
+*.spec
+
+# PyInstaller
+*.exe
+*.bat
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs (we mount these as volume)
+logs/
+
+# Virtual environments
+venv/
+.venv/
+
+# Test files
+tests/
+*.test.py
+pytest.ini
+
+# Frozen requirements (use requirements.txt for Docker)
+frozen_requirements.txt
+pyinstaller_command.txt

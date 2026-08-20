@@ -1,0 +1,55 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "PocketTTS Server",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/server.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "POCKET_TTS_LOG_LEVEL": "DEBUG",
+                "POCKET_TTS_PORT": "49112"
+            },
+            "args": []
+        },
+        {
+            "name": "PocketTTS Server (Custom Port)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/server.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--port",
+                "8080",
+                "--log-level",
+                "DEBUG"
+            ]
+        },
+        {
+            "name": "PocketTTS Server (With Voices Dir)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/server.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--voices-dir",
+                "${workspaceFolder}/voices",
+                "--stream",
+                "--log-level",
+                "DEBUG"
+            ]
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

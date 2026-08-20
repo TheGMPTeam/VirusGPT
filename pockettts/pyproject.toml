@@ -1,0 +1,40 @@
+[project]
+description = "OpenAI-compatible TTS API server powered by Pocket-TTS"
+license = {text = "MIT"}
+name = "pocket-tts-openai-server"
+readme = "README.md"
+requires-python = ">=3.10"
+version = "2.5.4"
+
+dependencies = [
+  "flask>=3.0.0",
+  "waitress>=3.0.0",
+  "pocket-tts>=2.0.0",
+  "torch>=2.0.0,<=2.8.0",
+  "torchaudio>=2.0.0,<=2.8.0",
+  "torchao==0.13.0",
+  "scipy>=1.10.0",
+  "numpy>=1.24.0",
+  "soundfile>=0.12.0",
+]
+
+[project.optional-dependencies]
+build = ["pyinstaller"]
+dev = ["ruff", "pytest"]
+
+[project.scripts]
+pocket-tts-server = "server:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+ignore = ["E501", "B008", "B904"]
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "single"

@@ -1,0 +1,1 @@
+Most voices are from https://huggingface.co/kyutai/tts-voices/tree/main/voice-donations, with a CC0 license.

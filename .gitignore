@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Logs & runtime artifacts
+*.log
+__pycache__/
+
+# OS / editor
+.DS_Store
+.AppleDouble
+Thumbs.db
+*.swp
+
+# Secrets (never commit real credentials)
+.env
+*.key
+secrets.json
