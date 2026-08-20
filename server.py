@@ -10,11 +10,12 @@ import json
 import asyncio
 import os
 import re
+import time
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from services import config as cfg
@@ -385,12 +386,35 @@ async def autonomous_stream(mission_id: str):
             if mission is None:
                 yield f"data: {json.dumps({'error': 'mission not found'})}\n\n"
                 break
+            tasks = _auto_repo.list_mission_tasks(mission_id)
+            artifacts = _auto_repo.mission_artifacts(mission_id)
             st = {
                 "id": mission.id,
                 "status": mission.status,
                 "goal": mission.goal,
                 "planner": mission.planner,
                 "final_result": mission.final_result,
+                "tasks": [
+                    {
+                        "id": t.id,
+                        "title": t.title,
+                        "agent": t.agent,
+                        "status": t.status,
+                        "result": t.result,
+                        "verification": t.verification,
+                    }
+                    for t in tasks
+                ],
+                "artifacts": [
+                    {
+                        "id": a.id,
+                        "kind": a.kind,
+                        "path": a.path,
+                        "task_id": a.task_id,
+                        "agent": a.agent,
+                    }
+                    for a in artifacts
+                ],
             }
             snap = json.dumps(st)
             if snap != last:
@@ -451,6 +475,22 @@ async def autonomous_stop(mission_id: str):
     mission.updated_at = time.strftime("%Y-%m-%dT%H:%M:%S")
     _auto_repo.update_mission(mission)
     return JSONResponse({"ok": True})
+
+
+@app.get("/api/autonomous/artifact")
+async def autonomous_artifact(path: str):
+    """Serve a mission artifact file from disk (read-only, path-confined)."""
+    from pathlib import PurePath
+    p = Path(path).resolve()
+    # Confine to the data dir so we never serve arbitrary filesystem paths.
+    allowed = (ROOT / "data").resolve()
+    try:
+        p.relative_to(allowed)
+    except ValueError:
+        return JSONResponse({"error": "path outside data dir"}, status_code=400)
+    if not p.exists() or not p.is_file():
+        return JSONResponse({"error": "artifact not found"}, status_code=404)
+    return FileResponse(p)
 
 
 @app.get("/api/missions")

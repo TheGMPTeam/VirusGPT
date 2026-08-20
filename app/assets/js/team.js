@@ -235,6 +235,69 @@ function initTeam(){
 let __missionStream = null;
 let __activeMissionId = null;
 let __missionCard = null;
+let __missionTaskCards = {};     // task id -> kanban card element
+let __emittedTaskResults = {};   // task id -> bool (avoid duplicate chat posts)
+let __emittedArtifacts = {};     // artifact id -> bool
+
+/* Render a mission's planned tasks onto the Kanban board. Each task becomes a
+   card whose column tracks its status (pending->backlog, running->progress,
+   completed/failed/cancelled->done). The board IS the mission's live plan. */
+function renderMissionBoard(st, goal){
+  const tasks = (st && Array.isArray(st.tasks)) ? st.tasks : [];
+  // Ensure a card exists for every task and position it by status.
+  tasks.forEach(t=>{
+    let card = __missionTaskCards[t.id];
+    if(!card){
+      card = kbCard(t.agent || 'Agent', t.title || t.id, '');
+      __missionTaskCards[t.id] = card;
+    } else {
+      card.querySelector('.kc-who').textContent = t.agent || 'Agent';
+      card.querySelector('.kc-task').textContent = t.title || t.id;
+    }
+    const col = (t.status==='running'||t.status==='recovering') ? 'progress'
+              : (t.status==='completed'||t.status==='failed'||t.status==='cancelled') ? 'done'
+              : 'backlog';
+    card.classList.remove('thinking','progress','done');
+    if(col==='progress') card.classList.add('progress');
+    if(col==='done') card.classList.add('done');
+    kbMove(card, col);
+  });
+}
+
+/* When a task completes, post its result as a clear chat message (one per task).
+   Skips if already posted, and skips tasks with no useful result. If the result
+   is JSON, prefer a 'summary'/'result'/'output' field over the raw blob. */
+function maybeEmitTaskResult(t){
+  if(t.status!=='completed') return;
+  if(__emittedTaskResults[t.id]) return;
+  __emittedTaskResults[t.id] = true;
+  let body = (t.result && t.result.trim()) ? t.result.trim() : (t.verification || '');
+  if(!body) return;
+  // If the stored result is JSON, surface the human-readable part only.
+  if(body.trim().startsWith('{') || body.trim().startsWith('[')){
+    try{
+      const o = JSON.parse(body);
+      body = o.summary || o.result || o.output || o.text || o.content || body;
+    }catch(e){ /* keep raw */ }
+  }
+  const who = t.agent && personaByName(t.agent) ? t.agent : (t.agent || 'Worker');
+  pushMessage('assistant', body, who);
+}
+
+/* When an artifact is recorded, post a chat message with a link to open it. */
+function maybeEmitArtifact(a, st){
+  if(__emittedArtifacts[a.id]) return;
+  __emittedArtifacts[a.id] = true;
+  const label = a.kind || 'artifact';
+  const who = a.agent || st.planner || 'Mission';
+  let link = a.path || '';
+  // If it's a server path we can serve, turn it into a clickable link.
+  const assetUrl = link ? ('/api/autonomous/artifact?path='+encodeURIComponent(link)) : '';
+  const text = assetUrl
+    ? `📎 ${label}: ${a.path.split('/').pop()}\n${assetUrl}`
+    : `📎 ${label}`;
+  pushMessage('assistant', text, who);
+}
 async function startMission(){
   const goal = ($('#mission-goal').value||'').trim();
   if(!goal){ alert('Enter a mission goal first.'); return; }
@@ -243,6 +306,7 @@ async function startMission(){
   if(lineup.length<2){ alert('Add at least 2 personas to the room for a team mission.'); return; }
   $('#mission-state').innerHTML = 'Starting mission…';
   kbReset();
+  __missionTaskCards = {}; __emittedTaskResults = {}; __emittedArtifacts = {};
   __missionCard = kbAdd('progress','Mission (Planner)', goal, 'progress thinking');
   try{
     const res = await fetch(API.base+'/api/autonomous/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal, room_personas: lineup})});
@@ -259,7 +323,16 @@ async function startMission(){
         const statusEl = $('#mission-status');
         if(statusEl) statusEl.textContent = st.status || statusEl.textContent;
         appendMissionEvent(st.event || 'state', st.planner || 'system', JSON.stringify(st).slice(0,180));
-        if(__missionCard){ if(st.status==='completed'||st.status==='failed'||st.status==='cancelled'){ kbMove(__missionCard,'done'); __missionCard.classList.remove('thinking','progress'); __missionCard.classList.add('done'); } else { kbMove(__missionCard,'progress'); } }
+        // Render the mission's planned tasks onto the Kanban board.
+        renderMissionBoard(st, goal);
+        if(__missionCard){
+          if(st.status==='completed'||st.status==='failed'||st.status==='cancelled'){
+            kbMove(__missionCard,'done'); __missionCard.classList.remove('thinking','progress'); __missionCard.classList.add('done');
+          } else { kbMove(__missionCard,'progress'); }
+        }
+        // Push a chat message for each freshly-completed task (clear output + artifacts).
+        if(Array.isArray(st.tasks)) st.tasks.forEach(t=>maybeEmitTaskResult(t));
+        if(Array.isArray(st.artifacts)) st.artifacts.forEach(a=>maybeEmitArtifact(a, st));
         if(st.status==='completed' || st.status==='failed' || st.status==='cancelled'){
           stopMission(false);
           if(st.final_result) appendMissionEvent('final', data.planner||'system', (typeof st.final_result==='string'?st.final_result:JSON.stringify(st.final_result)).slice(0,400));

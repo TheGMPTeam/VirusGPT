@@ -482,6 +482,19 @@ class Repository:
             if DB_BACKEND not in ("planetscale", "mysql"):
                 conn.close()
 
+    def mission_artifacts(self, mission_id: str) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            sql = (
+                "SELECT * FROM artifacts WHERE mission_id=%s ORDER BY created_at ASC"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "SELECT * FROM artifacts WHERE mission_id=? ORDER BY created_at ASC"
+            )
+            return _fetchall(conn, sql, (mission_id,))
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
     def add_event(self, e: Event):
         conn = self._conn()
         try:
