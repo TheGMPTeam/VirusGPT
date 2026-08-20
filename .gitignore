@@ -21,3 +21,7 @@ Thumbs.db
 .env
 *.key
 secrets.json
+
+# Large runtime artifacts / models (exclude from repo)
+whisper/
+data/
