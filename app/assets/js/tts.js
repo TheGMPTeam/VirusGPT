@@ -2,42 +2,68 @@
    Also owns the per-sentence drain that creates the ▶ buttons. */
 
 let ttsBuf='';
+let ttsDone=0;             // read offset into ttsBuf (sentence-linking cursor)
 let ttsQueue=[];           // [{text, persona}] played strictly in order, one at a time
 let ttsPlaying=false;
 let ttsCurrentAudio=null;  // the single Audio element currently sounding (so we never overlap)
 let audioUnlocked=false;
 // Hard-stop any in-flight playback and clear the queue. Used before a fresh
 // replay / test so sentences from different sources can never overlap.
-function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} ttsQueue=[]; ttsPlaying=false; }
+function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} ttsQueue=[]; ttsPlaying=false; ttsBuf=''; ttsDone=0; }
 // Unlock audio on the first user gesture so post-async play() is allowed (autoplay policy).
 function unlockAudio(){ if(audioUnlocked) return; audioUnlocked=true;
   try{ const u=new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAD//wEA'); u.muted=true; u.play().catch(()=>{}); }catch(e){} }
 ['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, unlockAudio));
 function feedTTS(t, persona){ ttsBuf+=t; drainSentences(false, persona); }
 function flushTTS(persona){ drainSentences(true, persona); }
-function emitSentence(text, persona){
+function autoPlaySentence(text, persona){
+  // AUTO-PLAY only — gated by the speaker button (TTS_ON). Used while streaming.
   if(!TTS_ON) return;
   const c=cleanMd(text);
   if(!c) return;
-  ttsQueue.push({text:c, persona}); pumpTTS();                 // queue audio only (no per-sentence rows)
+  ttsQueue.push({text:c, persona}); pumpTTS();
+}
+function playSentenceNow(text, persona){
+  // MANUAL play — always plays, regardless of the autoplay (speaker) toggle.
+  // This is what the per-sentence ▶ buttons and the ⟲ replay-all button use.
+  const c=cleanMd(text);
+  if(!c) return;
+  ttsQueue.push({text:c, persona}); pumpTTS();
 }
 function drainSentences(final, persona){
-  // extract complete sentences (ending in . ! ? or a blank newline run)
+  // Extract complete sentences (ending in . ! ? or a blank newline run).
+  // A persistent read offset (ttsDone) guarantees we never re-emit already-spoken
+  // text and never drop text — this is the "sentence linking" that keeps a
+  // streamed reply playing as one continuous sequence.
   const re=/[^.!?\n]*[.!?]+|\n+/g;
-  let m, last=0; const collected=[];
-  while((m=re.exec(ttsBuf))!==null){ collected.push({s:ttsBuf.slice(last, re.lastIndex), end:re.lastIndex}); last=re.lastIndex; }
-  let emitLen=0; const toEmit=[];
+  let m; const collected=[];
+  while((m=re.exec(ttsBuf))!==null){ collected.push({s:ttsBuf.slice(ttsDone, re.lastIndex), end:re.lastIndex}); }
+  const toEmit=[];
   for(const c of collected){
-    if(final || /[.!?]$/.test(c.s.trim()) || /^\n+$/.test(c.s)){ toEmit.push(c.s); emitLen=c.end; } else break;
+    if(c.end<=ttsDone) continue;
+    if(final || /[.!?]$/.test(c.s.trim()) || /^\n+$/.test(c.s)){ toEmit.push(c); } else break;
   }
-  if(toEmit.length){
-    const emit=toEmit.join('');
-    // Only expose buttons/audio for REAL playable sentences — never blank or
-    // markdown-only fragments — so each ▶ plays exactly its own sentence.
-    toEmit.forEach(s=>{ if(isPlayableSentence(s)){ const c=cleanMd(s); if(currentBot && currentBot.plays) currentBot.plays.appendChild(makeSentencePlay(c, persona)); emitSentence(c, persona); } });
-    ttsBuf=ttsBuf.slice(emit.length);
+  for(const c of toEmit){
+    ttsDone=c.end;
+    const raw=c.s;
+    if(isPlayableSentence(raw)){
+      const c2=cleanMd(raw);
+      // Attach a ▶ button only if a live bubble is present (guarded — never crash on stale currentBot).
+      if(currentBot && currentBot.plays && currentBot.plays.isConnected){ currentBot.plays.appendChild(makeSentencePlay(c2, persona)); }
+      autoPlaySentence(c2, persona);
+    }
   }
-  if(final && ttsBuf.trim()){ splitSentences(ttsBuf).forEach(s=>{ const c=cleanMd(s); if(currentBot && currentBot.plays) currentBot.plays.appendChild(makeSentencePlay(c, persona)); emitSentence(c, persona); }); ttsBuf=''; }
+  // On final flush, emit any trailing partial as its own sentence.
+  if(final){
+    const tail=ttsBuf.slice(ttsDone);
+    ttsDone=ttsBuf.length;
+    if(tail.trim() && isPlayableSentence(tail)){
+      const c2=cleanMd(tail);
+      if(currentBot && currentBot.plays && currentBot.plays.isConnected){ currentBot.plays.appendChild(makeSentencePlay(c2, persona)); }
+      autoPlaySentence(c2, persona);
+    }
+    ttsBuf=''; ttsDone=0;
+  }
 }
 async function pumpTTS(){
   if(ttsPlaying) return;        // a loop is already draining the queue

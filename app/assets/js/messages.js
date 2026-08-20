@@ -48,7 +48,7 @@ function makeSentencePlay(text, persona){
   const c=cleanMd(text);
   const b=document.createElement('button'); b.className='play';
   b.textContent='▶'; b.title=c;
-  b.onclick=()=>emitSentence(c, persona);
+  b.onclick=()=>playSentenceNow(c, persona);
   return b;
 }
 /* "Replay all" button: icon-only ⟲; re-streams the whole reply sentence-by-sentence. */
@@ -59,7 +59,7 @@ function makeReplayAll(text, persona){
   return b;
 }
 /* Re-stream a full response: split into sentences, queue them serially. */
-function replayMessage(text, persona){ stopTTS(); splitSentences(text||'').forEach(s=>emitSentence(s, persona)); }
+function replayMessage(text, persona){ stopTTS(); splitSentences(text||'').forEach(s=>playSentenceNow(s, persona)); }
 
 let currentBot=null;
 function addBotMsg(persona){

@@ -7,7 +7,20 @@ function initModals(){
   $('#st-refresh-models').onclick=()=>{ refreshHealth(); $('#st-model').value=currentModel; };
   $('#st-btn-close').onclick=closeModals;
   $('#st-save').onclick=()=>{ let u=$('#st-url').value.trim(); if(!u) u=(location.protocol.startsWith('http')?location.origin:'http://localhost:8500'); API.base=u; lsSet('vg_base',u); currentModel=$('#st-model').value; lsSet('vg_model',currentModel); RUN_TIMEOUT_MS=parseInt($('#st-timeout').value)||60000; lsSet('vg_tts',TTS_ON?'on':'off'); closeModals(); refreshHealth(); };
-  $('#btn-tts-toggle').onclick=()=>{ TTS_ON=!TTS_ON; lsSet('vg_tts',TTS_ON?'on':'off'); $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇'; };
+  $('#btn-tts-toggle').onclick=()=>{
+    TTS_ON=!TTS_ON;
+    lsSet('vg_tts',TTS_ON?'on':'off');
+    const b=$('#btn-tts-toggle');
+    b.textContent=TTS_ON?'🔊':'🔇';
+    b.classList.toggle('tts-on', TTS_ON);
+    // Tie auto-playback to this button: muting immediately halts any in-flight audio.
+    if(!TTS_ON) stopTTS();
+  };
+  // Reflect the live "playing" state on the speaker button (pulse while audio sounds).
+  window.__vg_tts_pulse=setInterval(()=>{
+    const b=$('#btn-tts-toggle'); if(!b) return;
+    b.classList.toggle('speaking', !!(TTS_ON && ttsPlaying));
+  }, 250);
   $('#theme-select').onchange=e=>setTheme(e.target.value);
 }
 

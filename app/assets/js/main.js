@@ -16,6 +16,7 @@ function boot(){
     initMic();
     initMatrix();
     $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇';
+    $('#btn-tts-toggle').classList.toggle('tts-on', !!TTS_ON);
     refreshHealth(); setInterval(refreshHealth,15000);
     window.addEventListener('resize',()=>{ if(document.querySelector('.tab[data-tab=memory]').classList.contains('active')){ clearTimeout(window.__mgResizeT); window.__mgResizeT=setTimeout(loadMemoryGraph,200); } });
   }catch(err){
