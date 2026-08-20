@@ -9,7 +9,7 @@
 <h1 align="center">VirusGPT</h1>
 
 <p align="center">
-  <b>Offline · Local · Private</b> AI agent chat — personas, team auto-chat, TTS/STT, a memory graph, and autonomous missions.
+  <b>Offline · Local · Private</b> AI agent chat — personas, TTS/STT, a memory graph, and autonomous missions.
   <br>Everything runs on your own machine (Ollama + PocketTTS + Whisper). No cloud, no accounts, no data leaves the box.
 </p>
 
@@ -23,7 +23,7 @@
 ## ✨ Features
 
 - **Multi-persona chat** — switch, create, and clone voices for each persona. The LLM decides who answers, or you pick.
-- **Team auto-chat** — a Planner decomposes a task (silently) and Workers execute in-chat with TTS. Triggers: `/team <task>`, `@team`, `team:`, `#team`.
+- **Autonomous missions** — long-running multi-agent goals streamed via SSE.
 - **AI suggestions & Improve** — free-text typing shows AI completion chips; the ✨ Improve button rewrites your draft.
 - **Voice** — sentence-streamed TTS (PocketTTS) with no-overlap playback, plus Whisper STT via the mic button.
 - **Memory graph** — OKF-style knowledge-graph stats with a radial visualizer.
@@ -145,7 +145,7 @@ virusgpt-mac/
 │       ├── sessions.js       # Sessions panel: switch / create / rename / remove / save
 │       ├── chat.js           # send(), persona routing, slash commands, streaming turn
 │       ├── autocomplete.js   # / @ # popup + AI suggestion chips + Improve button
-│       ├── team.js           # planner→workers→synthesis auto-chat + stop-all
+│       ├── team.js           # autonomous mission + team board + stop-all
 │       ├── memory.js         # OKF graph stats + radial canvas
 │       ├── ui.js             # settings modal, input wiring, mic, missions panel
 │       └── main.js           # boot() + init order
