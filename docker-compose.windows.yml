@@ -1,0 +1,142 @@
+# VirusGPT — Docker backend for the thin Windows client
+#
+# This brings up the FULL backend stack. The Windows .exe (built with
+# VG_CLIENT_ONLY=1) then connects to it via VG_BACKEND_URL, e.g.:
+#
+#   VG_BACKEND_URL=http://<this-host-ip>:8500
+#
+# or, persistently, set in config.json:
+#   { "desktop": { "backend_url": "http://<this-host-ip>:8500" } }
+#
+# Services:
+#   • virusgpt   web server + chat  (http://host:8500)
+#   • pockettts  voice TTS          (http://host:49152)
+#   • whisper    speech-to-text      (http://host:8181)
+#   • ollama     LLM backend         (http://host:11434)
+#   • n8n        automation          (http://host:5678)
+#   • comfyui     image/video gen     (http://host:8188)
+#   • blender     render jobs         (http://host:9999)  [job API]
+#   • ffmpeg      media jobs          (http://host:8089)  [job API]
+#
+# The VirusGPT server reaches the media/automation services by service name
+# on the compose network (VG_N8N_URL / VG_COMFYUI_URL / VG_BLENDER_URL /
+# VG_FFMPEG_URL). They are stubbed with lightweight images here so the stack
+# boots without GPU; swap in your real Windows/Docker media images later.
+#
+# Usage:
+#   docker compose -f docker-compose.windows.yml up -d --build
+#   docker compose -f docker-compose.windows.yml logs -f virusgpt
+#   docker compose -f docker-compose.windows.yml down
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: virusgpt-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  pockettts:
+    build:
+      context: .
+      dockerfile: pockettts/Dockerfile
+    container_name: virusgpt-pockettts
+    environment:
+      POCKET_TTS_HOST: "0.0.0.0"
+      POCKET_TTS_PORT: "49152"
+    ports:
+      - "49152:49152"
+    restart: unless-stopped
+
+  whisper:
+    build:
+      context: .
+      dockerfile: whisper/Dockerfile
+    container_name: virusgpt-whisper
+    environment:
+      WHISPER_HOST: "0.0.0.0"
+      WHISPER_PORT: "8181"
+      WHISPER_MODEL: "base"
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: virusgpt-n8n
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      N8N_HOST: "0.0.0.0"
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped
+
+  comfyui:
+    # Swap for your real ComfyUI image (e.g. on the Windows GPU box).
+    image: python:3.11-slim
+    container_name: virusgpt-comfyui
+    command: ["sh", "-c", "echo 'ComfyUI job endpoint placeholder' && tail -f /dev/null"]
+    ports:
+      - "8188:8188"
+    restart: unless-stopped
+
+  blender:
+    image: python:3.11-slim
+    container_name: virusgpt-blender
+    command: ["sh", "-c", "echo 'Blender job endpoint placeholder' && tail -f /dev/null"]
+    ports:
+      - "9999:9999"
+    restart: unless-stopped
+
+  ffmpeg:
+    image: python:3.11-slim
+    container_name: virusgpt-ffmpeg
+    command: ["sh", "-c", "echo 'ffmpeg job endpoint placeholder' && tail -f /dev/null"]
+    ports:
+      - "8089:8089"
+    restart: unless-stopped
+
+  virusgpt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: virusgpt-server
+    depends_on:
+      - ollama
+      - pockettts
+      - whisper
+      - n8n
+      - comfyui
+      - blender
+      - ffmpeg
+    environment:
+      VG_OLLAMA_URL: "http://ollama:11434"
+      VG_TTS_URL: "http://pockettts:49152"
+      VG_STT_URL: "http://whisper:8181"
+      VG_N8N_URL: "http://n8n:5678"
+      VG_COMFYUI_URL: "http://comfyui:8188"
+      VG_BLENDER_URL: "http://blender:9999"
+      VG_FFMPEG_URL: "http://ffmpeg:8089"
+    ports:
+      - "8500:8500"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  n8n_data:

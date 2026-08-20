@@ -80,6 +80,37 @@ cd /Users/Master/virusgpt-mac
 
 Windows and Linux build scripts live in `desktop/build-windows.py` and `desktop/build-linux.py`.
 
+### Thin Windows client + Docker backend
+
+The desktop app supports two modes:
+
+- **Self-contained** (default): bundles the backend and starts it in-process.
+- **Remote backend** (thin client): points at a backend running elsewhere — e.g. Docker on another machine.
+
+To run the Windows app against a Docker backend:
+
+1. Start the backend stack on the Docker host:
+
+```bash
+docker compose -f docker-compose.windows.yml up -d --build
+```
+
+2. Build the Windows client-only app:
+
+```powershell
+set VG_CLIENT_ONLY=1
+python desktop/build-windows.py
+```
+
+3. Run it with the backend URL (or set `desktop.backend_url` in `config.json`):
+
+```powershell
+set VG_BACKEND_URL=http://<docker-host-ip>:8500
+dist\VirusGPT\VirusGPT.exe
+```
+
+The `.exe` is then just a WebView2 shell — no Python server bundled.
+
 ---
 
 ## Quick start

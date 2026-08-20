@@ -4,6 +4,9 @@
   "title": "VirusGPT",
   "default_theme": "cyber",
   "backend_url": "",
+  "desktop": {
+    "backend_url": ""
+  },
   "ollama": {
     "base_url": "http://10.0.0.120:11434",
     "default_model": "qwen2.5:3b"

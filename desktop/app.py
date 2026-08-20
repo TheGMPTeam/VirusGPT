@@ -2,19 +2,27 @@
 
 Wraps the existing VirusGPT web stack in a native window using `pywebview`
 (OS-native webview: WKWebView on macOS, WebView2 on Windows, WebKit on Linux).
-The FastAPI server (server.py) is launched IN-PROCESS so the frozen app is fully
-self-contained — no external `python` / `.venv` is required. The window loads
-http://localhost:8500. NO rewrite of the existing JS/server is needed.
+
+Two run modes:
+  • SELF-CONTAINED (default): the FastAPI server (server.py) is launched
+    IN-PROCESS so the frozen app is fully self-contained — no external
+    `python` / `.venv` is required. The window loads http://localhost:8500.
+  • REMOTE BACKEND: if VG_BACKEND_URL (or config.json -> backend_url) is set,
+    the app does NOT start a server and instead loads the web UI from that
+    URL. This is the "thin Windows client" path: the backend runs in Docker
+    on another host and the .exe is just a WebView2 shell.
 
 Run:  python desktop/run.py
 Build: see desktop/build-macos.py / build-windows.py / build-linux.py
 
 Env overrides:
-  VG_PORT      port the server + window use (default 8500)
-  VG_NO_GUI    1/true/yes -> serve without opening a window (headless smoke test)
+  VG_PORT        port the in-process server + window use (default 8500)
+  VG_NO_GUI      1/true/yes -> serve without opening a window (headless smoke test)
+  VG_BACKEND_URL http(s)://host:port -> remote backend mode (no in-process server)
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -26,13 +34,38 @@ PORT = int(os.environ.get("VG_PORT", "8500"))
 NO_GUI = os.environ.get("VG_NO_GUI", "").lower() in ("1", "true", "yes")
 
 
+def _backend_url_from_config() -> str:
+    """Read an optional remote backend URL from config.json (desktop.backend_url)."""
+    cfg_path = ROOT / "config.json"
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text())
+            url = (cfg.get("desktop", {}) or {}).get("backend_url") or cfg.get("backend_url") or ""
+            return (url or "").strip()
+        except Exception:
+            return ""
+    return ""
+
+
+def backend_url() -> str:
+    """Resolve the remote backend URL, if any.
+
+    Precedence: VG_BACKEND_URL env -> config.json desktop.backend_url ->
+    config.json backend_url -> empty (self-contained mode).
+    """
+    env = (os.environ.get("VG_BACKEND_URL") or "").strip()
+    if env:
+        return env.rstrip("/")
+    return _backend_url_from_config().rstrip("/")
+
+
 def _wait_health(url: str, timeout: float = 30.0) -> bool:
     try:
         import httpx
     except Exception:
         # fallback: crude socket check
         import socket
-        host, _, port = url.replace("http://", "").partition(":")
+        host, _, port = url.replace("http://", "").replace("https://", "").partition(":")
         port = int(port)
         end = time.time() + timeout
         while time.time() < end:
@@ -73,6 +106,29 @@ def on_closed():
 def main():
     import webview
 
+    remote = backend_url()
+    if remote:
+        # THIN CLIENT MODE: backend runs elsewhere (e.g. Docker). No server here.
+        url = remote
+        print(f"[desktop] remote backend mode -> {url}", flush=True)
+        if not _wait_health(url):
+            print("[desktop] WARNING: remote backend did not respond; loading UI anyway.", flush=True)
+        webview.create_window(
+            "VirusGPT",
+            url,
+            width=1280,
+            height=800,
+            min_size=(900, 600),
+            text_select=True,
+            confirm_close=False,
+        )
+        try:
+            webview.start()
+        except Exception as exc:  # pragma: no cover - GUI failures shouldn't crash
+            print(f"[desktop] webview start failed: {exc}", flush=True)
+        sys.exit(0)
+
+    # SELF-CONTAINED MODE: start the server in-process, then open localhost.
     srv = threading.Thread(target=_serve, daemon=True)
     srv.start()
     url = f"http://localhost:{PORT}"
