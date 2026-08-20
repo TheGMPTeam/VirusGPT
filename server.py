@@ -388,6 +388,7 @@ async def autonomous_stream(mission_id: str):
                 break
             tasks = _auto_repo.list_mission_tasks(mission_id)
             artifacts = _auto_repo.mission_artifacts(mission_id)
+            events = _auto_repo.mission_events(mission_id, limit=8)
             st = {
                 "id": mission.id,
                 "status": mission.status,
@@ -414,6 +415,10 @@ async def autonomous_stream(mission_id: str):
                         "agent": a.agent,
                     }
                     for a in artifacts
+                ],
+                "events": [
+                    {"event": e.event, "agent": e.agent, "data": (json.loads(e.data) if isinstance(e.data, str) else e.data)}
+                    for e in events
                 ],
             }
             snap = json.dumps(st)
@@ -491,6 +496,13 @@ async def autonomous_artifact(path: str):
     if not p.exists() or not p.is_file():
         return JSONResponse({"error": "artifact not found"}, status_code=404)
     return FileResponse(p)
+
+
+@app.get("/api/tools")
+async def list_tools():
+    """Catalog of tools agents can call (the 'tool-call list')."""
+    from autonomous import tools as agent_tools
+    return JSONResponse(agent_tools.list_tools())
 
 
 @app.get("/api/missions")

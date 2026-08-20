@@ -1,8 +1,9 @@
 """Ollama chat client (streaming, OpenAI-compatible /api/chat).
 
-Forwards to a remote Ollama and yields SSE-style chunks {content} / {done} /
-{error} — the exact contract the VirusGPT client expects. Uses the shared
-pooled httpx client from services/__init__.py.
+Forwards to a remote Ollama and yields SSE-style chunks. When `tools` is passed,
+the model may respond with native `tool_calls` (Ollama function-calling); those
+are surfaced as {"tool_calls": [...]} chunks so the caller can execute them.
+Uses the shared pooled httpx client from services/__init__.py.
 """
 from __future__ import annotations
 
@@ -21,14 +22,18 @@ async def stream_chat(
     messages: list[dict],
     base_url: str,
     timeout: float = 120.0,
+    tools: Optional[list] = None,
 ) -> AsyncGenerator[dict, None]:
-    """Yield dicts: {"content": str} | {"done": True} | {"error": str}."""
+    """Yield dicts: {"content": str} | {"tool_calls": [...]} | {"done": True} | {"error": str}."""
     url = f"{base_url.rstrip('/')}/api/chat"
     payload = {
         "model": model,
         "messages": messages,
         "stream": True,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
     try:
         async with get_client().stream(
             "POST", url, json=payload, timeout=timeout
@@ -48,6 +53,9 @@ async def stream_chat(
                 content = msg.get("content")
                 if content:
                     yield {"content": content}
+                tc = msg.get("tool_calls")
+                if tc:
+                    yield {"tool_calls": tc}
                 if obj.get("done"):
                     yield {"done": True}
     except httpx.ConnectError:

@@ -182,4 +182,12 @@
   .kcard.thinking .kc-who::after{content:' · …';color:var(--neon3)}
   .kcard.done{border-left-color:var(--ok,#33ff99)}
   .kcard.progress{border-left-color:var(--neon3)}
+
+  /* Agent tool chips + tool-call log (right sidebar) */
+  .tool-chip{font-size:10.5px;padding:3px 8px;border:1px solid var(--border);border-radius:12px;background:var(--panel2);color:var(--neon2);cursor:default}
+  .tool-call{display:flex;gap:6px;align-items:baseline;padding:2px 0;border-bottom:1px dashed var(--border)}
+  .tool-call .tc-name{color:var(--neon);font-weight:700}
+  .tool-call .tc-arg{color:var(--txt-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%}
+  .tool-call .tc-ok{color:var(--ok,#33ff99);margin-left:auto;font-size:10px}
+  .tool-call .tc-err{color:var(--warn);margin-left:auto;font-size:10px}
   @keyframes kcard-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}

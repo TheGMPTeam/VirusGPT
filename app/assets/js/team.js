@@ -228,10 +228,45 @@ function initTeam(){
   $('#btn-mission-start').onclick=startMission;
   $('#btn-mission-stop').onclick=()=>stopMission(true);
   $('#btn-mission-refresh').onclick=loadMissionsList;
+  // Render the available agent-tool catalog.
+  loadTools();
   document.addEventListener('keydown', (e)=>{ if(e.key==='Escape'){ try{ stopAll(); }catch(_){} } });
 }
 
-/* ---------- autonomous mission (now part of the Team board) ---------- */
+/* ---------- agent tool catalog + live tool-call log ---------- */
+async function loadTools(){
+  try{
+    const r = await fetch(API.base+'/api/tools');
+    const tools = await r.json();
+    const list = $('#tools-list');
+    if(!list) return;
+    $('#tools-count').textContent = `(${tools.length})`;
+    list.innerHTML = '';
+    tools.forEach(t=>{
+      const c=document.createElement('span');
+      c.className='tool-chip';
+      c.title=t.description;
+      c.textContent=t.name;
+      list.appendChild(c);
+    });
+  }catch(e){ /* non-fatal */ }
+}
+function logToolCall(agent, tool, args, ok){
+  const log=$('#tool-call-log'); if(!log) return;
+  const arg = args && args.query ? args.query : (args && args.url ? args.url : (args && args.command ? args.command : (args && args.expression ? args.expression : '')));
+  // Dedupe: the SSE re-sends recent events each tick, so only log each call once.
+  if(!window.__toolLogKeys) window.__toolLogKeys = new Set();
+  const key = agent+'|'+tool+'|'+arg+'|'+ok;
+  if(__toolLogKeys.has(key)) return;
+  __toolLogKeys.add(key);
+  const row=document.createElement('div'); row.className='tool-call';
+  row.innerHTML=`<span class="tc-name">${tool}</span><span class="tc-arg">${arg||''}</span><span class="${ok?'tc-ok':'tc-err'}">${ok?'✓':'✕'}</span>`;
+  // keep latest at top, cap history
+  log.prepend(row);
+  while(log.children.length>40) log.removeChild(log.lastChild);
+}
+
+
 let __missionStream = null;
 let __activeMissionId = null;
 let __missionCard = null;
@@ -325,6 +360,15 @@ async function startMission(){
         appendMissionEvent(st.event || 'state', st.planner || 'system', JSON.stringify(st).slice(0,180));
         // Render the mission's planned tasks onto the Kanban board.
         renderMissionBoard(st, goal);
+        // Surface any tool calls (from the live event stream) in the tool-call log.
+        if(Array.isArray(st.events)){
+          st.events.forEach(ev=>{
+            if(ev.event==='tool.call' && ev.data && ev.data.tool){
+              const ok = !ev.data.result || !ev.data.result.error;
+              logToolCall(ev.agent, ev.data.tool, ev.data.args, ok);
+            }
+          });
+        }
         if(__missionCard){
           if(st.status==='completed'||st.status==='failed'||st.status==='cancelled'){
             kbMove(__missionCard,'done'); __missionCard.classList.remove('thinking','progress'); __missionCard.classList.add('done');
