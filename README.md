@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/images/hero.svg" alt="VirusGPT hero banner" width="100%">
+  <img src="app/assets/images/hero.svg" alt="VirusGPT hero banner" width="100%">
 </p>
 
 <p align="center">
-  <img src="assets/images/logo.svg" alt="VirusGPT logo" width="120">
+  <img src="app/assets/images/logo.svg" alt="VirusGPT logo" width="120">
 </p>
 
 <h1 align="center">VirusGPT</h1>

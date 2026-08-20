@@ -1,0 +1,539 @@
+"""Persistence layer — SQLite by default, PlanetScale MySQL when configured."""
+
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from services import config as cfg
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA = ROOT / "data"
+DATA.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Config-driven backend selection
+# ---------------------------------------------------------------------------
+DB_CFG = (cfg.CONFIG.get("database") or {})
+DB_BACKEND = (DB_CFG.get("backend") or "sqlite").lower()
+DB_PATH = DATA / (DB_CFG.get("sqlite_path") or "virusgpt.db")
+if not DB_PATH.is_absolute():
+    DB_PATH = ROOT / DB_CFG.get("sqlite_path")
+
+if DB_BACKEND == "planetscale" or DB_BACKEND == "mysql":
+    try:
+        import pymysql
+        import pymysql.cursors
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(f"database backend '{DB_BACKEND}' selected but pymysql is not installed: {exc}") from exc
+    _MYSQL_DSN = DB_CFG.get("mysql_dsn") or ""
+    _MYSQL_HOST = DB_CFG.get("mysql_host", "")
+    _MYSQL_PORT = int(DB_CFG.get("mysql_port", 3306))
+    _MYSQL_USER = DB_CFG.get("mysql_user", "")
+    _MYSQL_PASSWORD = DB_CFG.get("mysql_password", "")
+    _MYSQL_DB = DB_CFG.get("mysql_database", "")
+    _MYSQL_SSL = DB_CFG.get("mysql_ssl", True)
+    _mysql_conn = None
+
+    def _ensure_mysql_connection():
+        global _mysql_conn
+        if _mysql_conn is None:
+            _mysql_conn = pymysql.connect(
+                host=_MYSQL_HOST,
+                port=_MYSQL_PORT,
+                user=_MYSQL_USER,
+                password=_MYSQL_PASSWORD,
+                database=_MYSQL_DB,
+                ssl=_MYSQL_SSL,
+                connect_timeout=15,
+                read_timeout=30,
+                write_timeout=30,
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=True,
+            )
+        return _mysql_conn
+
+else:
+    def _ensure_mysql_connection():
+        raise RuntimeError("MySQL connection requested but SQLite is the active backend.")
+
+
+def _conn():
+    if DB_BACKEND in ("planetscale", "mysql"):
+        return _ensure_mysql_connection()
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
+def init_db():
+    conn = _conn()
+    try:
+        if DB_BACKEND in ("planetscale", "mysql"):
+            # Best-effort schema creation; use utf8mb4 for emoji/text.
+            conn.cursor().execute(
+                """
+                CREATE TABLE IF NOT EXISTS missions (
+                    id VARCHAR(64) PRIMARY KEY,
+                    goal TEXT,
+                    status VARCHAR(32) DEFAULT 'created',
+                    planner VARCHAR(64),
+                    requires_approval TINYINT(1) DEFAULT 0,
+                    approval_state VARCHAR(32),
+                    final_result TEXT,
+                    created_at VARCHAR(32),
+                    updated_at VARCHAR(32),
+                    completed_at VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
+            conn.cursor().execute(
+                """
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id VARCHAR(64) PRIMARY KEY,
+                    mission_id VARCHAR(64),
+                    title TEXT,
+                    description TEXT,
+                    status VARCHAR(32) DEFAULT 'pending',
+                    priority INT DEFAULT 60,
+                    agent VARCHAR(64),
+                    dependencies JSON,
+                    attempts INT DEFAULT 0,
+                    max_attempts INT DEFAULT 2,
+                    result TEXT,
+                    verification TEXT,
+                    created_at VARCHAR(32),
+                    started_at VARCHAR(32),
+                    completed_at VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
+            conn.cursor().execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id VARCHAR(64) PRIMARY KEY,
+                    mission_id VARCHAR(64),
+                    task_id VARCHAR(64),
+                    agent VARCHAR(64),
+                    event VARCHAR(128),
+                    data TEXT,
+                    created_at VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
+            conn.cursor().execute(
+                """
+                CREATE TABLE IF NOT EXISTS agent_memory (
+                    id VARCHAR(64) PRIMARY KEY,
+                    agent VARCHAR(64),
+                    mission_id VARCHAR(64),
+                    namespace VARCHAR(128),
+                    content TEXT,
+                    importance REAL DEFAULT 0.5,
+                    created_at VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
+            conn.cursor().execute(
+                """
+                CREATE TABLE IF NOT EXISTS artifacts (
+                    id VARCHAR(64) PRIMARY KEY,
+                    mission_id VARCHAR(64),
+                    task_id VARCHAR(64),
+                    agent VARCHAR(64),
+                    kind VARCHAR(64),
+                    path TEXT,
+                    meta TEXT,
+                    created_at VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
+            for idx, table, column in (
+                ("idx_tasks_mission", "tasks", "mission_id"),
+                ("idx_events_mission", "events", "mission_id"),
+                ("idx_memory_agent", "agent_memory", "agent"),
+            ):
+                conn.cursor().execute(
+                    f"CREATE INDEX IF NOT EXISTS {idx} ON {table} ({column})"
+                )
+            return
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS missions (
+                id TEXT PRIMARY KEY,
+                goal TEXT,
+                status TEXT DEFAULT 'created',
+                planner TEXT,
+                requires_approval INTEGER DEFAULT 0,
+                approval_state TEXT,
+                final_result TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                completed_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                title TEXT,
+                description TEXT,
+                status TEXT DEFAULT 'pending',
+                priority INTEGER DEFAULT 60,
+                agent TEXT,
+                dependencies TEXT,
+                attempts INTEGER DEFAULT 0,
+                max_attempts INTEGER DEFAULT 2,
+                result TEXT,
+                verification TEXT,
+                created_at TEXT,
+                started_at TEXT,
+                completed_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS events (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                task_id TEXT,
+                agent TEXT,
+                event TEXT,
+                data TEXT,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS agent_memory (
+                id TEXT PRIMARY KEY,
+                agent TEXT,
+                mission_id TEXT,
+                namespace TEXT,
+                content TEXT,
+                importance REAL DEFAULT 0.5,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS artifacts (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                task_id TEXT,
+                agent TEXT,
+                kind TEXT,
+                path TEXT,
+                meta TEXT,
+                created_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_mission ON tasks(mission_id);
+            CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
+            CREATE INDEX IF NOT EXISTS idx_memory_agent ON agent_memory(agent);
+            """
+        )
+    finally:
+        if DB_BACKEND not in ("planetscale", "mysql"):
+            conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Models / helpers shared by both backends
+# ---------------------------------------------------------------------------
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _row_to_dict(row: Any) -> Dict[str, Any]:
+    if DB_BACKEND in ("planetscale", "mysql"):
+        return dict(row)
+    return dict(row)
+
+
+def _execute(conn, sql, params=()):
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, params)
+        # MySQL connections are opened with autocommit=True; SQLite needs an
+        # explicit commit (and there is one connection per call here).
+        if DB_BACKEND not in ("planetscale", "mysql"):
+            conn.commit()
+    finally:
+        cur.close()
+
+
+def _fetchone(conn, sql, params=()):
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, params)
+        row = cur.fetchone()
+        return _row_to_dict(row) if row else None
+    finally:
+        cur.close()
+
+
+def _fetchall(conn, sql, params=()):
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        cur.close()
+
+
+@dataclass
+class Mission:
+    id: str = field(default_factory=lambda: f"M-{int(time.time())}-{uuid.uuid4().hex[:6]}")
+    goal: str = ""
+    status: str = "created"
+    planner: str = ""
+    requires_approval: bool = False
+    approval_state: Optional[str] = None
+    final_result: Optional[str] = None
+    created_at: str = field(default_factory=_now)
+    updated_at: str = field(default_factory=_now)
+    completed_at: Optional[str] = None
+
+
+@dataclass
+class Task:
+    id: str = field(default_factory=lambda: f"T-{int(time.time())}-{uuid.uuid4().hex[:6]}")
+    mission_id: str = ""
+    title: str = ""
+    description: str = ""
+    status: str = "pending"
+    priority: int = 60
+    agent: str = ""
+    dependencies: List[str] = field(default_factory=list)
+    attempts: int = 0
+    max_attempts: int = 2
+    result: Optional[str] = None
+    verification: Optional[str] = None
+    created_at: str = field(default_factory=_now)
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+@dataclass
+class Event:
+    id: str = field(default_factory=lambda: f"E-{uuid.uuid4().hex[:10]}")
+    mission_id: str = ""
+    task_id: str = ""
+    agent: str = ""
+    event: str = ""
+    data: str = ""
+    created_at: str = field(default_factory=_now)
+
+
+@dataclass
+class AgentMemory:
+    id: str = field(default_factory=lambda: f"M-{uuid.uuid4().hex[:10]}")
+    agent: str = ""
+    mission_id: str = ""
+    namespace: str = ""
+    content: str = ""
+    importance: float = 0.5
+    created_at: str = field(default_factory=_now)
+
+
+# ---------------------------------------------------------------------------
+# Repository
+# ---------------------------------------------------------------------------
+class Repository:
+    def __init__(self):
+        init_db()
+
+    def _conn(self):
+        return _conn()
+
+    def create_mission(self, m: Mission) -> Mission:
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "INSERT INTO missions (id,goal,status,planner,requires_approval,approval_state,final_result,created_at,updated_at,completed_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "INSERT INTO missions (id,goal,status,planner,requires_approval,approval_state,final_result,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    m.id,
+                    m.goal,
+                    m.status,
+                    m.planner,
+                    int(m.requires_approval),
+                    m.approval_state,
+                    m.final_result,
+                    m.created_at,
+                    m.updated_at,
+                    m.completed_at,
+                ),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+        return m
+
+    def update_mission(self, m: Mission):
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "UPDATE missions SET status=%s,planner=%s,approval_state=%s,final_result=%s,updated_at=%s,completed_at=%s WHERE id=%s"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "UPDATE missions SET status=?,planner=?,approval_state=?,final_result=?,updated_at=?,completed_at=? WHERE id=?",
+                (m.status, m.planner, m.approval_state, m.final_result, m.updated_at, m.completed_at, m.id),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def get_mission(self, mid: str) -> Optional[Mission]:
+        conn = self._conn()
+        try:
+            row = _fetchone(conn, "SELECT * FROM missions WHERE id=%s" if DB_BACKEND in ("planetscale", "mysql") else "SELECT * FROM missions WHERE id=?", (mid,))
+            if not row:
+                return None
+            return Mission(**row)
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def list_missions(self, limit: int = 50) -> List[Mission]:
+        conn = self._conn()
+        try:
+            rows = _fetchall(conn, "SELECT * FROM missions ORDER BY updated_at DESC LIMIT %s" if DB_BACKEND in ("planetscale", "mysql") else "SELECT * FROM missions ORDER BY updated_at DESC LIMIT ?", (limit,))
+            return [Mission(**r) for r in rows]
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def create_task(self, t: Task) -> Task:
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "INSERT INTO tasks (id,mission_id,title,description,status,priority,agent,dependencies,attempts,max_attempts,result,verification,created_at,started_at,completed_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "INSERT INTO tasks (id,mission_id,title,description,status,priority,agent,dependencies,attempts,max_attempts,result,verification,created_at,started_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    t.id,
+                    t.mission_id,
+                    t.title,
+                    t.description,
+                    t.status,
+                    t.priority,
+                    t.agent,
+                    json.dumps(t.dependencies),
+                    t.attempts,
+                    t.max_attempts,
+                    t.result,
+                    t.verification,
+                    t.created_at,
+                    t.started_at,
+                    t.completed_at,
+                ),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+        return t
+
+    def update_task(self, t: Task):
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "UPDATE tasks SET status=%s,attempts=%s,result=%s,verification=%s,started_at=%s,completed_at=%s WHERE id=%s"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "UPDATE tasks SET status=?,attempts=?,result=?,verification=?,started_at=?,completed_at=? WHERE id=?",
+                (t.status, t.attempts, t.result, t.verification, t.started_at, t.completed_at, t.id),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def get_task(self, tid: str) -> Optional[Task]:
+        conn = self._conn()
+        try:
+            row = _fetchone(conn, "SELECT * FROM tasks WHERE id=%s" if DB_BACKEND in ("planetscale", "mysql") else "SELECT * FROM tasks WHERE id=?", (tid,))
+            if not row:
+                return None
+            if isinstance(row.get("dependencies"), str):
+                row["dependencies"] = json.loads(row.get("dependencies") or "[]")
+            return Task(**row)
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def list_mission_tasks(self, mission_id: str) -> List[Task]:
+        conn = self._conn()
+        try:
+            sql = (
+                "SELECT * FROM tasks WHERE mission_id=%s ORDER BY priority DESC, created_at ASC"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "SELECT * FROM tasks WHERE mission_id=? ORDER BY priority DESC, created_at ASC"
+            )
+            rows = _fetchall(conn, sql, (mission_id,))
+            out: List[Task] = []
+            for r in rows:
+                if isinstance(r.get("dependencies"), str):
+                    r["dependencies"] = json.loads(r.get("dependencies") or "[]")
+                out.append(Task(**r))
+            return out
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def add_event(self, e: Event):
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "INSERT INTO events (id,mission_id,task_id,agent,event,data,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "INSERT INTO events (id,mission_id,task_id,agent,event,data,created_at) VALUES (?,?,?,?,?,?,?)",
+                (e.id, e.mission_id, e.task_id, e.agent, e.event, e.data, e.created_at),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def mission_events(self, mission_id: str, limit: int = 100) -> List[Event]:
+        conn = self._conn()
+        try:
+            sql = (
+                "SELECT * FROM events WHERE mission_id=%s ORDER BY created_at DESC LIMIT %s"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "SELECT * FROM events WHERE mission_id=? ORDER BY created_at DESC LIMIT ?"
+            )
+            rows = _fetchall(conn, sql, (mission_id, limit))
+            return [Event(**r) for r in rows]
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def add_memory(self, m: AgentMemory):
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "INSERT INTO agent_memory (id,agent,mission_id,namespace,content,importance,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "INSERT INTO agent_memory (id,agent,mission_id,namespace,content,importance,created_at) VALUES (?,?,?,?,?,?,?)",
+                (m.id, m.agent, m.mission_id, m.namespace, m.content, m.importance, m.created_at),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def recent_memory(self, agent: str, limit: int = 20) -> List[AgentMemory]:
+        conn = self._conn()
+        try:
+            sql = (
+                "SELECT * FROM agent_memory WHERE agent=%s ORDER BY created_at DESC LIMIT %s"
+                if DB_BACKEND in ("planetscale", "mysql")
+                else "SELECT * FROM agent_memory WHERE agent=? ORDER BY created_at DESC LIMIT ?"
+            )
+            rows = _fetchall(conn, sql, (agent, limit))
+            return [AgentMemory(**r) for r in rows]
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
