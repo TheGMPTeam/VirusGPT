@@ -91,6 +91,28 @@ A dependency-free control tool for ops without the browser.
 `settings` writes land in `config.json` and apply on the next server boot
 (`set` auto-types bool/int/float/str). `fix --restart` calls `launch.sh`.
 
+## 🐳 Docker (full stack)
+
+Run the entire local AI stack — web server, TTS, STT, and Ollama — with one command:
+
+```bash
+docker compose up -d --build
+# web UI:  http://localhost:8500
+# tts:     http://localhost:49152
+# stt:     http://localhost:8181
+# ollama:  http://localhost:11434
+```
+
+Service URLs are wired via the compose network automatically (no `config.json`
+edits needed — the server reads `VG_OLLAMA_URL` / `VG_TTS_URL` / `VG_STT_URL`
+env vars, see `docker-compose.yml`). GPU passthrough for Ollama is enabled by
+default; comment out the `deploy.resources` block for CPU-only. Pull the model
+once the stack is up:
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:3b
+```
+
 ## 🗂 Project layout
 
 The frontend was refactored out of a single `index.html` into focused modules:

@@ -1,0 +1,84 @@
+# VirusGPT full-stack — Docker Compose
+#
+# Spins up the whole local AI stack:
+#   • virusgpt   web server + chat  (http://localhost:8500)
+#   • pockettts  voice TTS          (http://localhost:49152)
+#   • whisper    speech-to-text      (http://localhost:8181)
+#   • ollama     LLM backend         (http://localhost:11434)
+#
+# All internal URLs are wired via the compose network; the web UI talks to
+# tts/stt/ollama by service name. Edit config.json ONLY if you change ports.
+#
+# Usage:
+#   docker compose up -d --build
+#   docker compose logs -f virusgpt
+#   docker compose down
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: virusgpt-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU passthrough (optional — comment if CPU only)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  pockettts:
+    build:
+      context: .
+      dockerfile: pockettts/Dockerfile
+    container_name: virusgpt-pockettts
+    environment:
+      POCKET_TTS_HOST: "0.0.0.0"
+      POCKET_TTS_PORT: "49152"
+    ports:
+      - "49152:49152"
+    restart: unless-stopped
+
+  whisper:
+    build:
+      context: .
+      dockerfile: whisper/Dockerfile
+    container_name: virusgpt-whisper
+    environment:
+      WHISPER_HOST: "0.0.0.0"
+      WHISPER_PORT: "8181"
+      WHISPER_MODEL: "base"
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+
+  virusgpt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: virusgpt-server
+    depends_on:
+      - ollama
+      - pockettts
+      - whisper
+    environment:
+      # override config.json URLs to the compose network service names
+      VG_OLLAMA_URL: "http://ollama:11434"
+      VG_TTS_URL: "http://pockettts:49152"
+      VG_STT_URL: "http://whisper:8181"
+    ports:
+      - "8500:8500"
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

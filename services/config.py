@@ -22,6 +22,7 @@ _DEFAULTS: dict[str, Any] = {
 
 def load_config() -> dict:
     import copy
+    import os
     cfg = copy.deepcopy(_DEFAULTS)
     if CONFIG_PATH.exists():
         try:
@@ -29,6 +30,22 @@ def load_config() -> dict:
             _deep_merge(cfg, user)
         except Exception as exc:  # noqa: BLE001
             print(f"[warn] config.json parse error: {exc}")
+
+    # Environment overrides (used by Docker Compose to wire service URLs
+    # without editing config.json). VG_* vars take precedence.
+    if os.environ.get("VG_OLLAMA_URL"):
+        cfg["ollama"]["base_url"] = os.environ["VG_OLLAMA_URL"]
+    if os.environ.get("VG_MODEL"):
+        cfg["ollama"]["default_model"] = os.environ["VG_MODEL"]
+    if os.environ.get("VG_TTS_URL"):
+        cfg["tts"]["base_url"] = os.environ["VG_TTS_URL"]
+    if os.environ.get("VG_STT_URL"):
+        cfg["stt"]["base_url"] = os.environ["VG_STT_URL"]
+    if os.environ.get("VG_PORT"):
+        try:
+            cfg["port"] = int(os.environ["VG_PORT"])
+        except ValueError:
+            pass
     return cfg
 
 

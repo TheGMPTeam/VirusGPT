@@ -1,0 +1,16 @@
+# Don't copy heavy / local-only artifacts into build context
+.venv/
+pockettts/.venv/
+whisper/.venv/
+whisper/*
+!whisper/server.py
+!whisper/requirements.txt
+data/
+logs/
+*.log
+__pycache__/
+*.pyc
+.git/
+.gitignore
+.DS_Store
+node_modules/
