@@ -1,0 +1,4 @@
+# Desktop app dependencies (cross-platform native shell via pywebview).
+# pywebview uses the OS-native webview — no bundled Chromium, no Node.
+pywebview>=5.0
+httpx>=0.27

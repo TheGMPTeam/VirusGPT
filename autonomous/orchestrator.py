@@ -49,6 +49,13 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
+# Statuses that mean "this mission is still doing something" — and so must be
+# re-driven (resumed) after a server restart, because the in-memory asyncio task
+# that was executing it no longer exists.
+INTERRUPTIBLE_STATUSES = {"planning", "running", "verifying"}
+TERMINAL_STATUSES = {"completed", "failed", "blocked", "cancelled"}
+
+
 class Supervisor:
     def __init__(self):
         self.runtime = AgentRuntime(repo)
@@ -58,27 +65,35 @@ class Supervisor:
     def request_stop(self, mission_id: str):
         _CANCEL[mission_id] = True
 
-    def start_mission(self, goal: str, room_personas: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def start_mission(self, goal: str, room_personas: List[Dict[str, Any]], mission_id: Optional[str] = None) -> Dict[str, Any]:
         """Create the mission and schedule it on the running event loop.
 
         Returns quickly with the mission id; execution happens in the
         background so the caller is not blocked by long LLM runs.
+
+        When `mission_id` is supplied the mission row is re-created from a
+        prior (interrupted) run so its work can be resumed — see
+        `resume_mission`.
         """
+        if mission_id is None:
+            mission_id = f"M-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+        planner = next(
+            (p["name"] for p in room_personas if p.get("role") == "planner"),
+            room_personas[0]["name"] if room_personas else "VirusGPT",
+        )
         mission = repo.create_mission(
             type(
                 "Mission",
                 (),
                 {
-                    "id": f"M-{int(time.time())}-{uuid.uuid4().hex[:6]}",
+                    "id": mission_id,
                     "goal": goal,
                     "status": "planning",
-                    "planner": next(
-                        (p["name"] for p in room_personas if p.get("role") == "planner"),
-                        room_personas[0]["name"] if room_personas else "VirusGPT",
-                    ),
+                    "planner": planner,
                     "requires_approval": False,
                     "approval_state": None,
                     "final_result": None,
+                    "personas": json.dumps(room_personas) if room_personas else None,
                     "created_at": _now(),
                     "updated_at": _now(),
                     "completed_at": None,
@@ -93,22 +108,84 @@ class Supervisor:
             asyncio.run(self._run(mission, room_personas))
         return {"id": mission.id, "planner": mission.planner, "status": mission.status}
 
+    def resume_interrupted_missions(self, repo_for=None) -> List[str]:
+        """Re-drive any missions left in an in-flight status by a restart.
+
+        Called at server startup. For each interruptible mission we look up its
+        persisted room_personas (falling back to the default persona set) and
+        re-schedule it on the current event loop. Returns the ids resumed.
+        """
+        source = repo_for or repo
+        resumed: List[str] = []
+        try:
+            for m in source.list_missions(200):
+                if m.status in INTERRUPTIBLE_STATUSES:
+                    personas = self._load_personas_for(m)
+                    resumed.append(m.id)
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(self._run(m, personas, resumed_from_restart=True))
+                    except RuntimeError:
+                        asyncio.run(self._run(m, personas, resumed_from_restart=True))
+        except Exception as exc:  # never block startup on a resume hiccup
+            print("[orchestrator] resume_interrupted_missions error:", exc)
+        return resumed
+
+    def _load_personas_for(self, mission) -> List[Dict[str, Any]]:
+        """Recover the room personas persisted with a mission, if any."""
+        try:
+            if getattr(mission, "personas", None):
+                loaded = json.loads(mission.personas)
+                if isinstance(loaded, list) and loaded:
+                    return loaded
+        except Exception:
+            pass
+        # Fallback: whatever is configured for the room right now.
+        try:
+            from server import _load_personas
+
+            return _load_personas()
+        except Exception:
+            return [{"name": mission.planner, "role": "planner", "system_prompt": "", "skills": "", "voice": "alba"}]
+
+    def resume_mission(self, mission_id: str) -> Dict[str, Any]:
+        """Manually resume a specific interrupted mission (HTTP-triggered)."""
+        mission = repo.get_mission(mission_id)
+        if mission is None:
+            return {"ok": False, "error": "mission not found"}
+        if mission.status in TERMINAL_STATUSES:
+            return {"ok": False, "error": f"mission already {mission.status}"}
+        personas = self._load_personas_for(mission)
+        _CANCEL[mission.id] = False
+        try:
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._run(mission, personas, resumed_from_restart=True))
+        except RuntimeError:
+            asyncio.run(self._run(mission, personas, resumed_from_restart=True))
+        return {"ok": True, "id": mission.id, "status": mission.status}
+
     # -- background run ----------------------------------------------------
 
-    async def _run(self, mission, room_personas):
+    async def _run(self, mission, room_personas, resumed_from_restart: bool = False):
+        tasks = repo.list_mission_tasks(mission.id)
         try:
-            mission.status = "running"
-            mission.updated_at = _now()
-            repo.update_mission(mission)
-            await bus.publish(
-                Event(mission_id=mission.id, event="mission.running", agent=mission.planner, data={})
-            )
+            # If we are resuming a mission that had already finished planning,
+            # skip straight to dispatching the work that remains.
+            resume_planning = not tasks or mission.status == "planning"
 
-            subtasks = await self._plan(mission, room_personas)
+            if resume_planning:
+                mission.status = "running"
+                mission.updated_at = _now()
+                repo.update_mission(mission)
+                await bus.publish(
+                    Event(mission_id=mission.id, event="mission.running", agent=mission.planner, data={})
+                )
+
+            subtasks = await self._plan(mission, room_personas, reuse_existing=resumed_from_restart)
             if _CANCEL.get(mission.id):
                 mission.status = MISS_CANCELLED
             else:
-                await self._dispatch(mission, subtasks, room_personas)
+                await self._dispatch(mission, subtasks, room_personas, skip_completed=resumed_from_restart)
                 if _CANCEL.get(mission.id):
                     mission.status = MISS_CANCELLED
                 else:
@@ -123,7 +200,10 @@ class Supervisor:
                             data={},
                         )
                     )
-                    await self._synthesize(mission, subtasks, room_personas)
+                    # Synthesis may already have run before the interruption.
+                    # Only synthesize once so we don't clobber a prior result.
+                    if mission.final_result is None:
+                        await self._synthesize(mission, subtasks, room_personas)
                     mission.status = "completed"
         except Exception as exc:  # never let a background task die silently
             mission.status = "failed"
@@ -150,8 +230,23 @@ class Supervisor:
 
     # -- steps -------------------------------------------------------------
 
-    async def _plan(self, mission, room_personas):
+    async def _plan(self, mission, room_personas, reuse_existing: bool = False):
         from services import llm, config as cfg
+
+        # If we are resuming a mission that already had its plan persisted,
+        # reuse the existing subtasks instead of regenerating them (which would
+        # duplicate work and waste LLM calls).
+        existing = repo.list_mission_tasks(mission.id)
+        if reuse_existing and existing:
+            await bus.publish(
+                Event(
+                    mission_id=mission.id,
+                    event="plan.reused",
+                    agent=mission.planner,
+                    data={"subtasks": [t.id for t in existing]},
+                )
+            )
+            return existing
 
         workers = [p for p in room_personas if p["name"] != mission.planner] or room_personas[1:]
         names = ", ".join(p["name"] for p in workers) or "available agents"
@@ -220,8 +315,21 @@ class Supervisor:
         )
         return out
 
-    async def _dispatch(self, mission, subtasks, room_personas):
+    async def _dispatch(self, mission, subtasks, room_personas, skip_completed: bool = False):
         for st in subtasks:
+            # On resume, tasks that already reached a terminal state before the
+            # interruption do not need to be re-run.
+            if skip_completed and st.status in (TASK_COMPLETED, TASK_BLOCKED, TASK_CANCELLED):
+                await bus.publish(
+                    Event(
+                        mission_id=mission.id,
+                        task_id=st.id,
+                        event="task.skipped_resume",
+                        agent=st.agent,
+                        data={"status": st.status},
+                    )
+                )
+                continue
             persona = next(
                 (p for p in room_personas if p["name"] == st.agent),
                 {"name": st.agent, "system_prompt": "", "skills": "", "voice": "alba"},

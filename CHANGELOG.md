@@ -7,6 +7,14 @@ semantic versioning (`v1.0` = first tagged, installable release).
 ## [Unreleased]
 
 ### Added
+- Autonomous engine: cross-restart recovery/resume. In-flight missions
+  (`planning`/`running`/`verifying`) are automatically re-driven on server
+  startup; `POST /api/autonomous/resume/{mission_id}` allows manual recovery.
+  Resume reuses persisted subtasks, skips completed tasks, and synthesizes only
+  once. Room personas are persisted on the mission for faithful replay.
+- `autonomous/conftest.py` + `autonomous/test_orchestrator.py` — pytest suite
+  covering planner → worker → synthesis and the resume/recovery paths (offline;
+  fakes the LLM). Run: `python -m pytest autonomous/ -q`.
 - `vgctl.py` — dependency-free CLI control tool:
   - `health` — probe `/api/health` and summarize ollama/tts/whisper status.
   - `doctor` — full diagnostic of Python, `config.json`, venvs, ports, live health.

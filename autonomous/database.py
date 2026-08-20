@@ -360,9 +360,33 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_memory_agent ON agent_memory(agent);
             """
         )
+        # Forward-migrate: ensure the resume-payload column exists on existing DBs.
+        _migrate(conn)
     finally:
         if DB_BACKEND not in ("planetscale", "mysql"):
             conn.close()
+
+
+def _add_column(conn, table: str, column: str, col_type: str):
+    """Add a column if it does not already exist (SQLite + MySQL)."""
+    if DB_BACKEND in ("planetscale", "mysql"):
+        cur = conn.cursor()
+        try:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+        except Exception:
+            # Column likely already exists; nothing to do.
+            pass
+        finally:
+            cur.close()
+    else:
+        existing = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+
+def _migrate(conn):
+    """Schema migrations applied at startup. Idempotent."""
+    _add_column(conn, "missions", "personas", "TEXT")
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +444,7 @@ class Mission:
     requires_approval: bool = False
     approval_state: Optional[str] = None
     final_result: Optional[str] = None
+    personas: Optional[str] = None  # JSON-encoded room persona list, for cross-restart resume
     created_at: str = field(default_factory=_now)
     updated_at: str = field(default_factory=_now)
     completed_at: Optional[str] = None
@@ -481,9 +506,9 @@ class Repository:
         try:
             _execute(
                 conn,
-                "INSERT INTO missions (id,goal,status,planner,requires_approval,approval_state,final_result,created_at,updated_at,completed_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                "INSERT INTO missions (id,goal,status,planner,requires_approval,approval_state,final_result,personas,created_at,updated_at,completed_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
                 if DB_BACKEND in ("planetscale", "mysql")
-                else "INSERT INTO missions (id,goal,status,planner,requires_approval,approval_state,final_result,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                else "INSERT INTO missions (id,goal,status,planner,requires_approval,approval_state,final_result,personas,created_at,updated_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     m.id,
                     m.goal,
@@ -492,6 +517,7 @@ class Repository:
                     int(m.requires_approval),
                     m.approval_state,
                     m.final_result,
+                    m.personas,
                     m.created_at,
                     m.updated_at,
                     m.completed_at,
@@ -507,10 +533,10 @@ class Repository:
         try:
             _execute(
                 conn,
-                "UPDATE missions SET status=%s,planner=%s,approval_state=%s,final_result=%s,updated_at=%s,completed_at=%s WHERE id=%s"
+                "UPDATE missions SET status=%s,planner=%s,approval_state=%s,final_result=%s,personas=%s,updated_at=%s,completed_at=%s WHERE id=%s"
                 if DB_BACKEND in ("planetscale", "mysql")
-                else "UPDATE missions SET status=?,planner=?,approval_state=?,final_result=?,updated_at=?,completed_at=? WHERE id=?",
-                (m.status, m.planner, m.approval_state, m.final_result, m.updated_at, m.completed_at, m.id),
+                else "UPDATE missions SET status=?,planner=?,approval_state=?,final_result=?,personas=?,updated_at=?,completed_at=? WHERE id=?",
+                (m.status, m.planner, m.approval_state, m.final_result, m.personas, m.updated_at, m.completed_at, m.id),
             )
         finally:
             if DB_BACKEND not in ("planetscale", "mysql"):

@@ -510,6 +510,43 @@ def _detect_platform() -> str:
 
 
 # --------------------------------------------------------------------------- #
+# autonomous agent-swarm control
+# --------------------------------------------------------------------------- #
+SWARM_SCRIPT = Path(os.path.expanduser("~/.hermes/skills/agent-swarm/scripts/swarm.py"))
+
+
+def cmd_swarm(args):
+    """Launch / manage a Hermes agent-swarm targeted at this VirusGPT stack.
+
+    Profiles (researcher/coder/writer/verifier/orchestrator/visioner) are idle
+    until invoked. The gateway dispatcher runs them autonomously; the visioner
+    inspects the live UI at localhost:8500 via the local Ollama vision model.
+    """
+    action = args.action
+    if action == "setup":
+        return subprocess.call([sys.executable, str(SWARM_SCRIPT), "setup"])
+    if action == "status":
+        return subprocess.call([sys.executable, str(SWARM_SCRIPT), "status"])
+    if action == "stop":
+        return subprocess.call([sys.executable, str(SWARM_SCRIPT), "stop"])
+    if action == "models":
+        return subprocess.call([sys.executable, str(SWARM_SCRIPT), "models"])
+    if action == "run":
+        default_goal = (
+            "Improve the VirusGPT stack at " + str(ROOT) + ": harden the autonomous "
+            "engine, add tests, update docs, and verify the server still returns 200 "
+            "on /api/health and /api/autonomous/status. The visioner should screenshot "
+            "the running UI at http://localhost:8500 and report visual issues."
+        )
+        goal = " ".join(args.goal).strip() if args.goal else default_goal
+        print(f"[swarm] goal:\n  {goal}\n")
+        cmd = ["launch_persistent_vision"] if args.vision else ["launch_persistent"]
+        return subprocess.call([sys.executable, str(SWARM_SCRIPT), *cmd, goal])
+    print(red("unknown swarm action"))
+    return 1
+
+
+# --------------------------------------------------------------------------- #
 # entrypoint
 # --------------------------------------------------------------------------- #
 def build_parser():
@@ -550,6 +587,13 @@ def build_parser():
     dp.add_argument("--platform", choices=["macos", "windows", "linux"],
                     help="target platform for 'build' (default: current OS)")
     dp.set_defaults(func=cmd_desktop)
+
+    sp = sub.add_parser("swarm", help="launch/manage an autonomous agent-swarm for this stack")
+    sp.add_argument("action", choices=["setup", "run", "status", "stop", "models"])
+    sp.add_argument("goal", nargs="*", help="goal text for 'run' (optional; sensible default used)")
+    sp.add_argument("--vision/--no-vision", dest="vision", action="store_true", default=True,
+                    help="include the visioner worker to inspect the live UI (default: on)")
+    sp.set_defaults(func=cmd_swarm)
     return p
 
 

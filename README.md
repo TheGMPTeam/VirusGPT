@@ -168,3 +168,20 @@ sessions → chat → autocomplete → team → memory → ui → main`).
 ## 📜 License
 
 Released under the [MIT License](LICENSE). © 2026 TheGMPTeam.
+
+## 📚 Documentation
+
+Each sub-project has its own README:
+
+| Path | Doc | What it covers |
+|------|-----|----------------|
+| `autonomous/` | [README.md](autonomous/README.md) | Mission runtime, lifecycle, REST, cross-restart recovery |
+| `pockettts/` | [README.md](pockettts/README.md) | TTS server, voices, env vars |
+| `whisper/` | [README.md](whisper/README.md) | STT server, faster-whisper, model/device config |
+| `memory/` | [README.md](memory/README.md) | OKF concept store, graph API, endpoints |
+| `gateway/` | [README.md](gateway/README.md) | Heartbeat, cron jobs, auto-revive |
+| `desktop/` | [README.md](desktop/README.md) | Cross-platform native shell (pywebview) |
+| `services/` | [README.md](services/README.md) | Async clients for Ollama/TTS/STT/memory |
+| `tools/` | [README.md](tools/README.md) | Agent tool harness bridge |
+| `docs/` | — | ARCHITECTURE, STATUS, ROADMAP, SWARM_INTEGRATION, UI_AUDIT |
+| root | [CHANGELOG.md](CHANGELOG.md) | Version history, [Unreleased] vs [v1.0] |

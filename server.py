@@ -521,6 +521,13 @@ _init_auto_db()
 _auto_repo = AutoRepo()
 _supervisor = Supervisor()
 
+# Cross-restart recovery: re-drive any missions that were in-flight (planning /
+# running / verifying) when the server last stopped. Their plan + task state are
+# already persisted in SQLite, so we just re-schedule them on this process.
+_resumed = _supervisor.resume_interrupted_missions(_auto_repo)
+if _resumed:
+    print(f"[orchestrator] resumed {len(_resumed)} interrupted mission(s): {_resumed}")
+
 
 @app.get("/api/db/status")
 async def db_status():
@@ -670,6 +677,17 @@ async def autonomous_stop(mission_id: str):
     mission.updated_at = time.strftime("%Y-%m-%dT%H:%M:%S")
     _auto_repo.update_mission(mission)
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/autonomous/resume/{mission_id}")
+async def autonomous_resume(mission_id: str):
+    """Manually re-drive an interrupted mission whose background task died
+    (e.g. after a crash or restart) but whose row is still in-flight."""
+    result = _supervisor.resume_mission(mission_id)
+    if not result.get("ok"):
+        code = 404 if result.get("error") == "mission not found" else 409
+        return JSONResponse(result, status_code=code)
+    return JSONResponse(result)
 
 
 @app.get("/api/autonomous/artifact")

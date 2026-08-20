@@ -1,0 +1,1 @@
+"""VirusGPT desktop."""

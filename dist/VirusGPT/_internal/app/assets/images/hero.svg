@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" role="img" aria-label="VirusGPT hero banner">
+  <defs>
+    <radialGradient id="hb" cx="28%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#0a3326"/>
+      <stop offset="60%" stop-color="#04140d"/>
+      <stop offset="100%" stop-color="#020a07"/>
+    </radialGradient>
+    <linearGradient id="hg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00ff9c"/>
+      <stop offset="50%" stop-color="#23e0ff"/>
+      <stop offset="100%" stop-color="#ff2bd6"/>
+    </linearGradient>
+    <filter id="hsoft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#0e3a2c" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="400" fill="url(#hb)"/>
+  <rect width="1200" height="400" fill="url(#grid)" opacity="0.5"/>
+  <!-- floating virus glyph top-right -->
+  <g filter="url(#hsoft)" stroke="url(#hg)" stroke-width="9" stroke-linecap="round" fill="none" transform="translate(980 200)">
+    <circle r="54" fill="#04130d" stroke-width="8"/>
+    <g>
+      <line x1="0" y1="-54" x2="0" y2="-100"/>
+      <line x1="0" y1="54" x2="0" y2="100"/>
+      <line x1="-54" y1="0" x2="-100" y2="0"/>
+      <line x1="54" y1="0" x2="100" y2="0"/>
+      <line x1="-38" y1="-38" x2="-71" y2="-71"/>
+      <line x1="38" y1="38" x2="71" y2="71"/>
+      <line x1="-38" y1="38" x2="-71" y2="71"/>
+      <line x1="38" y1="-38" x2="71" y2="-71"/>
+    </g>
+    <g fill="url(#hg)" stroke="none">
+      <circle cx="0" cy="-100" r="8"/><circle cx="0" cy="100" r="8"/>
+      <circle cx="-100" cy="0" r="8"/><circle cx="100" cy="0" r="8"/>
+      <circle cx="-71" cy="-71" r="8"/><circle cx="71" cy="71" r="8"/>
+      <circle cx="-71" cy="71" r="8"/><circle cx="71" cy="-71" r="8"/>
+    </g>
+  </g>
+  <!-- wordmark -->
+  <text x="70" y="210" font-family="'Segoe UI',Arial,sans-serif" font-size="120" font-weight="800" fill="#eafff5" letter-spacing="2">VirusGPT</text>
+  <text x="74" y="270" font-family="'Segoe UI',Arial,sans-serif" font-size="34" font-weight="500" fill="#23e0ff" letter-spacing="6">OFFLINE · LOCAL · PRIVATE AI AGENT CHAT</text>
+  <text x="74" y="320" font-family="'Segoe UI',Arial,sans-serif" font-size="24" font-weight="400" fill="#7fe9c4">Personas · Team auto-chat · TTS/STT · Memory graph · Autonomous missions</text>
+</svg>
