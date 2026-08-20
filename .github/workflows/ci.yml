@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Syntax-check all Python sources
+        run: |
+          echo "::group::py_compile"
+          # Fail the build on the first syntax error; report each file.
+          status=0
+          while IFS= read -r f; do
+            python -m py_compile "$f" || { echo "SYNTAX ERROR: $f"; status=1; }
+          done < <(find . -type f -name "*.py" \
+                      -not -path "./.venv/*" \
+                      -not -path "./whisper/*" \
+                      -not -path "./data/*" \
+                      -not -path "*/.venv/*" \
+                      -not -path "*/__pycache__/*")
+          echo "::endgroup::"
+          exit $status
+
+      - name: Verify requirements.txt installs cleanly
+        run: |
+          python -m venv ci-venv
+          ./ci-venv/bin/pip install -q --upgrade pip
+          ./ci-venv/bin/pip install -q -r requirements.txt
+          echo "requirements.txt installed OK"
+
+      - name: Validate JSON config files
+        run: |
+          for j in config.json; do
+            [ -f "$j" ] && python -c "import json,sys; json.load(open('$j')); print('$j valid')"
+          done
