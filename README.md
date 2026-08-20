@@ -9,179 +9,235 @@
 <h1 align="center">VirusGPT</h1>
 
 <p align="center">
-  <b>Offline · Local · Private</b> AI agent chat — personas, TTS/STT, a memory graph, and autonomous missions.
-  <br>Everything runs on your own machine (Ollama + PocketTTS + Whisper). No cloud, no accounts, no data leaves the box.
+  <b>Offline · Local · Private</b> AI agent platform for macOS, Linux, and Windows.
+  <br>
+  Desktop-first, memory-aware, multi-persona, TTS/STT-enabled, and fully runnable on your own machine.
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/runs%20on-macOS%20%2F%20Linux-blue.svg" alt="platform">
+  <img src="https://img.shields.io/badge/runs%20on-macOS%20%2F%20Linux%20%2F%20Windows-blue.svg" alt="platform">
 </p>
 
 ---
 
-## ✨ Features
+## What VirusGPT is
 
-- **Multi-persona chat** — switch, create, and clone voices for each persona. The LLM decides who answers, or you pick.
-- **Autonomous missions** — long-running multi-agent goals streamed via SSE.
-- **AI suggestions & Improve** — free-text typing shows AI completion chips; the ✨ Improve button rewrites your draft.
-- **Voice** — sentence-streamed TTS (PocketTTS) with no-overlap playback, plus Whisper STT via the mic button.
-- **Memory graph** — OKF-style knowledge-graph stats with a radial visualizer.
-- **Autonomous missions** — long-running multi-agent goals streamed via SSE.
-- **Theming** — Cyber Matrix / Amber Gears / Ice Neon, with a matrix-rain background.
+VirusGPT is a local AI workstation built around a native desktop app, a FastAPI backend, a memory graph, and a mission/kanban workflow.
 
-## 🚀 Quick start
+It keeps everything on your machine:
+- no cloud API dependency for the core app flow
+- no account login
+- no external data sharing by default
+- local personas, sessions, memory, and mission state
+
+The desktop app is the primary UI now.
+
+---
+
+## Key features
+
+- **Native desktop app** — pywebview shell packaged for macOS, Windows, and Linux.
+- **Multi-persona chat** — switch rooms, add personas, clone voices, and route responses by persona.
+- **Autonomous Mission** — long-running multi-agent work is organized in a kanban board and streamed live.
+- **Memory graph** — concept graph, links, health stats, and detail editing.
+- **Voice** — sentence-streamed PocketTTS playback plus Whisper STT input.
+- **AI assist** — suggestion chips and the ✨ Improve rewrite helper.
+- **Local-first config** — backend, model, voice, and timeouts are set locally.
+- **Theming** — Cyber Matrix, Amber Gears, and Ice Neon.
+
+### Mission workflow
+
+The mission area is now kanban-first:
+- mission controls sit at the top of the right sidebar
+- the mission plan is visible through the kanban board
+- no separate team auto-chat output area is used
+- mission progress and tool activity are surfaced visually in the board and tool log
+
+---
+
+## Desktop app
+
+### Start the app during development
 
 ```bash
-# 1. (macOS) install & launch the local AI stack
-./launch.sh            # starts the server on :8500 and PocketTTS on :49152
+cd /Users/Master/virusgpt-mac
+.venv/bin/python desktop/run.py
+```
 
-# …or run the server directly inside the venv
-python -m venv .venv && .venv/bin/pip install -r requirements.txt
+### Launch the packaged macOS app
+
+```bash
+open /Applications/VirusGPT.app
+```
+
+### Rebuild the desktop bundle
+
+```bash
+cd /Users/Master/virusgpt-mac
+.venv/bin/python desktop/build-macos.py
+```
+
+Windows and Linux build scripts live in `desktop/build-windows.py` and `desktop/build-linux.py`.
+
+---
+
+## Quick start
+
+```bash
+cd /Users/Master/virusgpt-mac
+./launch.sh
+```
+
+That starts the local server and the voice services the app expects.
+
+If you want the server only:
+
+```bash
+cd /Users/Master/virusgpt-mac
 .venv/bin/python server.py
 ```
 
-Open <http://localhost:8500>. Requires a local Ollama with `qwen2.5:3b` (and any
-persona voices) plus a running PocketTTS instance for voice.
+Then open:
 
-> Configure the backend, model, default voice, and think-time-out in the in-app
-> **⚙ Settings** panel.
+- `http://localhost:8500`
 
-## 📦 Installer (modular / multi-machine)
+Requirements:
+- Ollama running locally
+- PocketTTS available for voice output
+- Whisper available for voice input
 
-`install.sh` installs **different components on different local machines** and
-points them at each other via `config.json`. This is handy when one box has a
-GPU/torch and another is light.
+The exact backend/model/voice settings can be changed in the in-app **Settings** panel.
+
+---
+
+## Installation modes
+
+`install.sh` can install different components on different machines and point them at each other through `config.json`.
+
+### Example split setup
 
 ```bash
-# Machine A (LLM + web UI):
+# Machine A: server + model
 ./install.sh --core --models
 
-# Machine B (voice + speech, has torch / GPU):
+# Machine B: voice + speech
 ./install.sh --tts --stt
-
-# then on A, set in config.json:
-#   "tts":  { "base_url": "http://<B-ip>:49152" }
-#   "stt":  { "base_url": "http://<B-ip>:8181"  }
 ```
 
-Flags: `--all` (default), `--core`, `--tts`, `--stt`, `--models`, `--autonomous`,
-`--memory`, `--gateway`, `--ollama-url URL`, `--model NAME`, `--prefix DIR`,
-`--skip-deps`, `--dry-run`, `--docker`.
-Run `./install.sh --help` for the full list. macOS and Linux (apt) are supported
-natively; **Windows uses the Docker stack** (native Windows can't run the torch/
-PocketTTS POSIX build). The script is idempotent and safe to re-run.
+Then set remote service URLs in `config.json` if needed.
+
+### Common flags
+
+`--all`, `--core`, `--tts`, `--stt`, `--models`, `--autonomous`, `--memory`, `--gateway`, `--ollama-url`, `--model`, `--prefix`, `--skip-deps`, `--dry-run`, `--docker`
+
+Run `./install.sh --help` for the complete list.
+
+### Platform notes
+
+- **macOS** and **Linux**: supported natively
+- **Windows**: supported through the Docker stack
+
+---
+
+## CLI control: `vgctl.py`
+
+A dependency-free control tool for local ops.
 
 ```bash
-# Windows (WSL2 + Docker Desktop):
-docker compose up -d --build
-# or acknowledge the Docker path via the installer:
-./install.sh --docker
-```
-
-After install, launch with `./run.sh` (server only) or `./launch.sh` (full stack:
-server + PocketTTS + Whisper, health-aware, safe for cron).
-
-## 🩺 CLI: `vgctl.py`
-
-A dependency-free control tool for ops without the browser.
-
-```bash
-.venv/bin/python vgctl.py health                         # probe /api/health
-.venv/bin/python vgctl.py doctor                         # full diagnostic of stack + config
-.venv/bin/python vgctl.py fix --kill-ports              # clear stale processes on stack ports
-.venv/bin/python vgctl.py fix --ensure-venv --restart   # rebuild venv + relaunch stack
-.venv/bin/python vgctl.py settings list                 # print config.json
+.venv/bin/python vgctl.py health
+.venv/bin/python vgctl.py doctor
+.venv/bin/python vgctl.py fix --kill-ports
+.venv/bin/python vgctl.py fix --ensure-venv --restart
+.venv/bin/python vgctl.py settings list
 .venv/bin/python vgctl.py settings get ollama.default_model
 .venv/bin/python vgctl.py settings set ollama.default_model qwen2.5:3b
-.venv/bin/python vgctl.py settings reset tts.enabled    # remove key -> server default
+.venv/bin/python vgctl.py settings reset tts.enabled
 ```
 
-`settings` writes land in `config.json` and apply on the next server boot
-(`set` auto-types bool/int/float/str). `fix --restart` calls `launch.sh`.
+---
 
-## 🐳 Docker (full stack)
+## Docker stack
 
-Run the entire local AI stack — web server, TTS, STT, and Ollama — with one command:
+VirusGPT also supports a full local stack using Docker:
 
 ```bash
 docker compose up -d --build
-# web UI:  http://localhost:8500
-# tts:     http://localhost:49152
-# stt:     http://localhost:8181
-# ollama:  http://localhost:11434
 ```
 
-Service URLs are wired via the compose network automatically (no `config.json`
-edits needed — the server reads `VG_OLLAMA_URL` / `VG_TTS_URL` / `VG_STT_URL`
-env vars, see `docker-compose.yml`). GPU passthrough for Ollama is enabled by
-default; comment out the `deploy.resources` block for CPU-only. Pull the model
-once the stack is up:
+Services:
+- web UI: `http://localhost:8500`
+- TTS: `http://localhost:49152`
+- STT: `http://localhost:8181`
+- Ollama: `http://localhost:11434`
 
-```bash
-docker compose exec ollama ollama pull qwen2.5:3b
-```
+---
 
-## 🗂 Project layout
+## Project layout
 
-The frontend was refactored out of a single `index.html` into focused modules:
-
-```
+```text
 virusgpt-mac/
-├── server.py                 # FastAPI server (chat SSE, TTS/STT, memory, missions, /assets)
-├── config.json               # backend / title / default theme
+├── server.py                 # FastAPI server (chat, memory, missions, assets)
+├── config.json               # local config for backend/model/theme/services
 ├── launch.sh                 # one-shot local stack launcher
-├── requirements.txt
-├── assets/
-│   ├── images/               # logo.svg, logo.png, favicon.svg/png, hero.svg
-│   ├── css/
-│   │   └── styles.css        # full theme (cyber / amber / ice)
-│   └── js/
-│       ├── config.js         # globals, API base, personas/rooms state, localStorage
-│       ├── utils.js          # $, tabs, health probe, themes, matrix rain
-│       ├── tts.js            # sentence-streamed TTS + serial drain
-│       ├── messages.js       # markdown strip, sentence split, bubble render, replay
-│       ├── personas.js       # room lineup + Personas management tab (clone/save/delete)
-│       ├── sessions.js       # Sessions panel: switch / create / rename / remove / save
-│       ├── chat.js           # send(), persona routing, slash commands, streaming turn
-│       ├── autocomplete.js   # / @ # popup + AI suggestion chips + Improve button
-│       ├── team.js           # autonomous mission + team board + stop-all
-│       ├── memory.js         # OKF graph stats + radial canvas
-│       ├── ui.js             # settings modal, input wiring, mic, missions panel
-│       └── main.js           # boot() + init order
-├── pockettts/                # bundled PocketTTS voice server (separate subproject)
-└── services/                 # server-side services (llm, tts, stt, memory, config)
+├── desktop/                  # native app shell + build scripts
+├── app/                      # frontend HTML/CSS/JS and images
+├── autonomous/               # mission runtime and self-dev modules
+├── memory/                   # memory graph store and helpers
+├── gateway/                  # heartbeat / cron / recovery jobs
+├── pockettts/                # bundled PocketTTS subproject
+├── whisper/                  # bundled Whisper STT subproject
+├── services/                 # service clients and runtime config helpers
+└── docs/                     # architecture, status, roadmap, swarm docs
 ```
 
-`index.html` is now a thin shell: it carries the markup and loads the CSS +
-JS modules in dependency order (`config → utils → tts → messages → personas →
-sessions → chat → autocomplete → team → memory → ui → main`).
+### Frontend modules
 
-## 🧩 Architecture notes
+```text
+app/assets/js/
+├── config.js                 # globals, API base, rooms/personas state
+├── utils.js                  # DOM helpers, themes, health, matrix rain
+├── tts.js                    # sentence-streamed TTS and queue drain
+├── messages.js               # message rendering helpers
+├── personas.js               # persona management
+├── sessions.js               # session management
+├── chat.js                   # chat routing and slash commands
+├── autocomplete.js           # command/persona/tag suggestions
+├── team.js                   # kanban mission workflow + stop-all
+├── memory.js                 # memory graph UI
+├── ui.js                     # settings, input wiring, mission controls
+└── main.js                   # boot order
+```
 
-- **No build step.** Plain ES (no bundler) — the `<script>` tags load in order, so
-  `config.js` globals (`$`, `API`, `personas`, `rooms`, …) are available to later files.
-- **State** lives in `localStorage` (`vg_personas`, `vg_rooms`) and is mirrored to the
-  server where the API allows (personas).
-- **Server** serves `app/index.html` and mounts `app/assets` at `/assets`.
+`index.html` is a thin shell that loads those modules in order.
 
-## 📜 License
+---
 
-Released under the [MIT License](LICENSE). © 2026 TheGMPTeam.
+## Architecture notes
 
-## 📚 Documentation
+- **Desktop-first:** the native app wraps the web UI and starts the backend.
+- **Local state:** personas and sessions are persisted locally.
+- **Memory-aware:** memory graph retrieval is available by default in chat.
+- **Mission-driven:** long-running work uses the mission/kanban flow rather than a separate auto-chat mode.
+- **No bundler:** the frontend is plain ES modules loaded directly in order.
 
-Each sub-project has its own README:
+---
+
+## Documentation
 
 | Path | Doc | What it covers |
 |------|-----|----------------|
-| `autonomous/` | [README.md](autonomous/README.md) | Mission runtime, lifecycle, REST, cross-restart recovery |
+| `autonomous/` | [README.md](autonomous/README.md) | Mission runtime, lifecycle, REST, recovery |
 | `pockettts/` | [README.md](pockettts/README.md) | TTS server, voices, env vars |
-| `whisper/` | [README.md](whisper/README.md) | STT server, faster-whisper, model/device config |
-| `memory/` | [README.md](memory/README.md) | OKF concept store, graph API, endpoints |
-| `gateway/` | [README.md](gateway/README.md) | Heartbeat, cron jobs, auto-revive |
-| `desktop/` | [README.md](desktop/README.md) | Cross-platform native shell (pywebview) |
-| `services/` | [README.md](services/README.md) | Async clients for Ollama/TTS/STT/memory |
-| `tools/` | [README.md](tools/README.md) | Agent tool harness bridge |
-| `docs/` | — | ARCHITECTURE, STATUS, ROADMAP, SWARM_INTEGRATION, UI_AUDIT |
-| root | [CHANGELOG.md](CHANGELOG.md) | Version history, [Unreleased] vs [v1.0] |
+| `whisper/` | [README.md](whisper/README.md) | STT server and model/device config |
+| `memory/` | [README.md](memory/README.md) | Memory graph store and endpoints |
+| `gateway/` | [README.md](gateway/README.md) | Heartbeats, cron jobs, auto-revive |
+| `desktop/` | [README.md](desktop/README.md) | Native shell and packaging |
+| `services/` | [README.md](services/README.md) | Async clients for local services |
+| `docs/` | — | Architecture, status, roadmap, swarm docs |
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE). © 2026 TheGMPTeam.
