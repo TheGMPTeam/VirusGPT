@@ -194,3 +194,19 @@
   .tool-call .tc-ok{color:var(--ok,#33ff99);margin-left:auto;font-size:10px}
   .tool-call .tc-err{color:var(--warn);margin-left:auto;font-size:10px}
   @keyframes kcard-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* Memory Graph — living force-directed concept map */
+  #mem-stats{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  #mem-legend{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 4px;font-size:11px;color:var(--txt-dim)}
+  #mem-legend .lg{display:flex;align-items:center;gap:5px}
+  #mem-legend .lg i{width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 6px currentColor}
+  #graph-wrap{position:relative;width:100%;height:440px;margin-top:8px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 40%, rgba(35,224,255,0.06), transparent 70%), var(--panel)}
+  #graph-canvas{display:block;width:100%;height:100%;cursor:grab}
+  #mg-detail{margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--panel);min-height:10px;font-size:12px}
+  #mg-detail .mg-d-title{font-weight:700;font-size:13px;margin-bottom:2px}
+  #mg-detail .mg-d-meta{color:var(--txt-dim);font-size:11px;margin-bottom:6px}
+  #mg-detail .mg-d-sub{color:var(--neon2);font-size:11px;margin:8px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+  #mg-detail .mg-d-neigh{display:flex;flex-wrap:wrap;gap:5px}
+  #mg-detail .mg-d-neigh span{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:2px 8px;font-size:11px}
+  #mg-detail .mg-d-res{margin-top:8px;color:var(--txt);font-size:12px;line-height:1.45;white-space:pre-wrap;max-height:160px;overflow:auto}
+  #mem-hint{margin-top:8px;font-size:10.5px;color:var(--txt-dim);text-align:center}

@@ -78,7 +78,9 @@ async function pumpTTS(){
 // Play ONE sentence and resolve only when it has FINISHED sounding (onended),
 // so the queue in pumpTTS never starts the next sentence until this one is done.
 async function playTTS(text, persona){
-  if(!TTS_ON||!text.trim()) return;
+  if(!text || !text.trim()) return;   // low-level player: NOT gated by the speaker
+                                        // toggle. Gating lives in autoPlaySentence
+                                        // so manual ▶/⟲ always play.
   unlockAudio();
   let voice=(persona?.voice)||(selectedPersonaObj()?.voice)||HEALTH.default_voice||'alba';
   try{
