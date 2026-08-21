@@ -528,19 +528,22 @@ async def gateway_status():
 @app.get("/api/services/status")
 async def services_status():
     """Health of every modular LAN service (media/automation stack)."""
-    from services import comfyui as _comfy
+    from services import comfyui as _comfy, n8n as _n8n
     cf = False
     cf_models = []
     if cfg.CONFIG["services"]["comfyui"]["enabled"]:
         cf = await _comfy.comfyui_health()
         if cf:
             cf_models = await _comfy.comfyui_models()
+    n8n_st = await _n8n.n8n_status()
     return JSONResponse({
         "comfyui": {"enabled": cfg.CONFIG["services"]["comfyui"]["enabled"],
                     "healthy": cf,
                     "base_url": cfg.CONFIG["services"]["comfyui"]["base_url"],
                     "models": cf_models},
-        "configured": {"comfyui": bool(cfg.CONFIG["services"]["comfyui"]["base_url"])},
+        "n8n": n8n_st,
+        "configured": {"comfyui": bool(cfg.CONFIG["services"]["comfyui"]["base_url"]),
+                       "n8n": bool(n8n_st["base_url"])},
     })
 
 

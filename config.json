@@ -46,7 +46,7 @@
     "mysql_ssl": true
   },
   "services": {
-    "n8n":     {"enabled": false, "base_url": "http://10.0.0.120:5678", "timeout": 30},
+    "n8n":     {"enabled": true,  "base_url": "http://10.0.0.120:5678", "timeout": 30},
     "comfyui": {"enabled": true,  "base_url": "http://10.0.0.120:8188", "timeout": 180, "default_model": ""},
     "blender": {"enabled": false, "base_url": "http://10.0.0.120:8008", "timeout": 300},
     "ffmpeg":  {"enabled": false, "base_url": "http://10.0.0.120:8009", "timeout": 300},

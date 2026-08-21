@@ -32,7 +32,7 @@ _DEFAULTS: dict[str, Any] = {
     # Each may be enabled/disabled independently; endpoints are overridable via
     # VG_* env vars (see load_config below). Missing services degrade gracefully.
     "services": {
-        "n8n":     {"enabled": False, "base_url": "http://10.0.0.120:5678", "timeout": 30},
+        "n8n":     {"enabled": True,  "base_url": "http://10.0.0.120:5678", "timeout": 30},
         "comfyui": {"enabled": True,  "base_url": "http://10.0.0.120:8188", "timeout": 180,
                     "default_model": ""},
         "blender": {"enabled": False, "base_url": "http://10.0.0.120:8008", "timeout": 300},
