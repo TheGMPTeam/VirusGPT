@@ -15,6 +15,18 @@ semantic versioning (`v1.0` = first tagged, installable release).
 - `autonomous/conftest.py` + `autonomous/test_orchestrator.py` — pytest suite
   covering planner → worker → synthesis and the resume/recovery paths (offline;
   fakes the LLM). Run: `python -m pytest autonomous/ -q`.
+- **Full test suite under `tests/`** (this release):
+  - `tests/test_backend.py` — 54 tests hitting every `/api/*` route (chat,
+    improve, suggest, tts, stt, memory, selfdev, gateway, services, generate,
+    personas, sessions, db, autonomous A2A mission run + tool-call logging) with
+    all external deps (Ollama/TTS/STT/ComfyUI/Memory) mocked offline.
+  - `tests/test_frontend.py` — 16 Playwright/Chromium tests driving the real
+    `index.html`: per-sentence ▶ isolation, play-all, /clear & /new mute
+    auto-play, speaker toggle, /team Agent-to-Agent round, 🎨 image gen, tabs,
+    settings/theme, Enter-to-send, and responsive screenshots at 390 / 820 /
+    1440 / 2560 px.
+  - `tests/test_split_sentences.py` — pure-logic guard for the sentence splitter
+    bug fix. Run the whole suite: `python -m pytest tests/ -q`.
 - `vgctl.py` — dependency-free CLI control tool:
   - `health` — probe `/api/health` and summarize ollama/tts/whisper status.
   - `doctor` — full diagnostic of Python, `config.json`, venvs, ports, live health.
@@ -77,19 +89,20 @@ semantic versioning (`v1.0` = first tagged, installable release).
   (each fetches its own PocketTTS mp3 on click) plus a click-only `⏯ Play all`
   at the end that does NOT auto-play unless clicked. Auto-play (speaker toggle)
   still streams sentences one-after-another in order during generation.
-- **Per-sentence ▶ buttons played the WHOLE reply, not their own sentence.**
-  Every ▶ wired into the shared global `ttsQueue`, so if auto-play had already
-  queued the full reply (or was still draining), clicking any button appended on
-  top and `pumpTTS` played everything. Added `playSingle()` — an isolated
-  single-sentence player that stops any in-flight audio and clears the queue so
-  clicking the 3rd button plays ONLY the 3rd sentence. ▶ now uses `playSingle`;
-  the "Play all" ⏯ / "Replay all" ⟲ still use the full queue.
+- **Per-sentence ▶ buttons played the WHOLE reply, not their own sentence.** A
+  shared-queue defect (see previous entry) plus a sentence-splitter defect:
+  `splitSentences()` used a regex that matched the WHOLE reply as a single span
+  (so every ▶ bound to the entire text and clicking any sentence played
+  everything). Rewrote `splitSentences()` (and the streaming `drainSentences()`
+  fallback in `tts.js`) to split strictly on `.!?`/newline boundaries. Covered
+  by `tests/test_split_sentences.py` + the Playwright isolation test.
 - **New session auto-play behavior.** Added a per-session `sessionAutoPlay`
   flag. `/clear` and `/new` now set it `false` (and `stopTTS()`), so a fresh
   session is quiet for streaming auto-play. Toggling the speaker button ON
   re-enables auto-play for subsequent messages; boot seeds it from the saved
   `TTS_ON` state. (Term "autopsy" in the request = the speaker/auto-play
   toggle.)
+- **Sentence splitter unit + full UI regression suite added** (see Added).
  
 ## [v1.0] - 2026-08-20
 

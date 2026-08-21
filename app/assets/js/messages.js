@@ -32,15 +32,21 @@ function isPlayableSentence(s){
    play button can never bind to a blank/junk value — and each button plays
    ONLY its own sentence. */
 function splitSentences(t){
-  const re=/[^.!?\n]*[.!?]+|\n+/g; const out=[]; let m,last=0;
-  while((m=re.exec(t))!==null){
-    const raw=t.slice(last,m.lastIndex); last=m.lastIndex;
-    const s=raw.trim();
-    if(isPlayableSentence(s)) out.push(cleanMd(s));
+  const text=(t||'').trim();
+  if(!text) return [];
+  // Split into sentence-ish pieces on . ! ? (keep the terminator). The previous
+  // regex accidentally matched the WHOLE reply as one span (so every ▶ button
+  // bound to the entire text and clicking any sentence played everything) — this
+  // one matches each terminal-bounded sentence strictly.
+  const parts = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  const out=[];
+  for(const raw of parts){
+    const s=cleanMd(raw.trim());
+    if(isPlayableSentence(s)) out.push(s);
   }
-  if(last<t.length){ const s=t.slice(last).trim(); if(isPlayableSentence(s)) out.push(cleanMd(s)); }
-  const cleaned=[t.trim()].map(cleanMd).filter(isPlayableSentence);
-  return out.length?out:cleaned;
+  if(out.length) return out;
+  const cleaned=cleanMd(text);
+  return isPlayableSentence(cleaned)?[cleaned]:[];
 }
 /* Per-sentence play button: icon-only ▶ on the same inline row; each plays
    ONLY its own sentence, in isolation (it must not trigger the whole reply). */

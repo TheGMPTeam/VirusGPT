@@ -20,7 +20,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import List
 
 ROOT = Path(__file__).resolve().parent.parent
 SELFDEV_DIR = ROOT / "data" / "selfdev"

@@ -53,11 +53,28 @@ function drainSentences(final, persona){
   // A persistent read offset (ttsDone) guarantees we never re-emit already-spoken
   // text and never drop text — this is the "sentence linking" that keeps a
   // streamed reply playing as one continuous sequence.
-  const re=/[^.!?\n]*[.!?]+|\n+/g;
+  // NOTE: the prior regex /[^.!?\n]*[.!?]+/ accidentally spanned across dots and
+  // matched the WHOLE buffer, so each sentence was never isolated; we now recover
+  // real sentence boundaries from the not-yet-emitted tail when that happens.
   let m; const collected=[];
-  while((m=re.exec(ttsBuf))!==null){ collected.push({s:ttsBuf.slice(ttsDone, re.lastIndex), end:re.lastIndex}); }
+  const re=/[^.!?\n]*[.!?]+|\n+/g;
+  while((m=re.exec(ttsBuf))!==null){ collected.push({s:ttsBuf.slice(ttsDone, m.lastIndex), end:m.lastIndex}); }
+  // Fallback: if the (broken) regex spanned the whole buffer in one go, re-derive
+  // proper sentence boundaries from the un-emitted tail ourselves.
+  let spans = collected;
+  if(collected.length>=1 && collected[0].end >= ttsBuf.length && ttsDone===0 && !final){
+    const tail = ttsBuf.slice(ttsDone);
+    const real = tail.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [tail];
+    spans = [];
+    let pos = ttsDone;
+    for(const seg of real){
+      const end = pos + seg.length;
+      spans.push({s: ttsBuf.slice(pos, end), end});
+      pos = end;
+    }
+  }
   const toEmit=[];
-  for(const c of collected){
+  for(const c of spans){
     if(c.end<=ttsDone) continue;
     if(final || /[.!?]$/.test(c.s.trim()) || /^\n+$/.test(c.s)){ toEmit.push(c); } else break;
   }

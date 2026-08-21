@@ -89,7 +89,21 @@
 | Gateway cron cadences | ✅ | `builtin_jobs()`: launch_check 60s, memory_maintain 30m, db_backup 24h, selfdev 1h. `launch.sh` starts the gateway supervisor. |
 
 ## Test status
-- CI: ✅ green (py syntax + requirements + JSON validate).
+- CI: ✅ green (py syntax + requirements + JSON validate + STATUS drift gate +
+  **full pytest suite** — backend + Playwright frontend + splitter unit).
 - Live endpoint smoke tests: ✅ all core/memory/selfdev/sessions/db/gateway 200.
-- Browser E2E: previously verified (Kanban, TTS toggle, graph render) — re-run
-  after each UI change.
+- **Automated suites** (`python -m pytest tests/ -q`): 71 tests — 54 backend
+  (every `/api/*` route, A2A mission run, tool-call logging), 16 Playwright
+  Chromium UI tests (per-sentence ▶ isolation, /clear & /new mute auto-play,
+  speaker toggle, `/team` Agent-to-Agent round, image gen, tabs, settings/theme,
+  Enter-to-send, responsive shots at 390/820/1440/2560px), 1 splitter unit.
+- `autonomous/test_orchestrator.py`: 9 tests (planner → worker → synthesis,
+  cross-restart resume).
+
+## Reports (generated this cycle)
+- [`docs/OPTIMIZATION.md`](OPTIMIZATION.md) — footprint, hot paths, dead code,
+  bundle/rebuild follow-ups.
+- [`docs/AUDIT.md`](AUDIT.md) — security, structure, docs-drift gate, coverage,
+  bugs found & fixed.
+- [`docs/REFACTORING.md`](REFACTORING.md) — analysis of the chat-TTS, auto-play,
+  tool-logging, and orchestrator refactors.

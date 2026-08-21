@@ -269,6 +269,16 @@ app/assets/js/
 
 ---
 
+## Quality & audit reports
+
+- [`docs/STATUS.md`](docs/STATUS.md) — live build-status matrix (CI-gated against the code).
+- [`docs/AUDIT.md`](docs/AUDIT.md) — security, structure, docs-drift, and test-coverage audit.
+- [`docs/OPTIMIZATION.md`](docs/OPTIMIZATION.md) — footprint, hot paths, dead code, follow-ups.
+- [`docs/REFACTORING.md`](docs/REFACTORING.md) — analysis of the recent TTS / auto-play / tool-logging / orchestrator refactors.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/ROADMAP.md`](docs/ROADMAP.md) · [`docs/UI_AUDIT.md`](docs/UI_AUDIT.md)
+
+Run the full suite: `python -m pytest tests/ -q` (backend + Playwright UI + splitter unit).
+
 ## License
 
 Released under the [MIT License](LICENSE). © 2026 TheGMPTeam.
