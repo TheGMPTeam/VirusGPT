@@ -116,6 +116,15 @@ semantic versioning (`v1.0` = first tagged, installable release).
   when duration is unknown) plus a 15s absolute ceiling, so the queue now always
   advances exactly once per sentence. Regression test:
   `test_play_all_no_infinite_loop_when_onended_never_fires`. (tts.js)
+- **ADDED: in-app updater.** Clicking the version text in the bottom status bar
+  opens an **Update popup** showing the currently-running version/commit, the
+  latest available (from `origin/main` via `git fetch`), release notes, and an
+  **Update now** button. Applying it runs a background `git pull` + rebuild via
+  the dev `.venv` (which has PyInstaller) and **replaces `apps/VirusGPT.app`**,
+  then relaunches the new build. New endpoints: `GET /api/version`,
+  `GET /api/update/check`, `POST /api/update/apply`, `GET /api/update/status`.
+  Build now also writes `app/buildinfo.json` (source dir + venv) so the running
+  app knows where to rebuild from. (services/updater.py, server.py, updates.js)
  
 ## [v1.0] - 2026-08-20
 

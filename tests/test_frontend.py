@@ -539,3 +539,22 @@ def test_version_bar_shows_version(browser):
     txt = page.evaluate("document.getElementById('version-info')?.textContent")
     assert txt == "v1.0 · deadbeef", f"version bar wrong: {txt!r}"
     ctx.close()
+
+
+def test_clicking_version_opens_update_popup(browser):
+    ctx, page = _new_page(browser)
+    page.add_init_script("window.__VG_VERSION = {version:'1.0', commit:'deadbeef'};")
+    page.reload()
+    page.wait_for_timeout(500)
+    # version text clickable -> opens #update-overlay
+    page.click("#version-info")
+    page.wait_for_timeout(400)
+    assert not page.eval_on_selector("#update-overlay", "e=>e.classList.contains('hidden')"), \
+        "update popup should open on version click"
+    # current version shown
+    cur = page.evaluate("document.getElementById('up-current')?.textContent")
+    assert "deadbeef" in (cur or ""), f"current version not shown: {cur!r}"
+    # 'Check for updates' button present
+    assert page.query_selector("#up-check") is not None
+    ctx.close()
+

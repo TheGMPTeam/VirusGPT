@@ -31,6 +31,7 @@ function boot(){
     initMobileTabs();
     initMic();
     initMatrix();
+    initUpdates();
     $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇';
     $('#btn-tts-toggle').classList.toggle('tts-on', !!TTS_ON);
     // Seed per-session auto-play from the saved speaker state: if the speaker is

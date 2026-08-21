@@ -53,12 +53,25 @@ def git_version():
 
 
 def stamp_version():
-    """Write app/version.json and return (version, commit)."""
+    """Write app/version.json and app/buildinfo.json, return (version, commit)."""
     version, commit = git_version()
-    payload = {"version": version, "commit": commit}
+    payload = {"version": version, "commit": commit, "build_time": _now_iso()}
     (ROOT / "app" / "version.json").write_text(json.dumps(payload))
+    # buildinfo tells the RUNNING app where to rebuild from (source tree + venv).
+    buildinfo = {
+        "source_dir": str(ROOT),
+        "venv": str(ROOT / ".venv" / "bin" / "python"),
+    }
+    (ROOT / "app" / "buildinfo.json").write_text(json.dumps(buildinfo))
     print(f"[build] version: v{version} · {commit}")
     return version, commit
+
+
+def _now_iso():
+    try:
+        return __import__("datetime").datetime.now().isoformat(timespec="seconds")
+    except Exception:
+        return ""
 
 
 def build():

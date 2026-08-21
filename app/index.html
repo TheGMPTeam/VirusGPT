@@ -151,8 +151,27 @@
       <div class="form-actions"><button id="st-save" class="btn-accent">Save</button></div>
     </div>
   </div>
-</div>
 
+  <!-- UPDATE POPUP (opened by clicking the version text in the status bar) -->
+  <div id="update-overlay" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header"><h2>App Update</h2><button id="up-btn-close" class="btn-icon-close">✕</button></div>
+      <div id="up-body">
+        <div class="up-row"><span class="up-label">Current</span><span id="up-current" class="up-val">—</span></div>
+        <div class="up-row"><span class="up-label">Latest</span><span id="up-latest" class="up-val">—</span></div>
+        <div id="up-notes" class="up-notes"></div>
+      </div>
+      <div id="up-progress" class="up-progress hidden">
+        <div class="up-bar"><div id="up-bar-fill" class="up-bar-fill"></div></div>
+        <div id="up-status" class="up-status">Working…</div>
+      </div>
+      <div class="form-actions">
+        <button id="up-check" class="btn-accent">Check for updates</button>
+        <button id="up-apply" class="btn-accent hidden">Update now</button>
+      </div>
+      <div id="up-msg" class="up-msg"></div>
+    </div>
+  </div>
 
 
   <script src="/assets/js/config.js?v=13"></script>
@@ -166,6 +185,7 @@
   <script src="/assets/js/team.js?v=13"></script>
   <script src="/assets/js/memory.js?v=13"></script>
   <script src="/assets/js/ui.js?v=13"></script>
+  <script src="/assets/js/updates.js?v=13"></script>
   <script src="/assets/js/main.js?v=13"></script>
 </body>
 </html>

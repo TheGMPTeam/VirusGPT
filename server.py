@@ -80,6 +80,33 @@ async def health():
 
 
 # -------------------------------------------------------------------------
+# In-app updater — version reporting + git-based rebuild/replace
+# -------------------------------------------------------------------------
+from services import updater as _updater
+
+
+@app.get("/api/version")
+async def api_version():
+    return JSONResponse(_updater.get_version())
+
+
+@app.get("/api/update/check")
+async def api_update_check():
+    return JSONResponse(_updater.check_update())
+
+
+@app.post("/api/update/apply")
+async def api_update_apply():
+    # Kicks off a background git-pull + rebuild that replaces apps/VirusGPT.app.
+    return JSONResponse(_updater.apply_update())
+
+
+@app.get("/api/update/status")
+async def api_update_status():
+    return JSONResponse(_updater.get_status())
+
+
+# -------------------------------------------------------------------------
 # Chat — proxy to Ollama, stream SSE {content|done|error}
 # -------------------------------------------------------------------------
 def trim_history(messages, max_hist: int = 24, max_chars: int = 2800):

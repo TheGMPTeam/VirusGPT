@@ -452,3 +452,50 @@ def test_a2a_agent_uses_tool(client, stub_llm):
     tool_events = [e for e in final["events"] if e["event"] == "tool.call"]
     assert len(tool_events) >= 1
     assert tool_events[0]["data"]["tool"] == "calc"
+
+
+# ---------------------------------------------------------------------------
+# In-app updater endpoints (git/build stubbed -> fully offline + deterministic)
+# ---------------------------------------------------------------------------
+def test_version_endpoint(client, monkeypatch):
+    from services import updater
+    monkeypatch.setattr(updater, "get_version", lambda: {
+        "version": "1.0", "commit": "abc1234", "updatable": True,
+    })
+    r = client.get("/api/version")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["version"] == "1.0" and d["commit"] == "abc1234" and d["updatable"] is True
+
+
+def test_update_check_endpoint(client, monkeypatch):
+    from services import updater
+    monkeypatch.setattr(updater, "check_update", lambda: {
+        "current": "abc1234", "latest": "def5678", "behind": True,
+        "updatable": True, "notes": ["fix: thing", "feat: other"], "error": None,
+    })
+    r = client.get("/api/update/check")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["behind"] is True and len(d["notes"]) == 2
+
+
+def test_update_apply_then_status(client, monkeypatch):
+    from services import updater
+    state = {"running": False, "stage": "idle", "progress": 0, "message": "",
+             "error": None, "started_at": None, "finished_at": None}
+    monkeypatch.setattr(updater, "apply_update", lambda: dict(state))
+    monkeypatch.setattr(updater, "get_status", lambda: dict(state))
+    r = client.post("/api/update/apply")
+    assert r.status_code == 200
+    assert client.get("/api/update/status").json()["stage"] == "idle"
+
+
+def test_update_check_not_updatable(client, monkeypatch):
+    from services import updater
+    monkeypatch.setattr(updater, "check_update", lambda: {
+        "current": "abc", "latest": "abc", "behind": False,
+        "updatable": False, "notes": [], "error": "not_updatable",
+    })
+    d = client.get("/api/update/check").json()
+    assert d["error"] == "not_updatable" and d["updatable"] is False
