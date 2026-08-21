@@ -172,14 +172,31 @@ def main():
             time.sleep(3600)
         return
 
+    # JS bridge so the custom (frameless) window controls in the header can
+    # minimize / maximize / close the native window.
+    class WindowApi:
+        def minimize(self):
+            try: webview.windows[0].minimize()
+            except Exception: pass
+        def toggle_maximize(self):
+            try: webview.windows[0].toggle_fullscreen()
+            except Exception: pass
+        def close(self):
+            try: webview.windows[0].destroy()
+            except Exception: pass
+
     webview.create_window(
         "VirusGPT",
         url,
+        js_api=WindowApi(),
         width=1280,
         height=800,
         min_size=(900, 600),
+        frameless=True,
+        easy_drag=True,
         text_select=True,
         confirm_close=False,
+        background_color="#05070a",
     )
     try:
         webview.start()
