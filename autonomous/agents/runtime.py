@@ -88,7 +88,6 @@ class AgentRuntime:
                 except Exception:
                     args = {}
                 result = await agent_tools.run_tool(name, args)
-                ok = not (isinstance(result, dict) and result.get("error"))
                 # Capture real generated-image URLs so the result is correct
                 # even if the model mis-states the URL in its summary.
                 if name == "render_image" and isinstance(result, dict) and result.get("status") == "completed":

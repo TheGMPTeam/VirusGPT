@@ -157,7 +157,6 @@ def _memory_maintain():
     # Light self-check: ask the local memory store for its status. If the store
     # is healthy this keeps the bundle "touched"; failures are logged only.
     try:
-        import asyncio
         from memory import store as ms
         s = ms.memory_status()
         if s:

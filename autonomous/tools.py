@@ -16,10 +16,8 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-import os
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List
 
@@ -113,7 +111,6 @@ async def _web_search(args: dict) -> dict:
     if not q:
         return {"error": "missing query"}
     try:
-        import httpx
         from services import get_client
         r = await get_client().post(
             "https://html.duckduckgo.com/html/",
@@ -137,7 +134,6 @@ async def _web_fetch(args: dict) -> dict:
     if not url:
         return {"error": "missing url"}
     try:
-        import httpx
         from services import get_client
         r = await get_client().get(url, timeout=15.0, follow_redirects=True,
                                    headers={"User-Agent": "Mozilla/5.0 VirusGPT"})

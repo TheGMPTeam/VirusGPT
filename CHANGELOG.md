@@ -45,6 +45,18 @@ semantic versioning (`v1.0` = first tagged, installable release).
 - **Mission live updates were unreliable on mobile.** The UI now polls
   `/api/autonomous/status/{id}` every 1.5s instead of relying on `EventSource`/SSE.
 
+### Maintenance
+- Static-cleanup pass: removed ~20 unused imports across `server.py`, `desktop/run.py`,
+  `services/comfyui.py`, `autonomous/{conftest,events,database,tools,test_orchestrator,
+  selfdev,runtime}.py`, `gateway/service.py`, `memory/store.py`. `pyflakes` is clean
+  (only harmless typing-annotation false-positives remain); `compileall` passes.
+- **Fixed `vgctl.py doctor` crash** — the check-mark formatter referenced an undefined
+  `yellow()` (only `green`/`red`/`yel` are defined), raising `NameError` on every
+  `doctor` run. Now uses `yel()`.
+- `docs/STATUS.md` corrected: the ComfyUI service client (`services/comfyui.py`),
+  `services` config block, `/api/services/status`, `/api/generate` and
+  `/api/generated/{file}` were previously marked 🔴 "not built" but are live.
+
 ## [v1.0] - 2026-08-20
 
 First tagged, public, installable release.

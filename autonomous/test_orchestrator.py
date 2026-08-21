@@ -10,9 +10,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
-import autonomous.database as dbmod
 import autonomous.orchestrator as orch
 from autonomous.orchestrator import Supervisor, INTERRUPTIBLE_STATUSES
 

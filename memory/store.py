@@ -10,7 +10,6 @@ The store is deliberately dependency-free (stdlib only) and deterministic.
 from __future__ import annotations
 
 import re
-import json
 from pathlib import Path
 from typing import Optional
 
@@ -277,7 +276,6 @@ def memory_autolink() -> dict:
     new links between concepts that share strong token overlap (graph linking)."""
     ensure_seed()
     concepts = list_concepts()
-    by_name = {c["name"].lower(): c for c in concepts}
     changed = 0
     proposals = []
     # 1) normalize: ensure body [[links]] == frontmatter links

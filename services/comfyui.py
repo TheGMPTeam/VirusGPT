@@ -17,7 +17,6 @@ clear error dict (never raises), so the agent tool and /api/health stay green.
 """
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional

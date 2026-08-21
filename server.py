@@ -9,11 +9,9 @@ from __future__ import annotations
 import json
 import asyncio
 import os
-import re
 import time
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -591,7 +589,6 @@ async def delete_session(name: str):
 # --------------------------------------------------------------------------
 from autonomous.database import init_db as _init_auto_db, Repository as AutoRepo, auto_heal_db
 from autonomous.orchestrator import Supervisor
-from autonomous.events import bus as auto_bus
 
 # Self-heal: if the SQLite DB is corrupted, restore the newest good backup
 # before any writes happen.
@@ -779,8 +776,8 @@ async def autonomous_resume(mission_id: str):
 @app.get("/api/autonomous/artifact")
 async def autonomous_artifact(path: str):
     """Serve a mission artifact file from disk (read-only, path-confined)."""
-    from pathlib import PurePath
-    p = Path(path).resolve()
+    from pathlib import Path as PPath
+    p = PPath(path).resolve()
     # Confine to the data dir so we never serve arbitrary filesystem paths.
     allowed = (ROOT / "data").resolve()
     try:

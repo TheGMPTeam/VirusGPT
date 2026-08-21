@@ -185,7 +185,7 @@ def cmd_doctor(args):
         problems.append(("FAIL", f"server health unreachable at {base}/api/health"))
         print(red(f"[FAIL] server health unreachable at {base}/api/health"))
     else:
-        print(green(f"[ok] server health OK") + f"  ollama={data.get('ollama')} tts={data.get('tts')} whisper={data.get('whisper')}")
+        print(green("[ok] server health OK") + f"  ollama={data.get('ollama')} tts={data.get('tts')} whisper={data.get('whisper')}")
         if not data.get("ollama"):
             problems.append(("FAIL", "ollama backend down (LLM will not work)"))
         if not data.get("tts"):
@@ -462,7 +462,7 @@ def cmd_audit(args):
             n_info += 1
         if not ok:
             n_fail += 1
-        mark = green("PASS") if ok else (red("FAIL") if level == "CRITICAL" else yellow("WARN"))
+        mark = green("PASS") if ok else (red("FAIL") if level == "CRITICAL" else yel("WARN"))
         line = f"  [{mark}] ({level}) {name}"
         if detail and (not ok):
             line += f"  -> {detail}"

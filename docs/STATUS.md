@@ -65,17 +65,18 @@
 | vgctl CLI | ✅ | health/doctor/fix/settings (+ memory/gateway planned) |
 | GitHub Actions CI | ✅ | green on push |
 
-## Creative / publishing pipeline (the big next build)
+## Creative / publishing pipeline
 | Feature | Status | Notes |
 |---|---|---|
 | Architecture + phased plan | ✅ | `docs/INTEGRATIONS_PLAN.md` |
 | Windows-box findings (Hermes memory) | ✅ | recorded as graph node; ComfyUI/Blender/FFmpeg/n8n already on Win box |
-| service clients (n8n/comfyui/blender/ffmpeg/marton) | 🔴 | planned ONE file per service; NOT built yet |
-| config `services` block | 🔴 | reverted earlier; re-add when clients land |
-| `/api/services/status` | 🔴 | reverted; re-add with clients |
-| media tools in harness | 🔴 | render_image/video, edit_video, publish_* |
-| pipeline orchestration (research→build→test→check→upload) | 🔴 | `autonomous/pipeline.py` |
-| marton.ai connector (Gmail/YouTube/Snapchat) | 🔴 | the ONLY external integration not existing anywhere |
+| service clients (comfyui) | ✅ | `services/comfyui.py` live: health/models/render_image; degrades gracefully |
+| config `services` block | ✅ | `config.json` `services` (n8n/comfyui/blender/ffmpeg/marton) + VG_* env overrides |
+| `/api/services/status` | ✅ | live; reports ComfyUI enabled/healthy/models |
+| `/api/generate` + `/api/generated/{file}` | ✅ | image gen via ComfyUI, served from `data/generated/` (path-confined) |
+| media tools in harness (render_image) | 🟡 | `render_image` tool wired into autonomous `tools.py`; video/edit/publish planned |
+| pipeline orchestration (research→build→test→check→upload) | 🔴 | `autonomous/pipeline.py` not built |
+| marton.ai connector (Gmail/YouTube/Snapchat) | 🔴 | only external integration not existing anywhere |
 | Studio UI tab | 🔴 | live stage tracker + preview |
 | **Desktop app build-out** | ✅ | pywebview shell + `desktop/build-*.py`; native window wraps `:8500` (see ROADMAP §1) |
 
