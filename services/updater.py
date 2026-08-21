@@ -240,16 +240,16 @@ def _run_update(target: str | None = None):
 
         # 2) Launch the build + relaunch DETACHED (own session, independent of this
         #    process) so it can replace /Applications/VirusGPT.app after we exit.
-        #    The channel file is written AFTER the git reset (which would otherwise
-        #    wipe it back to the committed value) so the rebuilt app ships with the
-        #    chosen channel.
+        #    The channel file is written BEFORE the build (the in-process git reset
+        #    above would otherwise wipe it back to the committed value), so the
+        #    rebuilt app ships with the chosen channel.
         _set("rebuilding", 50, "Rebuilding app (detached)…")
         log_path = src / "update_runner.log"
         branch_json = shquote(str(src / "app" / "update_branch.json"))
         detach = (
             f'cd {shquote(str(src))} && '
-            f'{shquote(venv_py)} desktop/build-macos.py && '
             f'printf \'%s\' {shquote(json.dumps({"branch": br}))} > {branch_json} && '
+            f'{shquote(venv_py)} desktop/build-macos.py && '
             f'open {shquote(str(apps_app))}'
         )
         # start_new_session -> detached from the app; we do NOT wait on it.
