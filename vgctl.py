@@ -94,7 +94,13 @@ def http_get_json(url: str, timeout: float = 5.0):
 
 
 def run(cmd, **kw):
-    return subprocess.run(cmd, shell=isinstance(cmd, str), text=True,
+    # Always exec without a shell: strings are shlex-split into argv. This
+    # avoids shell=True (command injection / CWE-78) and is safe for the
+    # static internal commands vgctl builds.
+    if isinstance(cmd, str):
+        import shlex
+        cmd = shlex.split(cmd)
+    return subprocess.run(cmd, text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
 
 

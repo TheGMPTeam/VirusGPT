@@ -113,7 +113,15 @@ def run_cron_job(job: dict):
     if cmd:
         log(f"cron: running user job '{name}': {cmd}")
         try:
-            subprocess.run(cmd, shell=True, cwd=ROOT, timeout=300,
+            # Run without shell=True: if the stored command is a list, exec it
+            # directly; if it's a string, split it into argv (no shell parsing,
+            # so no command-injection via shell metacharacters).
+            if isinstance(cmd, list):
+                argv = [str(c) for c in cmd]
+            else:
+                import shlex
+                argv = shlex.split(str(cmd))
+            subprocess.run(argv, cwd=ROOT, timeout=300,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:  # noqa
             log(f"cron job '{name}' error: {e}")

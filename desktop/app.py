@@ -151,7 +151,6 @@ def main():
     # Use the fixed port (default 8500). If something else already holds it
     # (e.g. a stale dev server.py / launch.sh), take it over so THIS bundle's
     # UI is what the window loads.
-    global PORT
     _free_port_8500()
     srv = threading.Thread(target=_serve, daemon=True)
     srv.start()
@@ -170,7 +169,6 @@ def main():
         print(f"[desktop] VG_NO_GUI set — serving at {url} (no window).", flush=True)
         while True:
             time.sleep(3600)
-        return
 
     # JS bridge so the custom (frameless) window controls in the header can
     # minimize / maximize / close the native window.

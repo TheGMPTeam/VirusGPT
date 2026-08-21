@@ -11,7 +11,6 @@ Linux/Windows variants use the same spec with a different --name/icon.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys

@@ -24,7 +24,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -40,10 +39,21 @@ VERSION_FILE = ROOT / "app" / "version.json"
 # Branch the updater tracks. Persisted in app/update_branch.json (default beta)
 # so the user can switch between beta and main from the popup; VG_UPDATE_BRANCH
 # (env) overrides everything. Production `main` is never auto-pulled unless chosen.
-BRANCH_FILE = ROOT / "app" / "update_branch.json"
+#
+# The file lives in the REAL SOURCE repo (resolved via get_buildinfo().source_dir),
+# NOT ROOT. When running from the frozen app, ROOT is Contents/Resources (a copy
+# that gets wiped by `git reset --hard` during an update); writing there would be
+# lost and would never reach the next rebuild. _run_update also writes the same
+# path, so both code paths stay in sync.
+def _branch_file() -> Path:
+    try:
+        src = get_buildinfo().get("source_dir") or str(ROOT)
+    except Exception:
+        src = str(ROOT)
+    return Path(src) / "app" / "update_branch.json"
 def _read_branch_file() -> str:
     try:
-        return (json.loads(BRANCH_FILE.read_text()).get("branch") or "").strip()
+        return (json.loads(_branch_file().read_text()).get("branch") or "").strip()
     except Exception:
         return ""
 def update_branch() -> str:
@@ -51,11 +61,16 @@ def update_branch() -> str:
             or _read_branch_file()
             or "beta").strip() or "beta"
 def set_branch(branch: str) -> str:
-    """Persist the tracked branch (beta/main/...). Returns the stored value."""
+    """Persist the tracked branch (beta/main/...). Returns the stored value.
+
+    Writes to the real source repo's app/update_branch.json (NOT the frozen
+    bundle), so it survives a rebuild and matches where _run_update reads.
+    """
     branch = (branch or "").strip() or "beta"
     try:
-        BRANCH_FILE.parent.mkdir(parents=True, exist_ok=True)
-        BRANCH_FILE.write_text(json.dumps({"branch": branch}))
+        bf = _branch_file()
+        bf.parent.mkdir(parents=True, exist_ok=True)
+        bf.write_text(json.dumps({"branch": branch}))
     except Exception:
         pass
     return branch
