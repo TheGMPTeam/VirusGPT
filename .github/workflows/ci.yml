@@ -45,3 +45,20 @@ jobs:
           for j in config.json; do
             [ -f "$j" ] && python -c "import json,sys; json.load(open('$j')); print('$j valid')"
           done
+
+      - name: Static lint (pyflakes)
+        run: |
+          python -m pip install -q pyflakes
+          # Fail on any undefined name / unused import in the core codebase
+          # (vendored pockettts/, whisper/ and .venv are excluded).
+          status=0
+          python -m pyflakes server.py vgctl.py desktop services autonomous gateway memory tools \
+            || status=1
+          exit $status
+
+      - name: Audit STATUS.md against the code
+        run: |
+          # scripts/audit_status.py is stdlib-only. It fails the build if
+          # docs/STATUS.md's 🔴/🟡/✅ matrix contradicts real files/routes,
+          # so the feature matrix cannot silently drift out of sync.
+          python scripts/audit_status.py

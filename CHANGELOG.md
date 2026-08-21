@@ -56,6 +56,10 @@ semantic versioning (`v1.0` = first tagged, installable release).
 - `docs/STATUS.md` corrected: the ComfyUI service client (`services/comfyui.py`),
   `services` config block, `/api/services/status`, `/api/generate` and
   `/api/generated/{file}` were previously marked 🔴 "not built" but are live.
+- `scripts/audit_status.py` — CI gate that cross-checks `docs/STATUS.md`'s
+  🔴/🟡/✅ matrix against real files, `/api/*` routes and key symbols (stdlib
+  only). Drift (a not-built item that exists, or a live item that's missing)
+  fails the build. Wired into GitHub Actions as a new CI step.
 
 ## [v1.0] - 2026-08-20
 
