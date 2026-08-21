@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from services import config as cfg
 from services import llm, tts, stt, memory
+from services import n8n as _n8n
 from services import close_client
 
 ROOT = Path(__file__).resolve().parent
@@ -547,6 +548,44 @@ async def services_status():
     })
 
 
+@app.get("/api/n8n/list")
+async def n8n_list(active_only: bool = False):
+    """List n8n workflows (delegates to services.n8n)."""
+    return JSONResponse(await _n8n.n8n_list_workflows(active_only=active_only))
+
+
+@app.post("/api/n8n/trigger")
+async def n8n_trigger(req: Request):
+    """Trigger an n8n workflow. Body: {workflow_id, data?}."""
+    body = await req.json() if (await req.body()) else {}
+    wid = (body or {}).get("workflow_id")
+    if not wid:
+        return JSONResponse({"status": "failed", "error": "missing workflow_id"}, status_code=400)
+    return JSONResponse(await _n8n.n8n_trigger_workflow(wid, (body or {}).get("data")))
+
+
+@app.post("/api/n8n/create")
+async def n8n_create(req: Request):
+    """Create (build) an n8n workflow. Body: {name, nodes, connections?, active?}."""
+    body = await req.json()
+    if not (body.get("name") and body.get("nodes")):
+        return JSONResponse({"status": "failed", "error": "missing name/nodes"}, status_code=400)
+    return JSONResponse(await _n8n.n8n_create_workflow(
+        body["name"], body["nodes"], body.get("connections"), body.get("active", False)))
+
+
+@app.get("/api/mcp/status")
+async def mcp_status():
+    """Status of the MCP bridge (server + discovered client tools)."""
+    from services import mcp_client as _mc
+    return JSONResponse({
+        "server_enabled": cfg.CONFIG.get("mcp", {}).get("server_enabled", False),
+        "server_port": cfg.CONFIG.get("mcp", {}).get("server_port"),
+        "client_enabled": _mc.mcp_client_enabled(),
+        "discovered_tools": _mc.list_mcp_tools(),
+    })
+
+
 @app.post("/api/generate")
 async def generate_image(req: Request):
     """Generate an image via ComfyUI and return a local URL.
@@ -943,6 +982,20 @@ async def _startup():
         set_loop(_asyncio.get_running_loop())
     except RuntimeError:
         pass
+
+    # MCP bridge: start the MCP SERVER (SSE) in a daemon thread, and connect the
+    # MCP CLIENT to any configured external servers + the n8n REST adapter.
+    try:
+        from services import mcp_server, mcp_client as _mc
+        if mcp_server.mcp_is_enabled():
+            import threading
+            threading.Thread(target=mcp_server.start_mcp_server, daemon=True).start()
+        if _mc.mcp_client_enabled():
+            # connect_all is async; schedule it on the event loop without
+            # blocking startup (errors are absorbed inside connect_all).
+            _asyncio.create_task(_mc.connect_all())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[startup] MCP bridge init skipped: {exc}", flush=True)
 
 
 @app.on_event("shutdown")

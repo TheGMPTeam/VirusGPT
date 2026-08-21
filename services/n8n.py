@@ -77,6 +77,103 @@ async def n8n_authenticated() -> bool:
         return False
 
 
+async def n8n_list_workflows(limit: int = 50, active_only: bool = False) -> dict:
+    """List workflows. Returns {status, count, workflows[], error?}."""
+    if not _api_key():
+        return {"status": "failed", "error": "n8n not authenticated (no API key)"}
+    try:
+        r = await get_client().get(
+            f"{_base()}{_API_PREFIX}/workflows",
+            headers=_auth_headers(),
+            params={"limit": limit},
+            timeout=_timeout(),
+        )
+        if r.status_code != 200:
+            return {"status": "failed", "error": f"n8n {r.status_code}: {r.text[:200]}"}
+        data = r.json().get("data", [])
+        if active_only:
+            data = [w for w in data if w.get("active")]
+        return {
+            "status": "ok",
+            "count": len(data),
+            "workflows": [{"id": w.get("id"), "name": w.get("name"),
+                           "active": w.get("active"), "tags": w.get("tags", [])}
+                          for w in data],
+        }
+    except Exception as exc:
+        return {"status": "failed", "error": f"n8n error: {exc}"}
+
+
+async def n8n_get_workflow(workflow_id: str) -> dict:
+    """Fetch a single workflow definition (nodes/connections)."""
+    if not _api_key():
+        return {"status": "failed", "error": "n8n not authenticated (no API key)"}
+    try:
+        r = await get_client().get(
+            f"{_base()}{_API_PREFIX}/workflows/{workflow_id}",
+            headers=_auth_headers(), timeout=_timeout(),
+        )
+        if r.status_code != 200:
+            return {"status": "failed", "error": f"n8n {r.status_code}: {r.text[:200]}"}
+        return {"status": "ok", "workflow": r.json()}
+    except Exception as exc:
+        return {"status": "failed", "error": f"n8n error: {exc}"}
+
+
+async def n8n_trigger_workflow(workflow_id: str, data: dict | None = None) -> dict:
+    """Trigger (execute) a workflow by id. `data` becomes the execution input.
+
+    Used by the MCP tool `n8n_trigger_workflow` and the /api/n8n/execute route.
+    Returns {status, execution_id?, error?}.
+    """
+    if not _api_key():
+        return {"status": "failed", "error": "n8n not authenticated (no API key)"}
+    try:
+        r = await get_client().post(
+            f"{_base()}{_API_PREFIX}/workflows/{workflow_id}/execute",
+            headers=_auth_headers(), json=data or {}, timeout=_timeout(120),
+        )
+        if r.status_code not in (200, 201):
+            return {"status": "failed", "error": f"n8n {r.status_code}: {r.text[:200]}"}
+        body = r.json()
+        return {
+            "status": "ok",
+            "execution_id": body.get("executionId") or body.get("id"),
+            "mode": body.get("mode"),
+            "started_at": body.get("startedAt"),
+        }
+    except Exception as exc:
+        return {"status": "failed", "error": f"n8n error: {exc}"}
+
+
+async def n8n_create_workflow(name: str, nodes: list, connections: dict | None = None,
+                              active: bool = False) -> dict:
+    """Create a new workflow (build). `nodes` is the n8n node list.
+
+    Returns {status, id?, name?, error?}.
+    """
+    if not _api_key():
+        return {"status": "failed", "error": "n8n not authenticated (no API key)"}
+    payload = {
+        "name": name,
+        "nodes": nodes,
+        "connections": connections or {},
+        "active": active,
+        "settings": {"executionOrder": "v1"},
+    }
+    try:
+        r = await get_client().post(
+            f"{_base()}{_API_PREFIX}/workflows",
+            headers=_auth_headers(), json=payload, timeout=_timeout(),
+        )
+        if r.status_code not in (200, 201):
+            return {"status": "failed", "error": f"n8n {r.status_code}: {r.text[:200]}"}
+        body = r.json()
+        return {"status": "ok", "id": body.get("id"), "name": body.get("name")}
+    except Exception as exc:
+        return {"status": "failed", "error": f"n8n error: {exc}"}
+
+
 async def n8n_status() -> dict:
     """Status dict consumed by /api/services/status (mirrors comfyui block)."""
     enabled = cfg.service_cfg("n8n").get("enabled", False)

@@ -55,6 +55,15 @@ _DEFAULTS: dict[str, Any] = {
         "max_history": 24,           # keep only the last N messages (small context)
         "max_history_tokens": 2800,  # hard cap on history chars sent to the model
     },
+    # MCP (Model Context Protocol) bridge. VirusGPT is BOTH an MCP server
+    # (exposes chat / image-gen / n8n workflow tools) and an MCP client
+    # (connects to external MCP servers + an n8n-REST adapter).
+    "mcp": {
+        "server_enabled": True,     # run the MCP server (SSE) so others can call us
+        "server_port": 8700,        # co-exists with the FastAPI :8500 app
+        "client_enabled": True,     # connect to external MCP servers on startup
+        "clients": [],              # e.g. [{"name":"my-mcp","transport":"sse","url":"http://host:9000/sse"}]
+    },
 }
 
 
