@@ -18,6 +18,7 @@ function initUpdates(){
   const notes = document.getElementById('up-notes');
   const curEl = document.getElementById('up-current');
   const latEl = document.getElementById('up-latest');
+  const hintEl = document.getElementById('up-hint');
 
   let _pollTimer = null;
   let _tracked = 'beta';
@@ -32,6 +33,7 @@ function initUpdates(){
   function open(){
     if(overlay) overlay.classList.remove('hidden');
     msg.textContent = '';
+    if(hintEl) hintEl.textContent = '';
     if(applyBox) applyBox.classList.add('hidden');
     prog.classList.add('hidden');
     loadFeatures().then(fetchVersionThenCheck);
@@ -144,10 +146,12 @@ function initUpdates(){
           same.notes.map(n=>`<div class="up-note">• ${escapeHtml(n)}</div>`).join('');
       }
       renderTargets(same, other);
+      if(hintEl) hintEl.textContent = '';
       if(!same.behind){
-        msg.textContent = 'You are on the latest ' + _tracked + '. You can still switch channels below.';
+        if(msg) msg.textContent = 'You are on the latest ' + _tracked + '.';
+        if(hintEl) hintEl.textContent = 'Or switch channels using the button above.';
       } else {
-        msg.textContent = 'An update is available.';
+        if(msg) msg.textContent = 'An update is available.';
       }
     }catch(e){
       msg.textContent = 'Check failed: ' + (e.message||e);
