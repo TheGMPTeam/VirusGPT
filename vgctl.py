@@ -498,15 +498,35 @@ def cmd_desktop(args):
         return subprocess.call([sys.executable, str(script)])
     if action == "install-deps":
         req = ROOT / "desktop" / "requirements.txt"
-        rc = subprocess.call([sys.executable, "-m", "pip", "install", "-r", str(req)])
+        # On Windows, run the supported installer (desktop/install-windows.ps1)
+        # via PowerShell — a fresh box may not have `python` on PATH, and the
+        # script bootstraps via the Python Launcher (`py`).
+        if sys.platform.startswith("win"):
+            ps1 = ROOT / "desktop" / "install-windows.ps1"
+            if ps1.exists():
+                return subprocess.call(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ps1)]
+                )
+            # Fallback: direct pip via powershell using the venv python.
+            py = Path(sys.executable).as_posix().replace("'", "''")
+            ps = f'& "{py}" -m pip install -r "{req.as_posix()}"'
+            rc = subprocess.call(["powershell", "-NoProfile", "-Command", ps])
+        else:
+            rc = subprocess.call([sys.executable, "-m", "pip", "install", "-r", str(req)])
         if rc != 0:
             return rc
         # Re-apply the pywebview patch (dark/frameless/non-flashing macOS window)
-        # so a fresh venv build still renders correctly.
+        # so a fresh venv build still renders correctly. No-op off macOS.
         patch = ROOT / "desktop" / "patch_pywebview.py"
         if patch.exists():
             print("[install-deps] applying pywebview patch for dark frameless window…")
-            prc = subprocess.call([sys.executable, str(patch)])
+            if sys.platform.startswith("win"):
+                py = Path(sys.executable).as_posix().replace("'", "''")
+                prc = subprocess.call(
+                    ["powershell", "-NoProfile", "-Command", f'& "{py}" "{patch.as_posix()}"']
+                )
+            else:
+                prc = subprocess.call([sys.executable, str(patch)])
             if prc != 0:
                 print(red("pywebview patch failed — desktop window may flash white"))
         return 0
