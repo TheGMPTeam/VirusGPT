@@ -34,8 +34,7 @@ function initUpdates(){
     msg.textContent = '';
     if(applyBox) applyBox.classList.add('hidden');
     prog.classList.add('hidden');
-    loadFeatures();
-    fetchVersionThenCheck();
+    loadFeatures().then(fetchVersionThenCheck);
     // Auto-run the check so update targets (incl. switch-to-other-channel) show
     // immediately — no extra "Check" click needed.
     doCheck();
@@ -48,9 +47,17 @@ function initUpdates(){
         _features = await r.json();
         _tracked = (_features.channel === 'main') ? 'main' : 'beta';
         _other = (_tracked === 'main') ? 'beta' : 'main';
+        // re-paint the Current line now that the real channel is known
+        paintCurrent();
       }
     }catch(e){ /* keep defaults */ }
     applyFeatureGating();
+  }
+  // Paint the popup's "Current" version line (with channel tag). Uses the
+  // build-injected global when present.
+  function paintCurrent(){
+    const g = (window.__VG_VERSION)||{};
+    if(g.version){ curEl.textContent = `v${g.version} · ${g.commit}${channelTag()}`; }
   }
   function closePopup(){
     if(overlay) overlay.classList.add('hidden');
