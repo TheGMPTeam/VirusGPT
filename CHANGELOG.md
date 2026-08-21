@@ -102,7 +102,11 @@ semantic versioning (`v1.0` = first tagged, installable release).
   re-enables auto-play for subsequent messages; boot seeds it from the saved
   `TTS_ON` state. (Term "autopsy" in the request = the speaker/auto-play
   toggle.)
-- **Sentence splitter unit + full UI regression suite added** (see Added).
+- **Desktop bundle rebuilt** (`dist/VirusGPT.app`) — frozen with the corrected
+  frontend (per-sentence `splitSentences`/`playSingle`, `/clear` & `/new` mute
+  auto-play, tool-call logging) and the latest `server.py`. Verified: the frozen
+  app boots in-process, binds `:8500`, `/api/health` returns live upstream status,
+  and the WebView window opens. `dist/` is gitignored by design.
  
 ## [v1.0] - 2026-08-20
 
