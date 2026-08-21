@@ -32,3 +32,5 @@ build/
 dist/
 # Frozen desktop .app after it is moved into the project's apps/ folder
 apps/
+# Generated per-build version stamp (written by desktop/build-*.py)
+app/version.json

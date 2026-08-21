@@ -523,3 +523,19 @@ def test_enter_sends(browser):
     page.wait_for_selector(".msg.user", timeout=3000)
     assert page.query_selector(".msg.user") is not None
     ctx.close()
+
+
+# ---------------------------------------------------------------------------
+# Bottom status bar shows version + commit
+# ---------------------------------------------------------------------------
+def test_version_bar_shows_version(browser):
+    ctx, page = _new_page(browser)
+    # Simulate the build injecting the version global into the frozen index.html.
+    page.add_init_script(
+        "window.__VG_VERSION = {version:'1.0', commit:'deadbeef'};"
+    )
+    page.reload()
+    page.wait_for_timeout(600)
+    txt = page.evaluate("document.getElementById('version-info')?.textContent")
+    assert txt == "v1.0 · deadbeef", f"version bar wrong: {txt!r}"
+    ctx.close()

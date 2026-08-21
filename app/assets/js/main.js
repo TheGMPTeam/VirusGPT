@@ -1,6 +1,21 @@
 /* main.js — boot order. Loaded last; calls into all the init*() functions and
    kicks off health polling + first paint. */
 
+// Show version + commit in the bottom status bar. Prefers the build-injected
+// global (set by desktop/build-*.py into the frozen index.html), then falls back
+// to fetching /version.json, then a plain "dev" label for unbuilt dev runs.
+function showVersion(){
+  const el=document.getElementById('version-info');
+  if(!el) return;
+  const paint=(v)=>{ el.textContent = v ? `v${v.version} · ${v.commit}` : 'dev'; };
+  if(window.__VG_VERSION && window.__VG_VERSION.version){
+    paint(window.__VG_VERSION); return;
+  }
+  fetch('version.json', {cache:'no-store'}).then(r=>r.ok?r.json():null)
+    .then(j=>{ if(j && j.version) paint(j); else el.textContent='dev'; })
+    .catch(()=>{ el.textContent='dev'; });
+}
+
 function boot(){
   try{
     setTheme(lsGet('vg_theme', 'cyber'));
@@ -23,6 +38,7 @@ function boot(){
     // off until the user clicks the speaker again.
     sessionAutoPlay = !!TTS_ON;
     refreshHealth(); setInterval(refreshHealth,15000);
+    showVersion();
     window.addEventListener('resize',()=>{ if(document.querySelector('.tab[data-tab=memory]').classList.contains('active')){ clearTimeout(window.__mgResizeT); window.__mgResizeT=setTimeout(loadMemoryGraph,200); } });
   }catch(err){
     console.error('[VG boot error]', err);
