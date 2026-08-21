@@ -60,19 +60,27 @@ def set_branch(branch: str) -> str:
         pass
     return branch
 def get_branches() -> dict:
-    """List branches the updater can target: always main + beta (if they exist
-    on origin), plus whatever is currently tracked."""
+    """List the channels the updater can target. `main` and `beta` are the two
+    fixed channels and are ALWAYS offered (so the user can always switch), plus
+    whatever branch is currently tracked (in case it differs)."""
     tracked = update_branch()
-    wanted = ["beta", "main"]
-    available = []
-    for b in wanted:
-        # only offer branches that exist locally or on origin
-        if _git(f"rev-parse", "--verify", f"origin/{b}", cwd=ROOT, timeout=20) or \
-           _git(f"rev-parse", "--verify", b, cwd=ROOT, timeout=20):
-            available.append(b)
+    available = ["beta", "main"]
     if tracked not in available:
         available.append(tracked)
     return {"available": available, "tracked": tracked}
+
+
+# Feature flags keyed on the tracked channel. `main` is the STABLE channel:
+# incomplete / experimental features are disabled there and only enabled on
+# `beta`. The in-app UPDATER is NOT gated — updating works from any channel
+# (you can update from main, or switch to beta and update). Add experimental
+# features here as they are built.
+def features() -> dict:
+    return {
+        "channel": update_branch(),
+        "is_beta": update_branch() == "beta",
+        "in_app_updater": True,   # updating always allowed
+    }
 
 # In-flight update state, polled by the frontend via /api/update/status.
 _STATE = {

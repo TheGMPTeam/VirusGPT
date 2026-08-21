@@ -122,6 +122,13 @@ async def api_update_branch(req: Request):
     return JSONResponse({"branch": branch, **_updater.get_branches()})
 
 
+@app.get("/api/features")
+async def api_features():
+    # Channel-gated feature flags: main = stable (experimental disabled),
+    # beta = experimental features enabled.
+    return JSONResponse(_updater.features())
+
+
 # -------------------------------------------------------------------------
 # Chat — proxy to Ollama, stream SSE {content|done|error}
 # -------------------------------------------------------------------------

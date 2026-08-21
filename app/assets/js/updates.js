@@ -20,6 +20,14 @@ function initUpdates(){
 
   let _pollTimer = null;
   let _tracked = 'beta';
+  let _features = { "in_app_updater": true, "is_beta": true };
+
+  function applyFeatureGating(){
+    // Updating is always allowed (from main or beta). Experimental UI flags can
+    // be toggled here later; for now the channel chips + update controls stay on.
+    const note = document.getElementById('up-feature-note');
+    if(note) note.classList.add('hidden');
+  }
 
   function renderBranches(list, tracked){
     _tracked = tracked;
@@ -57,6 +65,7 @@ function initUpdates(){
       }
     }catch(e){ renderBranches([b], b); }
     // re-check against the newly selected branch
+    loadFeatures();
     doCheck();
   }
 
@@ -66,8 +75,17 @@ function initUpdates(){
     apply.classList.add('hidden');
     prog.classList.add('hidden');
     loadBranches();
+    loadFeatures();
     // Immediately show the running version from the injected global / version.json.
     fetchVersionThenCheck();
+  }
+
+  async function loadFeatures(){
+    try{
+      const r = await fetch('api/features', {cache:'no-store'});
+      if(r.ok){ _features = await r.json(); }
+    }catch(e){ /* keep defaults */ }
+    applyFeatureGating();
   }
   function closePopup(){
     if(overlay) overlay.classList.add('hidden');
