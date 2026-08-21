@@ -33,6 +33,25 @@ ROOT = Path(__file__).resolve().parent.parent
 PORT = int(os.environ.get("VG_PORT", "8500"))
 NO_GUI = os.environ.get("VG_NO_GUI", "").lower() in ("1", "true", "yes")
 
+
+def _free_port_8500():
+    """Kill any process currently holding TCP 8500 so this app can bind it
+    (e.g. a stale dev server.py started by launch.sh). Best-effort and safe:
+    only targets the single port we need. If nothing holds it, this is a no-op.
+    This makes the desktop app the authoritative instance on 8500 instead of
+    silently loading another server's UI in its window."""
+    try:
+        import subprocess
+        out = subprocess.run(["lsof", "-ti", "tcp:8500"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+        for pid in out.split():
+            try:
+                subprocess.run(["kill", "-9", pid], timeout=10)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 def _backend_url_from_config() -> str:
     """Read an optional remote backend URL from config.json (desktop.backend_url)."""
     cfg_path = ROOT / "config.json"

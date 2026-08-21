@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="app/assets/images/logo.svg" alt="VirusGPT logo" width="120">
+  <img src="app/assets/images/logo_comfy.png" alt="VirusGPT logo (generated with ComfyUI)" width="120">
 </p>
 
 <h1 align="center">VirusGPT</h1>
