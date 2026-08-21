@@ -335,6 +335,56 @@ def test_play_all_button_streams_every_sentence(browser):
     ctx.close()
 
 
+def test_tts_audio_pruned_when_session_removed(browser):
+    """REGRESSION: every generated TTS clip is tracked; when its session is
+    removed/deleted, that audio (and its blob URL) is pruned — and any other
+    tracked audio whose room no longer exists is swept too."""
+    ctx, page = _new_page(browser)
+    page.evaluate("TTS_ON=true; sessionAutoPlay=true;")
+    # play one clip in the current (chat-1) session
+    page.evaluate("playSentenceNow('Audio for session one.', selectedPersonaObj());")
+    page.wait_for_timeout(1200)
+    before = page.evaluate("Object.keys(sessionAudio)")
+    assert len(before) >= 1, f"expected audio tracked for a session, got {before}"
+    # simulate the session being removed from the room list (delete path)
+    page.evaluate(
+        "(()=>{ const i=rooms.findIndex(r=>r.name===currentRoom); "
+        "if(i>=0) rooms.splice(i,1); pruneOrphanedAudio(); })()")
+    after = page.evaluate(
+        "({keys: Object.keys(sessionAudio), "
+        "total: Object.values(sessionAudio).reduce((a,x)=>a+x.length,0)})")
+    assert after["total"] == 0, f"orphaned session audio not pruned: {after}"
+    ctx.close()
+
+
+def test_autoplay_stream_plays_each_sentence_once_no_loop(browser):
+    """REGRESSION for the streaming auto-play loop bug: when feedTTS() is called
+    repeatedly with a GROWING buffer (real token streaming), drainSentences must
+    emit each complete sentence exactly once — never re-queue sentences that were
+    already spoken. The user reported auto-play 'keeps playing every sentence
+    before the current one' / 'loops every sentence'."""
+    ctx, page = _new_page(browser)
+    # Speaker ON + session auto-play ON, so the streaming path enqueues audio.
+    page.evaluate("TTS_ON=true; sessionAutoPlay=true; ttsBuf=''; ttsDone=0; ttsQueue=[];")
+    tts = _tts_collector(page)
+    # Simulate a streamed reply arriving in token chunks (the exact failure mode).
+    chunks = ["First ", "sentence. ", "Second ", "sentence ", "here. ", "Third ", "one ", "too."]
+    for c in chunks:
+        page.evaluate("(function(){ feedTTS(arguments[0], selectedPersonaObj()); })", c)
+        page.wait_for_timeout(20)
+    page.evaluate("flushTTS(selectedPersonaObj());")
+    page.wait_for_timeout(4000)  # allow the serial queue to drain (silent wav)
+    texts = _tts_texts(tts)
+    # Exactly 3 sentences, each requested once — no duplicate / re-queued loops.
+    assert len(texts) == 3, f"expected 3 distinct sentences, got {len(texts)}: {texts}"
+    assert "First sentence." in texts
+    assert "Second sentence here." in texts
+    assert "Third one too." in texts
+    state = page.evaluate("({q: ttsQueue.length, playing: ttsPlaying})")
+    assert state["q"] == 0, f"queue should be drained, got {state}"
+    ctx.close()
+
+
 def test_play_all_no_infinite_loop_when_onended_never_fires(browser):
     """REGRESSION: on WKWebView/blob-mp3 the Audio 'ended' event can fail to fire.
     Previously playTTS() awaited onended alone, so the serial queue hung on the

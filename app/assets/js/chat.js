@@ -57,6 +57,7 @@ async function runSlashCommand(raw){
     $('#messages').innerHTML='';
     // A fresh session is quiet for streaming auto-play until the speaker is on.
     sessionAutoPlay=false; stopTTS();
+    pruneSessionAudio(currentRoom);   // revoke/remove this session's TTS audio too
     pushMessage('system','🧹 Session cleared.');
     return;
   }
@@ -218,6 +219,9 @@ async function send(text){
   const msgs=[{role:'system',content:sys}, ...ctx.map(m=>({role:m.role,content:m.content})), {role:'user',content:text}];
   pushMessage('user',text);
   const bot=addBotMsg(persona); currentBot=bot; let acc='',gotError=false; const myToken=++runToken; currentAbort=new AbortController();
+  // Start this reply's TTS stream from a clean buffer so a leftover partial from
+  // a previous turn can never be prepended/replayed into the new stream.
+  ttsBuf=''; ttsDone=0;
   $('#btn-send').disabled=true;
   try{
     const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:msgs}),signal:currentAbort.signal});

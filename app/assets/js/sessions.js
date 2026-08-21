@@ -28,16 +28,20 @@ function renderSessions(){
     const del = document.createElement('button');
     del.className='sbtn'; del.textContent='🗑'; del.title='Remove';
     del.onclick=(e)=>{ e.stopPropagation(); if(rooms.length<=1){ alert('Keep at least one session.'); return; } if(!confirm('Remove session "'+r.name+'"?')) return;
+      pruneSessionAudio(r.name);   // revoke/remove that session's TTS audio
       const idx=rooms.indexOf(r); rooms.splice(idx,1);
       if(currentRoom===r.name){ currentRoom=rooms[0].name; switchRoom(currentRoom); }
+      pruneOrphanedAudio();   // drop any other audio whose room is now gone
       saveJSON('vg_rooms',rooms); renderSessions(); };
     row.appendChild(rename); row.appendChild(del);
     row.onclick=()=>switchRoom(r.name);
     list.appendChild(row);
   });
 }
-function switchRoom(name){ currentRoom=name; $('#messages').innerHTML=''; (activeRoom().messages||[]).forEach(m=>addMsgEl(m.role,m.content, personaByName(m.persona))); renderSessions(); renderPersonas(); }
+function switchRoom(name){ const old=currentRoom; currentRoom=name; pruneSessionAudio(old); pruneOrphanedAudio(); $('#messages').innerHTML=''; (activeRoom().messages||[]).forEach(m=>addMsgEl(m.role,m.content, personaByName(m.persona))); renderSessions(); renderPersonas(); }
 function newSession(){
+  pruneSessionAudio(currentRoom);   // drop audio from the room we're leaving
+  pruneOrphanedAudio();
   let n=1, name;
   do { name='chat-'+n; n++; } while(rooms.some(r=>r.name===name));
   const rm={name, messages:[], personas: personas.map(p=>p.name)};

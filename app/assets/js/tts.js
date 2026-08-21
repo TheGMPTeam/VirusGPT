@@ -7,6 +7,34 @@ let ttsQueue=[];           // [{text, persona}] played strictly in order, one at
 let ttsPlaying=false;
 let ttsCurrentAudio=null;  // the single Audio element currently sounding (so we never overlap)
 let audioUnlocked=false;
+// Per-session audio registry: roomName -> [{el, url}] so object URLs can be
+// revoked and <audio> nodes removed when a session is removed / deleted /
+// switched (prevents leaked blob URLs + orphaned audio elements).
+let sessionAudio = {};
+function _trackAudio(room, el, url){
+  if(!room) return;
+  (sessionAudio[room] = sessionAudio[room] || []).push({el, url});
+}
+function pruneSessionAudio(room){
+  const arr = sessionAudio[room]; if(!arr) return;
+  for(const a of arr){
+    try{ if(a.el===ttsCurrentAudio) ttsCurrentAudio=null; }catch(e){}
+    try{ if(a.el){ a.el.pause(); a.el.remove(); } }catch(e){}
+    try{ if(a.url) URL.revokeObjectURL(a.url); }catch(e){}
+  }
+  delete sessionAudio[room];
+}
+// Remove every tracked audio clip whose room no longer exists in `rooms`
+// (e.g. a session was deleted elsewhere, or localStorage changed). Keeps the
+// registry from leaking blob URLs / orphaned <audio> nodes for dead sessions.
+function pruneOrphanedAudio(){
+  const live = new Set((typeof rooms!=='undefined' && rooms) ? rooms.map(r=>r.name) : []);
+  for(const room of Object.keys(sessionAudio)){
+    if(!live.has(room)) pruneSessionAudio(room);
+  }
+}
+// Best-effort periodic sweep so orphaned audio never accumulates.
+setInterval(pruneOrphanedAudio, 15000);
 /* Per-session auto-play. After /clear or /new the session starts muted for
    streaming auto-play; toggling the speaker button (TTS_ON) re-enables it. */
 let sessionAutoPlay = false;
@@ -49,55 +77,37 @@ function playSentenceNow(text, persona){
   ttsQueue.push({text:c, persona}); pumpTTS();
 }
 function drainSentences(final, persona){
-  // Extract complete sentences (ending in . ! ? or a blank newline run).
-  // A persistent read offset (ttsDone) guarantees we never re-emit already-spoken
-  // text and never drop text — this is the "sentence linking" that keeps a
-  // streamed reply playing as one continuous sequence.
-  // NOTE: the prior regex /[^.!?\n]*[.!?]+/ accidentally spanned across dots and
-  // matched the WHOLE buffer, so each sentence was never isolated; we now recover
-  // real sentence boundaries from the not-yet-emitted tail when that happens.
-  let m; const collected=[];
-  const re=/[^.!?\n]*[.!?]+|\n+/g;
-  while((m=re.exec(ttsBuf))!==null){ collected.push({s:ttsBuf.slice(ttsDone, m.lastIndex), end:m.lastIndex}); }
-  // Fallback: if the (broken) regex spanned the whole buffer in one go, re-derive
-  // proper sentence boundaries from the un-emitted tail ourselves.
-  let spans = collected;
-  if(collected.length>=1 && collected[0].end >= ttsBuf.length && ttsDone===0 && !final){
-    const tail = ttsBuf.slice(ttsDone);
-    const real = tail.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [tail];
-    spans = [];
-    let pos = ttsDone;
-    for(const seg of real){
-      const end = pos + seg.length;
-      spans.push({s: ttsBuf.slice(pos, end), end});
-      pos = end;
+  // Emit only COMPLETE sentences that appear AFTER the emit cursor (ttsDone),
+  // then advance the cursor by exactly the emitted length. Because we operate on
+  // ttsBuf.slice(ttsDone) every call, already-spoken text is never re-emitted —
+  // this is what stops auto-play from re-queuing every prior sentence (the
+  // "loops every sentence" bug) when feedTTS is called repeatedly during a
+  // streamed reply.
+  const tail = ttsBuf.slice(ttsDone);
+  const all = tail.match(/[^.!?]+[.!?]+/g) || [];
+  const emit = all.filter(s => /[.!?]$/.test(s.trim()));
+  let consumed = 0;
+  for (const s of emit) {
+    consumed += s.length;
+    const c2 = cleanMd(s);
+    if (currentBot && currentBot.plays && currentBot.plays.isConnected) {
+      currentBot.plays.appendChild(makeSentencePlay(c2, persona));
     }
+    autoPlaySentence(c2, persona);
   }
-  const toEmit=[];
-  for(const c of spans){
-    if(c.end<=ttsDone) continue;
-    if(final || /[.!?]$/.test(c.s.trim()) || /^\n+$/.test(c.s)){ toEmit.push(c); } else break;
-  }
-  for(const c of toEmit){
-    ttsDone=c.end;
-    const raw=c.s;
-    if(isPlayableSentence(raw)){
-      const c2=cleanMd(raw);
-      // Attach a ▶ button only if a live bubble is present (guarded — never crash on stale currentBot).
-      if(currentBot && currentBot.plays && currentBot.plays.isConnected){ currentBot.plays.appendChild(makeSentencePlay(c2, persona)); }
-      autoPlaySentence(c2, persona);
-    }
-  }
+  ttsDone += consumed;
   // On final flush, emit any trailing partial as its own sentence.
-  if(final){
-    const tail=ttsBuf.slice(ttsDone);
-    ttsDone=ttsBuf.length;
-    if(tail.trim() && isPlayableSentence(tail)){
-      const c2=cleanMd(tail);
-      if(currentBot && currentBot.plays && currentBot.plays.isConnected){ currentBot.plays.appendChild(makeSentencePlay(c2, persona)); }
+  if (final) {
+    const rest = ttsBuf.slice(ttsDone);
+    ttsDone = ttsBuf.length;
+    if (rest.trim() && isPlayableSentence(rest)) {
+      const c2 = cleanMd(rest);
+      if (currentBot && currentBot.plays && currentBot.plays.isConnected) {
+        currentBot.plays.appendChild(makeSentencePlay(c2, persona));
+      }
       autoPlaySentence(c2, persona);
     }
-    ttsBuf=''; ttsDone=0;
+    ttsBuf = ''; ttsDone = 0;
   }
 }
 async function pumpTTS(){
@@ -123,9 +133,11 @@ async function playTTS(text, persona){
     const r=await fetch(url);
     if(!r.ok) throw new Error('tts '+r.status);
     const b=await r.blob();
-    const a=new Audio(URL.createObjectURL(b));
+    const blobUrl=URL.createObjectURL(b);
+    const a=new Audio(blobUrl);
     a.style.display='none'; document.body.appendChild(a);   // attach so it reliably renders/plays
     ttsCurrentAudio=a;
+    _trackAudio(currentRoom, a, blobUrl);   // tie this clip to the active session for pruning
     // Wait for the clip to actually finish before resolving -> strict no-overlap sequencing.
     // CRITICAL: some engines (WKWebView / blob mp3) never fire 'ended', which would hang the
     // serial queue forever (Play-all plays sentence 1 then freezes, and every re-click piles
