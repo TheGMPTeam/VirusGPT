@@ -113,7 +113,7 @@ def _serve():
     """
     import uvicorn
     import server  # bundled module (also collects all its dependencies)
-    uvicorn.run(server.app, host="127.0.0.1", port=PORT, log_level="warning")
+    uvicorn.run(server.app, host="0.0.0.0", port=PORT, log_level="warning")
 
 
 def on_closed():
@@ -154,7 +154,11 @@ def main():
     _free_port_8500()
     srv = threading.Thread(target=_serve, daemon=True)
     srv.start()
-    url = f"http://localhost:{PORT}"
+    # Use the explicit IPv4 loopback (127.0.0.1), NOT "localhost": on macOS
+    # localhost resolves to IPv6 ::1 first, but the server binds IPv4 only,
+    # so a WebView loading http://localhost:8500 would hit ::1 and show a
+    # blank/white screen. Binding 0.0.0.0 + loading 127.0.0.1 avoids the mismatch.
+    url = f"http://127.0.0.1:{PORT}"
     print(f"[desktop] starting server (in-process) on {url}...", flush=True)
     if not _wait_health(url):
         print("[desktop] WARNING: server did not come up in time", flush=True)
