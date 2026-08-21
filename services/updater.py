@@ -7,9 +7,14 @@ and relaunch.
 
 Flow (driven by the frontend update popup):
   GET  /api/version        -> currently running version/commit + updatability
-  GET  /api/update/check   -> compare current commit vs origin/main; return notes
+  GET  /api/update/check   -> compare current commit vs origin/<branch>; return notes
   POST /api/update/apply    -> start a background update (git pull + rebuild)
   GET  /api/update/status   -> poll progress/state of the in-flight update
+
+The tracked branch defaults to `beta` (so production `main` is never auto-pulled
+into a running app); set VG_UPDATE_BRANCH to override (e.g. `main` for a prod
+hotfix, or a feature branch). The build + relaunch runs in a DETACHED process
+so the app can fully quit before its own bundle is replaced.
 
 All git/build work is isolated here so server.py stays thin and it is easy to
 test (monkeypatch the subprocess/git calls).
@@ -23,6 +28,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from shlex import quote as shquote
 
 # ROOT is the repo root when running from source, or the frozen Resources dir
 # (apps/VirusGPT.app/Contents/Resources) when running from the built app.
@@ -30,6 +36,12 @@ ROOT = Path(__file__).resolve().parent.parent
 APP_NAME = "VirusGPT"
 BUILDINFO = ROOT / "app" / "buildinfo.json"
 VERSION_FILE = ROOT / "app" / "version.json"
+
+# Branch the updater tracks. Defaults to `beta` so production `main` is never
+# auto-pulled into a running app; override with VG_UPDATE_BRANCH to point at a
+# different branch (e.g. `main` for a production hotfix, or a feature branch).
+def update_branch() -> str:
+    return os.environ.get("VG_UPDATE_BRANCH", "beta").strip() or "beta"
 
 # In-flight update state, polled by the frontend via /api/update/status.
 _STATE = {
@@ -120,12 +132,13 @@ def check_update() -> dict:
         return out
     try:
         _git("fetch", "origin", cwd=src, timeout=60)
-        latest = _git("rev-parse", "origin/main", cwd=src, timeout=30)[:7]
+        br = update_branch()
+        latest = _git("rev-parse", f"origin/{br}", cwd=src, timeout=30)[:7]
         if not latest:
             latest = _git("rev-parse", "HEAD", cwd=src, timeout=30)[:7]
         out["latest"] = latest
         if latest and current and latest != current:
-            # commits on origin/main that we don't have
+            # commits on origin/<branch> that we don't have
             ahead = _git("log", "--oneline", f"{current}..{latest}", cwd=src, timeout=30)
             out["notes"] = [l for l in ahead.splitlines() if l.strip()][:20]
             out["behind"] = True
@@ -162,8 +175,7 @@ def _run_update():
     info = get_buildinfo()
     src = Path(info["source_dir"])
     venv_py = info["venv"]
-    # The build script installs into /Applications/VirusGPT.app (falling back to
-    # repo apps/ if /Applications isn't writable). Match that target here.
+    br = update_branch()
     apps_app = Path(f"/Applications/{APP_NAME}.app")
     if not apps_app.exists():
         apps_app = src / "apps" / f"{APP_NAME}.app"
@@ -171,41 +183,36 @@ def _run_update():
     _STATE["started_at"] = time.time()
     _STATE["error"] = None
     try:
-        # 1) Pull latest
+        # 1) Fast git steps IN-PROCESS (low risk, quick): fetch + point tree at the
+        #    tracked branch. The build/relaunch below runs DETACHED so the app can
+        #    fully quit before its own bundle is replaced (no self-overwrite race).
         _set("fetching", 10, "Fetching latest source…")
         if not _git_ok(src):
             raise RuntimeError("not a git work tree")
-        if _git("fetch", "origin", cwd=src, timeout=120) == "" and not _git_ok(src):
-            pass  # fetch may print to stderr; check below
-        # Ensure we track origin/main
-        _git("remote", "set-branches", "origin", "main", cwd=src, timeout=30)
-        _git("fetch", "origin", "main", cwd=src, timeout=120)
-        _git("checkout", "main", cwd=src, timeout=30)
-        _git("reset", "--hard", "origin/main", cwd=src, timeout=60)
+        _git("remote", "set-branches", "origin", br, cwd=src, timeout=30)
+        _git("fetch", "origin", br, cwd=src, timeout=120)
+        _git("checkout", br, cwd=src, timeout=30)
+        _git("reset", "--hard", f"origin/{br}", cwd=src, timeout=60)
 
-        # 2) Rebuild via dev venv (has PyInstaller) -> replaces apps/VirusGPT.app
-        _set("rebuilding", 40, "Rebuilding app bundle…")
-        build = src / "desktop" / "build-macos.py"
-        proc = subprocess.run(
-            [venv_py, str(build)], cwd=str(src),
-            capture_output=True, text=True, timeout=600,
+        # 2) Launch the build + relaunch DETACHED (own session, independent of this
+        #    process) so it can replace /Applications/VirusGPT.app after we exit.
+        _set("rebuilding", 50, "Rebuilding app (detached)…")
+        log_path = src / "update_runner.log"
+        detach = (
+            f'cd {shquote(str(src))} && '
+            f'{shquote(venv_py)} desktop/build-macos.py && '
+            f'open {shquote(str(apps_app))}'
         )
-        if proc.returncode != 0:
-            raise RuntimeError("build failed:\n" + (proc.stderr or proc.stdout)[-1500:])
-
-        if not apps_app.exists():
-            raise RuntimeError("build did not produce apps/VirusGPT.app")
-
-        _set("replacing", 90, "Replacing app and restarting…")
-        # Relaunch the freshly built app, then quit this (old) process.
-        try:
-            subprocess.Popen(["open", str(apps_app)])
-        except Exception:
-            pass
+        # start_new_session -> detached from the app; we do NOT wait on it.
+        subprocess.Popen(
+            ["/bin/sh", "-c", detach],
+            stdout=open(log_path, "w"), stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
         _STATE["finished_at"] = time.time()
-        _set("done", 100, "Updated. Restarting…")
-        time.sleep(1.5)
-        # Hard exit so the new app (just opened) becomes the live instance.
+        _set("done", 100, "Update pulled. Rebuilding & restarting…")
+        time.sleep(1.0)
+        # Quit THIS (old) app so the detached rebuild can replace the bundle safely.
         os._exit(0)
     except Exception as e:
         _STATE["error"] = str(e)

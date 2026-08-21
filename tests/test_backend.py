@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import time
 
 import pytest
 
@@ -518,3 +519,42 @@ def test_update_check_not_updatable(client, monkeypatch):
     })
     d = client.get("/api/update/check").json()
     assert d["error"] == "not_updatable" and d["updatable"] is False
+
+
+def test_update_apply_spawns_detached_build_and_relaunch(monkeypatch, tmp_path):
+    """REGRESSION: the build+relaunch must run in a DETACHED process
+    (start_new_session=True) so the app can fully quit before its own bundle is
+    replaced — and the detached command must rebuild AND re-open the app."""
+    import services.updater as updater
+    src = tmp_path / "repo"
+    src.mkdir()
+    (src / "desktop").mkdir()
+    (src / "desktop" / "build-macos.py").write_text("")
+    venv = tmp_path / "venv" / "bin" / "python"
+    venv.parent.mkdir(parents=True)
+    venv.write_text("")
+    monkeypatch.setattr(updater, "get_buildinfo", lambda: {
+        "source_dir": str(src), "venv": str(venv), "updatable": True,
+    })
+    monkeypatch.setattr(updater, "_git_ok", lambda *a, **k: True)
+    monkeypatch.setattr(updater, "_git", lambda *a, **k: "")
+    captured = {}
+    def fake_popen(args, **kw):
+        captured["args"] = args
+        captured["kw"] = kw
+        class _P:
+            pass
+        return _P()
+    monkeypatch.setattr(updater.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(updater.os, "_exit", lambda c: None)
+    updater.apply_update()
+    # _run_update runs in a daemon thread; wait for it to spawn the detached build.
+    for _ in range(50):
+        if captured:
+            break
+        time.sleep(0.05)
+    assert captured, "detached build was never spawned"
+    cmd = captured["args"][-1] if isinstance(captured["args"], list) else captured["args"]
+    assert captured["kw"].get("start_new_session") is True, "build must run detached"
+    assert "desktop/build-macos.py" in cmd, "detached cmd must rebuild"
+    assert "open" in cmd and "VirusGPT.app" in cmd, "detached cmd must relaunch the app"
