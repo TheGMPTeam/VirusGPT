@@ -17,6 +17,7 @@ clear error dict (never raises), so the agent tool and /api/health stay green.
 """
 from __future__ import annotations
 
+import sys
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,8 +27,37 @@ import httpx
 from services import config as cfg, get_client
 
 # Where generated images are persisted (served via /api/generated/{file}).
-GEN_DIR = Path(__file__).resolve().parent.parent / "data" / "generated"
-GEN_DIR.mkdir(parents=True, exist_ok=True)
+# In dev this is <repo>/data/generated. In a PyInstaller bundle the `data/`
+# tree is collected under <app>/Contents/Frameworks, while the server's ROOT
+# points at Contents/Resources — so we resolve to the directory that actually
+# exists on disk (and is where the endpoint will look) instead of a phantom path.
+def _resolve_gen_dir() -> Path:
+    candidates = []
+    # 1) repo / Resources layout (dev + server.py's ROOT/data/generated)
+    try:
+        from server import ROOT  # type: ignore
+        candidates.append(Path(ROOT) / "data" / "generated")
+    except Exception:
+        pass
+    # 2) PyInstaller Frameworks layout (frozen .app)
+    if getattr(sys, "frozen", False):
+        try:
+            base = Path(sys.executable).resolve().parent.parent   # .../Contents
+            candidates.append(base / "Frameworks" / "data" / "generated")
+            candidates.append(base / "Resources" / "data" / "generated")
+        except Exception:
+            pass
+    # 3) fallback next to this file
+    candidates.append(Path(__file__).resolve().parent.parent / "data" / "generated")
+    for c in candidates:
+        if c.exists():
+            return c
+    # none exist yet -> create the first (repo/Resources) one
+    first = candidates[0]
+    first.mkdir(parents=True, exist_ok=True)
+    return first
+
+GEN_DIR = _resolve_gen_dir()
 
 
 def _base() -> str:

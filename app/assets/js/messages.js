@@ -140,9 +140,13 @@ function pushImageMessage(role, urls, caption, personaName){
   }
   (urls||[]).forEach(u=>{
     const img=document.createElement('img');
-    img.className='gen-image'; img.src=u; img.alt='generated image'; img.loading='lazy';
+    img.className='gen-image';
+    // Make relative /api/generated/... URLs absolute against the API base so they
+    // resolve in the WebView (and over a remote backend) instead of file://.
+    img.src = (typeof u==='string' && u.startsWith('/')) ? (API.base.replace(/\/$/,'')+u) : u;
+    img.alt='generated image'; img.loading='lazy';
     img.onerror=()=>{ img.style.display='none'; };
-    img.onclick=()=>window.open(u,'_blank');
+    img.onclick=()=>window.open(img.src,'_blank');
     img.title='Open image';
     col.appendChild(img);
   });

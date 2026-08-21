@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 
 import pytest
 
@@ -254,6 +255,24 @@ def test_generated_image_served(client):
     client.post("/api/generate", json={"prompt": "x"})
     r = client.get("/api/generated/test_render.png")
     assert r.status_code == 200
+
+
+def test_generated_image_served_from_frameworks_dir(client, tmp_path, monkeypatch):
+    # REGRESSION: in a frozen .app the data tree lands under Contents/Frameworks
+    # but ROOT points at Contents/Resources. /api/generated must still serve a
+    # file written there (otherwise chat images 404 and stay hidden).
+    name = "frozen_layout_test.png"
+    fw_dir = tmp_path / "Frameworks" / "data" / "generated"
+    fw_dir.mkdir(parents=True)
+    (fw_dir / name).write_bytes(b"fake-png-bytes-for-test")
+    fake_exe = tmp_path / "MacOS" / "VirusGPT"
+    fake_exe.parent.mkdir(parents=True)
+    fake_exe.write_bytes(b"")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(fake_exe))
+    r = client.get("/api/generated/" + name)
+    assert r.status_code == 200, r.text
+    assert b"fake-png-bytes-for-test" in r.content
 
 
 def test_generated_image_path_traversal(client):

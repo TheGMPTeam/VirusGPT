@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import asyncio
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -543,17 +544,32 @@ async def generate_image(req: Request):
 
 @app.get("/api/generated/{filename}")
 async def generated_image(filename: str):
-    """Serve a generated image from data/generated/ (path-confined)."""
+    """Serve a generated image from data/generated/ (path-confined).
+
+    Looks in the canonical locations where render_image may have written the
+    file: the repo/Resources data dir AND the PyInstaller Frameworks data dir
+    (in a frozen .app the `data/` tree lands under Frameworks, not ROOT)."""
     name = os.path.basename(filename)
-    p = (ROOT / "data" / "generated" / name).resolve()
-    allowed = (ROOT / "data" / "generated").resolve()
-    try:
-        p.relative_to(allowed)
-    except ValueError:
+    if not name or name != filename:
         return JSONResponse({"error": "invalid filename"}, status_code=400)
-    if not p.exists() or not p.is_file():
-        return JSONResponse({"error": "not found"}, status_code=404)
-    return FileResponse(p)
+    # candidate base dirs (all path-confined, no traversal possible)
+    bases = [ROOT / "data" / "generated"]
+    if getattr(sys, "frozen", False):
+        try:
+            base = Path(sys.executable).resolve().parent.parent  # .../Contents
+            bases.append(base / "Frameworks" / "data" / "generated")
+            bases.append(base / "Resources" / "data" / "generated")
+        except Exception:
+            pass
+    for b in bases:
+        try:
+            p = (b / name).resolve()
+            p.relative_to(b.resolve())  # confinement check
+        except (ValueError, Exception):
+            continue
+        if p.exists() and p.is_file():
+            return FileResponse(p)
+    return JSONResponse({"error": "not found"}, status_code=404)
 
 
 # --------------------------------------------------------------------------
