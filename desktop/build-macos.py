@@ -114,8 +114,13 @@ def build():
     print(f"[build] installed bundle -> {DEST_APP}")
     # Inject the version global into the frozen index.html so the bottom bar shows
     # it even if version.json fetch is blocked (file:// / offline WebView).
+    channel = "beta"
+    try:
+        channel = json.loads((ROOT / "app" / "update_branch.json").read_text()).get("branch", "beta") or "beta"
+    except Exception:
+        pass
     inject_version_global(DEST_APP / "Contents" / "Resources" / "app" / "index.html",
-                          version, commit)
+                          version, commit, channel)
     # Remove the leftover dist/ copy so there is never a second app on disk.
     left = ROOT / "dist" / f"{APP_NAME}.app"
     if left.exists():
@@ -162,14 +167,14 @@ def _reveal_in_finder(path):
     return
 
 
-def inject_version_global(index_html, version, commit):
+def inject_version_global(index_html, version, commit, channel="beta"):
     if not index_html.exists():
         print(f"[build] (warn) frozen index.html not found at {index_html}")
         return
     html = index_html.read_text()
     marker = "<!--__VG_VERSION__-->"
     snippet = (f'<script>window.__VG_VERSION={{"version":"{version}",'
-               f'"commit":"{commit}"}};</script>')
+               f'"commit":"{commit}"}};window.__VG_CHANNEL="{channel}";</script>')
     if marker in html:
         html = html.replace(marker, snippet)
     elif "window.__VG_VERSION" not in html:
@@ -181,7 +186,7 @@ def inject_version_global(index_html, version, commit):
         else:
             html = snippet + html
     index_html.write_text(html)
-    print(f"[build] stamped frozen index.html with v{version} · {commit}")
+    print(f"[build] stamped frozen index.html with v{version} · {commit} ({channel})")
 
 
 def os_sep():

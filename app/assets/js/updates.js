@@ -117,11 +117,17 @@ function initUpdates(){
     notes.innerHTML = '';
     latEl.textContent = '—';
     try{
+      // resolve the running version label (vX.Y) for the "Latest" line
+      let verLabel = 'v…';
+      try{
+        const vr = await fetch('api/version', {cache:'no-store'});
+        if(vr.ok){ const vj = await vr.json(); verLabel = `v${vj.version}`; }
+      }catch(e){ /* keep default */ }
       const rs = await fetch(`api/update/check?target=${encodeURIComponent(_tracked)}`, {cache:'no-store'});
       const same = await rs.json();
       const ro = await fetch(`api/update/check?target=${encodeURIComponent(_other)}`, {cache:'no-store'});
       const other = await ro.json();
-      latEl.textContent = same.latest ? `v… · ${same.latest}` : (same.current || '—');
+      latEl.textContent = same.latest ? `${verLabel} · ${same.latest}` : (same.current || '—');
       if(same.error === 'not_updatable'){
         msg.textContent = 'This build cannot self-update (no source/venv). Pull & rebuild manually.';
         return;

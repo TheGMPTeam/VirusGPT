@@ -7,9 +7,12 @@
 function showVersion(){
   const el=document.getElementById('version-info');
   if(!el) return;
-  const paint=(v)=>{ el.textContent = v ? `v${v.version} · ${v.commit}` : 'dev'; };
+  const paint=(v, channel)=>{
+    if(!v){ el.textContent='dev'; return; }
+    el.textContent = `v${v.version} · ${v.commit}` + (channel ? ` · ${channel}` : '');
+  };
   if(window.__VG_VERSION && window.__VG_VERSION.version){
-    paint(window.__VG_VERSION); return;
+    paint(window.__VG_VERSION, (window.__VG_CHANNEL)||null); return;
   }
   fetch('version.json', {cache:'no-store'}).then(r=>r.ok?r.json():null)
     .then(j=>{ if(j && j.version) paint(j); else el.textContent='dev'; })

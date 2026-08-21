@@ -219,13 +219,6 @@ def _run_update(target: str | None = None):
     venv_py = info["venv"]
     # target channel: explicit choice, else the tracked branch.
     br = (target or update_branch()).strip() or "beta"
-    # Persist the chosen channel to the SOURCE repo's file (NOT the frozen
-    # bundle's ROOT, which build-macos.py copies into the next build) so the
-    # rebuilt app ships with the correct channel.
-    try:
-        (src / "app" / "update_branch.json").write_text(json.dumps({"branch": br}))
-    except Exception:
-        pass
     apps_app = Path(f"/Applications/{APP_NAME}.app")
     if not apps_app.exists():
         apps_app = src / "apps" / f"{APP_NAME}.app"
@@ -247,11 +240,16 @@ def _run_update(target: str | None = None):
 
         # 2) Launch the build + relaunch DETACHED (own session, independent of this
         #    process) so it can replace /Applications/VirusGPT.app after we exit.
+        #    The channel file is written AFTER the git reset (which would otherwise
+        #    wipe it back to the committed value) so the rebuilt app ships with the
+        #    chosen channel.
         _set("rebuilding", 50, "Rebuilding app (detached)…")
         log_path = src / "update_runner.log"
+        branch_json = shquote(str(src / "app" / "update_branch.json"))
         detach = (
             f'cd {shquote(str(src))} && '
             f'{shquote(venv_py)} desktop/build-macos.py && '
+            f'printf \'%s\' {shquote(json.dumps({"branch": br}))} > {branch_json} && '
             f'open {shquote(str(apps_app))}'
         )
         # start_new_session -> detached from the app; we do NOT wait on it.
