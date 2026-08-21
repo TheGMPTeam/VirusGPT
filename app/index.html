@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>VirusGPT ~ Offline Agent Chat</title>
 <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg" />
-<link rel="stylesheet" href="/assets/css/styles.css?v=5" />
+<link rel="stylesheet" href="/assets/css/styles.css?v=8" />
 </head>
 
 <canvas id="matrix"></canvas>
@@ -35,8 +35,14 @@
 
   <!-- CHAT -->
   <section id="pane-chat" class="tabpane active">
+    <!-- Mobile-only panel tabs: collapse the two sidebars into swappable views. -->
+    <div id="mobile-panel-tabs" class="mobile-only">
+      <div class="mtab active" data-target="chat">💬 Chat</div>
+      <div class="mtab" data-target="room">🧬 Room</div>
+      <div class="mtab" data-target="tools">🛠 Tools</div>
+    </div>
     <div id="main-layout">
-      <aside id="sidebar">
+      <aside id="sidebar" class="chat-panel-pane" data-pane="room">
         <div id="sessions-panel">
           <h3>Sessions</h3>
           <button id="btn-new-session" class="btn-accent" style="width:100%;margin-bottom:8px">+ New</button>
@@ -52,18 +58,19 @@
           <div id="persona-list"></div>
         </div>
       </aside>
-      <main id="chat-panel" style="position:relative">
+      <main id="chat-panel" class="chat-panel-pane active" data-pane="chat" style="position:relative">
         <div id="messages"></div>
         <div id="cmd-popup"></div>
         <div id="input-bar">
           <textarea id="message-input" placeholder="Transmit a message to VirusGPT…" rows="1"></textarea>
           <button id="btn-mic" class="icon-btn" title="Voice input">🎙</button>
           <button id="btn-improve" class="icon-btn" title="Rewrite & improve the typed text with AI" style="font-size:13px;line-height:1;padding:0 8px;white-space:nowrap">✨ Improve</button>
+          <button id="btn-gen-image" class="icon-btn" title="Generate an image from the typed prompt via ComfyUI (Studio)" style="font-size:13px;line-height:1;padding:0 8px;white-space:nowrap">🎨 Image</button>
           <button id="btn-send" title="Send">▶</button>
           <button id="btn-stop-all" class="icon-btn" title="Stop all: halt auto-chat + kill speech" style="color:var(--danger,#ff4d4d)">⏹</button>
         </div>
       </main>
-      <aside id="rightbar">
+      <aside id="rightbar" class="chat-panel-pane" data-pane="tools">
         <div style="padding-top:0">
           <h3>🤖 Team Workflow</h3>
           <div class="rightbar-hint" style="margin-top:8px">
@@ -147,17 +154,17 @@
 
 
 
-  <script src="/assets/js/config.js?v=8"></script>
-  <script src="/assets/js/utils.js?v=8"></script>
-  <script src="/assets/js/tts.js?v=8"></script>
-  <script src="/assets/js/messages.js?v=8"></script>
-  <script src="/assets/js/personas.js?v=8"></script>
-  <script src="/assets/js/sessions.js?v=8"></script>
-  <script src="/assets/js/chat.js?v=8"></script>
-  <script src="/assets/js/autocomplete.js?v=8"></script>
-  <script src="/assets/js/team.js?v=8"></script>
-  <script src="/assets/js/memory.js?v=8"></script>
-  <script src="/assets/js/ui.js?v=8"></script>
-  <script src="/assets/js/main.js?v=8"></script>
+  <script src="/assets/js/config.js?v=13"></script>
+  <script src="/assets/js/utils.js?v=13"></script>
+  <script src="/assets/js/tts.js?v=13"></script>
+  <script src="/assets/js/messages.js?v=13"></script>
+  <script src="/assets/js/personas.js?v=13"></script>
+  <script src="/assets/js/sessions.js?v=13"></script>
+  <script src="/assets/js/chat.js?v=13"></script>
+  <script src="/assets/js/autocomplete.js?v=13"></script>
+  <script src="/assets/js/team.js?v=13"></script>
+  <script src="/assets/js/memory.js?v=13"></script>
+  <script src="/assets/js/ui.js?v=13"></script>
+  <script src="/assets/js/main.js?v=13"></script>
 </body>
 </html>

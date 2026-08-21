@@ -98,3 +98,28 @@ function addMsgEl(role, text, persona){
   wrap.appendChild(av);wrap.appendChild(col);
   $('#messages').appendChild(wrap);$('#messages').scrollTop=$('#messages').scrollHeight;return wrap;
 }
+/* Render a message whose body is one or more generated images (e.g. a mission
+   task that called the render_image tool). Each image links to the served
+   /api/generated/... URL so the user can open it full-size. */
+function pushImageMessage(role, urls, caption, personaName){
+  const wrap=document.createElement('div'); wrap.className='msg '+(role==='user'?'user':'bot');
+  const av=document.createElement('div'); av.className='persona-avatar';
+  if(role==='user'){av.style.background='var(--neon2)';av.textContent='🧑';}
+  else{const p=personaByName(personaName)||selectedPersonaObj()||personas[0];av.style.background=p.color;av.textContent=p.emoji||'🤖';}
+  const col=document.createElement('div');col.style.minWidth='0';
+  const who=document.createElement('div');who.className='who';who.textContent=role==='user'?'YOU':((personaByName(personaName)||selectedPersonaObj())?.name||'VirusGPT');
+  col.appendChild(who);
+  if(caption){
+    const cap=document.createElement('div');cap.className='bubble';cap.textContent=caption;col.appendChild(cap);
+  }
+  (urls||[]).forEach(u=>{
+    const img=document.createElement('img');
+    img.className='gen-image'; img.src=u; img.alt='generated image'; img.loading='lazy';
+    img.onerror=()=>{ img.style.display='none'; };
+    img.onclick=()=>window.open(u,'_blank');
+    img.title='Open image';
+    col.appendChild(img);
+  });
+  wrap.appendChild(av);wrap.appendChild(col);
+  $('#messages').appendChild(wrap);$('#messages').scrollTop=$('#messages').scrollHeight;return wrap;
+}

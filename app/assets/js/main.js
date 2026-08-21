@@ -13,6 +13,7 @@ function boot(){
     initTeam();
     initModals();
     initInput();
+    initMobileTabs();
     initMic();
     initMatrix();
     $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇';

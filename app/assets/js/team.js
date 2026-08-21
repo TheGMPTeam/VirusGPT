@@ -65,8 +65,11 @@ async function runTeamRound(task){
     const t=turns[i];
     const persona = personaByName(t.worker.name) || t.worker;
     const card = kbAdd('progress', persona.name, t.task);
-    const r = await teamTurn(persona, t.task,
-      { systemExtra:`You are ${persona.name}. It is your turn in the team round. Speak/act as ${persona.name} and keep your turn concise.`,
+    // Reframe the planner's narration as a direct directive so the agent
+    // PERFORMS its turn (e.g. says "A") instead of commenting on the instruction.
+    const directive = `Your turn in the team round. Output ONLY your contribution — no preamble, no commentary, no quotes. ${t.task}`;
+    const r = await teamTurn(persona, directive,
+      { systemExtra:`You are ${persona.name}. It is your turn. State your contribution directly and concisely, as ${persona.name}. Do not ask questions or narrate — just say your part.`,
         connector:`🔁 ${planner.name} → ${persona.name}`, connectorWho:'System' });
     if(card){ kbMove(card,'done'); }
     await new Promise(r=>setTimeout(r, 300));
@@ -269,6 +272,7 @@ function logToolCall(agent, tool, args, ok){
 
 
 let __missionStream = null;
+let __missionPoll = null;
 let __activeMissionId = null;
 let __missionCard = null;
 let __missionTaskCards = {};     // task id -> kanban card element
@@ -309,14 +313,20 @@ function maybeEmitTaskResult(t){
   __emittedTaskResults[t.id] = true;
   let body = (t.result && t.result.trim()) ? t.result.trim() : (t.verification || '');
   if(!body) return;
-  // If the stored result is JSON, surface the human-readable part only.
+  const who = t.agent && personaByName(t.agent) ? t.agent : (t.agent || 'Worker');
+  // If the stored result is JSON, look for generated images + a readable summary.
   if(body.trim().startsWith('{') || body.trim().startsWith('[')){
     try{
       const o = JSON.parse(body);
+      // A task that produced images (render_image) -> show them inline.
+      if(Array.isArray(o.generated_images) && o.generated_images.length){
+        const caption = (typeof o.summary === 'string' && o.summary.trim()) ? o.summary.trim() : null;
+        pushImageMessage('assistant', o.generated_images, caption, who);
+        return;
+      }
       body = o.summary || o.result || o.output || o.text || o.content || body;
     }catch(e){ /* keep raw */ }
   }
-  const who = t.agent && personaByName(t.agent) ? t.agent : (t.agent || 'Worker');
   pushMessage('assistant', body, who);
 }
 
@@ -335,31 +345,46 @@ function maybeEmitArtifact(a, st){
   pushMessage('assistant', text, who);
 }
 async function startMission(goalOverride){
-  const goal = (goalOverride || $('#mission-goal').value || '').trim();
-  if(!goal){ alert('Enter a mission goal first.'); return; }
+  // The button is wired as `onclick = startMission`, so a click passes a DOM
+  // Event as the first arg. Ignore anything that isn't a string goal.
+  if(typeof goalOverride !== 'string') goalOverride = '';
+  let goal = (goalOverride || $('#mission-goal').value || '').trim();
+  // Auto-mission: if no goal typed, reuse the room's last user message as the
+  // objective so a bare "▶ Start" still does something.
+  if(!goal){
+    const msgs = (activeRoom().messages||[]).filter(m=>m.role==='user');
+    goal = msgs.length ? msgs[msgs.length-1].content : '';
+  }
+  if(!goal){ $('#mission-state').textContent='⚠ enter a goal (or send a message first)'; return; }
   const room = activeRoom();
   const lineup = roomPersonas(room).map(personaByName).filter(Boolean);
-  if(lineup.length<2){ alert('Add at least 2 personas to the room for a team mission.'); return; }
+  if(lineup.length<2){ $('#mission-state').textContent='⚠ need ≥2 personas in the room'; return; }
+  $('#mission-goal').value = goal;
   $('#mission-state').innerHTML = 'Starting mission…';
   kbReset();
   __missionTaskCards = {}; __emittedTaskResults = {}; __emittedArtifacts = {};
   __missionCard = kbAdd('progress','Mission (Planner)', goal, 'progress thinking');
+  // Stop any prior poll/stream.
+  if(__missionStream){ try{__missionStream.close();}catch(e){} __missionStream=null; }
+  if(__missionPoll){ clearInterval(__missionPoll); __missionPoll=null; }
   try{
     const res = await fetch(API.base+'/api/autonomous/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal, room_personas: lineup})});
     const data = await res.json();
     if(!res.ok || !data.ok){ throw new Error(data.error||('HTTP '+res.status)); }
     __activeMissionId = data.mission_id;
     $('#mission-state').innerHTML = `Mission <b>${data.mission_id}</b> · <b id="mission-status">${data.status||'running'}</b> · planner <b>${data.planner||''}</b>`;
-    if(__missionStream){ try{__missionStream.close();}catch(e){} }
-    __missionStream = new EventSource(API.base + data.stream_url);
-    __missionStream.onmessage = (ev)=>{
+    // Switch to the Chat tab so the mission's live output is visible (on mobile the
+    // mission controls live on the Tools tab, so without this the run looks silent).
+    try{ document.querySelector('.tab[data-tab="chat"]')?.click(); }catch(e){}
+    $('#btn-mission-start').classList.add('hidden');
+    $('#btn-mission-stop').classList.remove('hidden');
+    // Poll the status endpoint (mobile-proof; no EventSource dependency). The
+    // status endpoint is proven to return the live task/artifact snapshot.
+    const render = (st)=>{
       try{
-        const st = JSON.parse(ev.data);
         const statusEl = $('#mission-status');
         if(statusEl) statusEl.textContent = st.status || statusEl.textContent;
-        // Render the mission's planned tasks onto the Kanban board.
         renderMissionBoard(st, goal);
-        // Surface any tool calls (from the live event stream) in the tool-call log.
         if(Array.isArray(st.events)){
           st.events.forEach(ev=>{
             if(ev.event==='tool.call' && ev.data && ev.data.tool){
@@ -373,20 +398,23 @@ async function startMission(goalOverride){
             kbMove(__missionCard,'done'); __missionCard.classList.remove('thinking','progress'); __missionCard.classList.add('done');
           } else { kbMove(__missionCard,'progress'); }
         }
-        // Push a chat message for each freshly-completed task (clear output + artifacts).
         if(Array.isArray(st.tasks)) st.tasks.forEach(t=>maybeEmitTaskResult(t));
         if(Array.isArray(st.artifacts)) st.artifacts.forEach(a=>maybeEmitArtifact(a, st));
-        if(st.status==='completed' || st.status==='failed' || st.status==='cancelled'){
-          stopMission(false);
-        }
       }catch(e){}
     };
-    $('#btn-mission-start').classList.add('hidden');
-    $('#btn-mission-stop').classList.remove('hidden');
+    render(await (await fetch(API.base+'/api/autonomous/status/'+encodeURIComponent(data.mission_id))).json());
+    __missionPoll = setInterval(async ()=>{
+      try{
+        const st = await (await fetch(API.base+'/api/autonomous/status/'+encodeURIComponent(__activeMissionId))).json();
+        render(st);
+        if(st.status==='completed'||st.status==='failed'||st.status==='cancelled'){ stopMission(false); }
+      }catch(e){}
+    }, 1500);
   }catch(err){ $('#mission-state').textContent = '⚠ '+(err.message||'error'); }
 }
 function stopMission(notify=true){
   if(__missionStream){ try{__missionStream.close();}catch(e){} __missionStream=null; }
+  if(__missionPoll){ clearInterval(__missionPoll); __missionPoll=null; }
   if(__activeMissionId){
     fetch(API.base+'/api/autonomous/stop/'+encodeURIComponent(__activeMissionId),{method:'POST'}).catch(()=>{});
   }

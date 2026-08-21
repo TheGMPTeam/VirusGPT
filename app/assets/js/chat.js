@@ -49,7 +49,7 @@ async function choosePersona(text){
 async function runSlashCommand(raw){
   const cmd = raw.replace(/^\//,'').trim().toLowerCase();
   if(cmd==='help' || cmd===''){
-    pushMessage('system', 'Commands:\n• /new — start a fresh session\n• /clear — clear this session\n• /team <task> — launch an agent-to-agent team round (also: @team, #team, or "team:")\n• /help — list commands\n\nTips:\n• ✨ Improve button — rewrites your typed draft into a cleaner, improved version\n• Type / @ # in the box for command/persona/tag autocomplete\n• Type free text and AI completion suggestions appear above the box (Tab to accept)');
+    pushMessage('system','Commands:\n• /new — start a fresh session\n• /clear — clear this session\n• /team <task> — launch an agent-to-agent team round (also: @team, #team, or "team:")\n• /studio <prompt> — launch an image-team mission that renders a branding/asset kit via ComfyUI (alias /mission)\n• /help — list commands\n\nTips:\n• ✨ Improve button — rewrites your typed draft into a cleaner, improved version\n• 🎨 Image button — generate one image from the typed prompt via ComfyUI (Studio)\n• Type / @ # in the box for command/persona/tag autocomplete\n• Type free text and AI completion suggestions appear above the box (Tab to accept)');
     return;
   }
   if(cmd==='clear'){
@@ -67,6 +67,100 @@ function extractTeamGoal(text){
   return m ? (m[1] || '').trim() : '';
 }
 
+/* Generate an image from the current input-box text via ComfyUI (/api/generate)
+   and render it inline in the chat. Falls back to a clear error if ComfyUI is
+   offline. If promptOverride is given (natural-language image request), use it
+   instead of the box. The Studio persona is the artist. */
+async function generateImageFromInput(promptOverride){
+  const box=$('#message-input');
+  const prompt=(promptOverride && promptOverride.trim()) || (box.value||'').trim();
+  if(!prompt){ alert('Type an image description first, then click 🎨 Image.'); return; }
+  const btn=$('#btn-gen-image'); if(btn){ btn.disabled=true; btn.textContent='🎨…'; }
+  if(!promptOverride) pushMessage('user', '🎨 '+prompt, 'YOU');
+  // A minimal bot placeholder so the user sees activity.
+  const bot=addBotMsg(personaByName('Studio')||selectedPersonaObj()||personas[0]);
+  currentBot=bot; let myToken=++runToken;
+  bot.cur.style.display=''; bot.cur.textContent='⏳ rendering in ComfyUI…';
+  try{
+    const resp=await fetch(API.base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt, model:'dreamshaper_8.safetensors', steps:22, cfg_scale:7.5, width:512, height:512})});
+    const data=await resp.json();
+    if(!resp.ok || data.status!=='completed'){
+      const err=(data && (data.error||data.detail)) || ('HTTP '+resp.status);
+      bot.cur.textContent='⚠ '+err;
+      return;
+    }
+    // Render the image(s) inline.
+    bot.cur.style.display='none';
+    if(currentBot){ currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; }
+    pushImageMessage('assistant', [data.url], data.prompt||prompt, 'Studio');
+    box.value=''; box.style.height='auto';
+  }catch(e){
+    if(bot) bot.cur.textContent='⚠ '+(e.message||'image generation failed');
+  }finally{
+    currentBot=null;
+    if(btn){ btn.disabled=false; btn.textContent='🎨 Image'; }
+  }
+}
+
+/* Launch an autonomous "image team" mission (planner + Studio artist + Cipher
+   reviewer) that renders a branding/asset kit via ComfyUI. Works from normal chat
+   via the /studio or /mission slash command. Renders each completed image inline
+   as the mission streams. */
+async function startImageMission(userGoal){
+  // If the user gave a vague goal, expand it into an explicit per-asset checklist
+  // so the (small) planner creates ONE task per asset instead of collapsing them.
+  const ASSETS = ['primary logo','app icon','hero banner','social/profile banner','loading screen','UI accent: divider','UI accent: button glow','UI accent: chat bubble'];
+  const goal = (userGoal && userGoal.trim())
+    ? userGoal.trim()
+    : 'Generate a full futuristic branding kit for the VirusGPT app in our cyber-neon style: dark background, neon green #00ff9c primary, cyan #23e0ff secondary, magenta #ff2bd6 accent, tech/matrix vibe.';
+  const checklist = ASSETS.map((a,i)=>`${i+1}) Render the ${a} for VirusGPT (call render_image, cyber-neon style).`).join('\n');
+  const fullGoal = `${goal}\n\nCreate exactly these assets, one task each:\n${checklist}\nFor every asset you MUST call the render_image tool. Do not skip any.`;
+
+  const btn=$('#btn-send'); if(btn) btn.disabled=true;
+  const bot=addBotMsg(personaByName('Studio')||selectedPersonaObj()||personas[0]);
+  currentBot=bot; bot.cur.style.display=''; bot.cur.textContent='⏳ launching image team mission…';
+  try{
+    const room=activeRoom();
+    const lineup=roomPersonas(room).map(personaByName).filter(Boolean);
+    const hasStudio = lineup.some(p=>p.name==='Studio');
+    const team = lineup.length>=2 ? lineup : [
+      personaByName('VirusGPT'), personaByName('Studio'), personaByName('Cipher')
+    ].filter(Boolean);
+    if(!hasStudio && !team.some(p=>p.name==='Studio')) team.push(personaByName('Studio'));
+    const start=await fetch(API.base+'/api/autonomous/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({goal: fullGoal, room_personas: team.map(p=>({name:p.name, role:(p.name==='Studio'?'worker':(p.role||'planner')), system_prompt:p.system_prompt, skills:p.skills||'', voice:p.voice||'', tools:p.tools||['render_image','web_search','memory_query','calc']}))})});
+    const sd=await start.json();
+    if(!start.ok || !sd.ok){ bot.cur.textContent='⚠ '+(sd.error||'mission start failed'); return; }
+    const mid=sd.mission_id;
+    bot.cur.textContent=`🚀 Mission ${mid} running — rendering assets…`;
+    // Stream the mission SSE and render images as tasks complete.
+    const es=new EventSource(API.base+'/api/autonomous/stream/'+mid);
+    const seen={};
+    es.onmessage=ev=>{
+      try{
+        const st=JSON.parse(ev.data);
+        if(st.event==='end'){ es.close(); if(bot){bot.cur.style.display='none';} return; }
+        (st.tasks||[]).forEach(t=>{
+          if(t.status==='completed' && !seen[t.id]){
+            seen[t.id]=true;
+            let r=t.result; try{ if(typeof r==='string') r=JSON.parse(r); }catch(_){}
+            if(r && Array.isArray(r.generated_images) && r.generated_images.length){
+              pushImageMessage('assistant', r.generated_images, (t.title||'Studio asset'), 'Studio');
+            }
+          }
+        });
+      }catch(_){}
+    };
+    es.onerror=()=>{ try{es.close();}catch(_){} if(bot) bot.cur.style.display='none'; };
+  }catch(e){
+    if(bot) bot.cur.textContent='⚠ '+(e.message||'mission failed');
+  }finally{
+    currentBot=null;
+    if(btn) btn.disabled=false;
+  }
+}
+
 async function send(text){
   text=(text||'').trim(); if(!text) return;
   $('#cmd-popup').classList.remove('show'); cpItems=[]; cpActive=-1; sugItems=[]; cpMode='none';
@@ -79,6 +173,32 @@ async function send(text){
     if(lineup.length < 2){ alert('Add at least 2 personas to the room for a team round.'); return; }
     pushMessage('user', text);
     await runTeamRound(goal);
+    return;
+  }
+
+  // /studio <prompt>  (alias /mission) — launch an autonomous image-team mission
+  // that renders a full branding/asset kit via ComfyUI (Studio persona).
+  if(/^\/(?:studio|mission)\b/i.test(text)){
+    const goal = text.replace(/^\/(?:studio|mission)\b\s*/i,'').trim() ||
+      'Generate a full futuristic branding kit for the VirusGPT app (logo, app icon, hero banner, social banner, loading screen, and UI accents) in our cyber-neon style: dark background, neon green #00ff9c primary, cyan #23e0ff secondary, magenta #ff2bd6 accent, tech/matrix vibe.';
+    pushMessage('user', text);
+    await startImageMission(goal);
+    return;
+  }
+
+  // Natural-language image trigger: a normal chat message that asks to generate
+  // images should just work — route to Studio (single image or a full image team).
+  const multi = /\b(generate images?|create (?:a |an )?(?:team|branding|image|logo|asset)|banners?|logos?|branding kit|everything else|image (?:team|kit)|set of images|render (?:a |an )?(?:image|logo|banner))\b/i;
+  const single = /\b(make|generate|create|draw|render|paint)(?: me)? (?:a |an |some )?(?:image|picture|photo|artwork|render|logo|banner|icon|wallpaper|avatar)\b/i;
+  if(multi.test(text)){
+    pushMessage('user', text);
+    await startImageMission(text);
+    return;
+  }
+  if(single.test(text) && !multi.test(text)){
+    // single image request -> use the 🎨 /api/generate path
+    pushMessage('user', text);
+    await generateImageFromInput(text);
     return;
   }
 

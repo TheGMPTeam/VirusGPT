@@ -25,3 +25,8 @@ secrets.json
 # Large runtime artifacts / models (exclude from repo)
 whisper/
 data/
+
+# PyInstaller build artifacts (the frozen desktop app is produced by
+# desktop/build-*.py; keep the build scripts tracked, not the output)
+build/
+dist/

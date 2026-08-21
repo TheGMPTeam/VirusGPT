@@ -180,7 +180,15 @@ function mgShowDetail(id){
     location.reload();
   };
   $('#mg-dream').onclick=async ()=>{ const r=$('#mg-q-res'); r.textContent='…researching + dreaming';
-    try{ const res=await fetch(API.base+'/api/selfdev/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:n.name})}); const d=await res.json(); r.textContent='researched: '+(d.stored||d.error||'?'); setTimeout(()=>location.reload(),800);}catch(e){ r.textContent='error'; } };
+    try{ 
+      const res=await fetch(API.base+'/api/selfdev/research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({topic:n.name})}); 
+      const d=await res.json(); 
+      r.textContent='researched: '+(d.stored||d.error||'?');
+      // Refresh the graph IN PLACE (no page reload — reloading would bounce the
+      // user back to the Chat tab, which looked like "nothing happened").
+      try{ await loadMemoryGraph(); }catch(e){}
+      if(__mgSel!=null) mgShowDetail(__mgSel);
+    }catch(e){ r.textContent='error'; } };
   $('#mg-fact').onclick=async ()=>{ const r=$('#mg-q-res'); r.textContent='…verifying';
     try{ const res=await fetch(API.base+'/api/selfdev/factcheck',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.name})}); const d=await res.json(); r.textContent='corroboration='+(d.corroboration??'?')+(d.stale?' (stale)':'');}catch(e){ r.textContent='error'; } };
   $('#mg-q-go').onclick=async ()=>{

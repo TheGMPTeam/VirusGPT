@@ -74,6 +74,8 @@
   .msg.bot .bubble{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--neon)}
   .msg.user .bubble{background:rgba(35,224,255,0.12);border:1px solid var(--neon2);border-right:3px solid var(--neon2)}
   .msg .who{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-dim);margin-bottom:3px}
+  /* Generated images (e.g. render_image tool output) shown inline in chat. */
+  .msg .gen-image{display:block;max-width:100%;max-height:360px;border-radius:12px;margin-top:6px;border:1px solid var(--border);cursor:pointer;object-fit:contain;background:var(--panel2)}
   .msg .play{margin-top:6px;font-size:11px;background:none;border:1px solid var(--border);color:var(--neon2);text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* per-sentence play buttons: a compact row of ▶ icons (one per sentence),
      all on the same line. Icon-only, no text/blank lines; each plays its own
@@ -160,7 +162,27 @@
   @keyframes cp-spin{to{transform:rotate(360deg)}}
   #btn-improve[disabled]{opacity:.5;cursor:wait}
   ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}::-webkit-scrollbar-thumb:hover{background:var(--neon2)}
-  @media(max-width:720px){#sidebar{position:absolute;z-index:15;height:100%;transform:translateX(-100%);transition:.2s}#sidebar.open{transform:none}#topbar h1{font-size:15px}}
+  /* Mobile panel tabs: hidden on desktop, shown on small/tablet screens. */
+  .mobile-only{display:none}
+  @media(max-width:1024px){
+    /* Collapse the two sidebars into tab-swappable full-width panes. Only ONE
+       pane is visible at a time (the active tab); the other two are hidden —
+       including the center chat when Room/Tools is selected. We override the
+       base #sidebar/#rightbar/#chat-panel ID rules (which set display:flex)
+       with ID-level selectors here, since ID specificity beats the class. */
+    #main-layout{flex-direction:column}
+    #mobile-panel-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--panel)}
+    #mobile-panel-tabs .mtab{flex:1;text-align:center;padding:10px 4px;font-size:12px;letter-spacing:.5px;color:var(--txt-dim);cursor:pointer;border-bottom:2px solid transparent}
+    #mobile-panel-tabs .mtab.active{color:var(--neon);border-bottom-color:var(--neon);text-shadow:0 0 6px rgba(0,255,156,.5)}
+    /* Default: hide all three panes; show only the active one. */
+    #sidebar.chat-panel-pane,
+    #rightbar.chat-panel-pane,
+    #chat-panel.chat-panel-pane{display:none;width:100%;flex:1 1 auto}
+    #sidebar.chat-panel-pane.active,
+    #rightbar.chat-panel-pane.active{display:flex;flex-direction:column;min-height:0;max-height:70vh;overflow-y:auto;border-top:1px solid var(--border);padding:12px}
+    #chat-panel.chat-panel-pane.active{display:flex;flex-direction:column;min-height:0;flex:1}
+    #topbar h1{font-size:15px}
+  }
 
   /* SESSIONS panel (left sidebar) */
   #sessions-panel{display:flex;flex-direction:column;gap:8px}

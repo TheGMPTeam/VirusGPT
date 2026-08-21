@@ -29,6 +29,22 @@ semantic versioning (`v1.0` = first tagged, installable release).
   - `services/config.py` now honors `VG_OLLAMA_URL` / `VG_TTS_URL` / `VG_STT_URL` /
     `VG_MODEL` / `VG_PORT` env overrides so the compose network needs no config edits.
 
+### Fixed
+- **Autonomous mission "does nothing" when started from the UI.** The ▶ Start button
+  was wired as `onclick = startMission`, so a click passed the DOM `Event` as the
+  first argument; `startMission` then called `goalOverride.trim()` on the Event and
+  threw `trim is not a function` (uncaught async rejection), leaving the status stuck
+  at "No active mission" on both the desktop app and mobile. `startMission` now ignores
+  a non-string argument and reads the goal from the textarea. (`app/assets/js/team.js`)
+- **Missions never executed on the server.** `orchestrator.start_mission` scheduled the
+  background run via `asyncio.get_event_loop().create_task()` from inside a *synchronous*
+  route handler, which runs on uvicorn's threadpool and resolves a different (non-running)
+  event loop — so the task was scheduled but never executed. Missions are now scheduled
+  with `asyncio.run_coroutine_threadsafe` on the loop captured at startup.
+  (`autonomous/orchestrator.py`, `server.py`)
+- **Mission live updates were unreliable on mobile.** The UI now polls
+  `/api/autonomous/status/{id}` every 1.5s instead of relying on `EventSource`/SSE.
+
 ## [v1.0] - 2026-08-20
 
 First tagged, public, installable release.

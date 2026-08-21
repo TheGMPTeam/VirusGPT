@@ -279,6 +279,34 @@ async def _git_commit(args: dict) -> dict:
 # --------------------------------------------------------------------------
 # Register
 # --------------------------------------------------------------------------
+async def _render_image(args: dict) -> dict:
+    """Generate an image with ComfyUI (the LAN diffusion engine at 10.0.0.120:8188).
+
+    Returns a result dict; on success the agent gets a local URL it can show the
+    user. Degrades gracefully to an error dict if ComfyUI is unreachable.
+    """
+    prompt = (args.get("prompt") or "").strip()
+    if not prompt:
+        return {"error": "missing prompt"}
+    try:
+        from services import comfyui as c
+        res = await c.render_image(
+            prompt,
+            model=(args.get("model") or None),
+            negative_prompt=(args.get("negative_prompt") or ""),
+            steps=int(args.get("steps") or 25),
+            cfg_scale=float(args.get("cfg_scale") or 7.0),
+            width=int(args.get("width") or 1024),
+            height=int(args.get("height") or 1024),
+        )
+        return res
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "error": f"render_image error: {exc}"}
+
+
+# -------------------------------------------------------------------------
+# Register
+# -------------------------------------------------------------------------
 register(
     "web_search", "Search the web and return the top results (title + snippet).",
     [{"name": "query", "type": "string", "description": "search query"}],
@@ -319,6 +347,19 @@ register(
     "git_commit", "Commit new/changed files from the agent sandbox into the local git repo (publish verified output).",
     [{"name": "message", "type": "string", "description": "commit message"}],
     _git_commit,
+)
+register(
+    "render_image", "Generate an image from a text prompt using ComfyUI (LAN diffusion engine). Returns a local URL on success.",
+    [
+        {"name": "prompt", "type": "string", "description": "image description / prompt"},
+        {"name": "negative_prompt", "type": "string", "description": "optional things to avoid", "required": False},
+        {"name": "model", "type": "string", "description": "optional checkpoint name (auto-detected if omitted)", "required": False},
+        {"name": "steps", "type": "int", "description": "sampling steps (default 25)", "required": False},
+        {"name": "cfg_scale", "type": "float", "description": "CFG scale (default 7.0)", "required": False},
+        {"name": "width", "type": "int", "description": "image width (default 1024)", "required": False},
+        {"name": "height", "type": "int", "description": "image height (default 1024)", "required": False},
+    ],
+    _render_image,
 )
 
 

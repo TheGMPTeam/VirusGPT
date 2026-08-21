@@ -31,6 +31,33 @@ repo = Repository()
 # Per-mission cooperative cancellation flags.
 _CANCEL: Dict[str, bool] = {}
 
+# The uvicorn event loop. The synchronous /api/autonomous/start endpoint runs in
+# uvicorn's threadpool, so asyncio.get_event_loop() there returns a DIFFERENT
+# (non-running) loop — scheduling the background mission on it would make the
+# mission never execute. server.py captures the real loop at startup and stores it
+# here via set_loop(); we then schedule background work with
+# asyncio.run_coroutine_threadsafe on that loop.
+_LOOP: Optional[asyncio.AbstractEventLoop] = None
+
+
+def set_loop(loop: asyncio.AbstractEventLoop):
+    global _LOOP
+    _LOOP = loop
+
+
+def _schedule(coro):
+    """Run a coroutine as a background task on the captured server loop (or the
+    best-guess loop if none was set yet)."""
+    if _LOOP is not None:
+        return asyncio.run_coroutine_threadsafe(coro, _LOOP)
+    # Fallback for non-server contexts (tests / standalone scripts).
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        asyncio.run(coro)
+    return None
+
 # Status constants (shared vocabulary with the DB schema + client).
 MISS_CANCELLED = "cancelled"
 TASK_PENDING = "pending"
@@ -101,11 +128,7 @@ class Supervisor:
             )()
         )
         _CANCEL[mission.id] = False
-        try:
-            loop = asyncio.get_event_loop()
-            loop.create_task(self._run(mission, room_personas))
-        except RuntimeError:
-            asyncio.run(self._run(mission, room_personas))
+        _schedule(self._run(mission, room_personas))
         return {"id": mission.id, "planner": mission.planner, "status": mission.status}
 
     def resume_interrupted_missions(self, repo_for=None) -> List[str]:
@@ -122,11 +145,7 @@ class Supervisor:
                 if m.status in INTERRUPTIBLE_STATUSES:
                     personas = self._load_personas_for(m)
                     resumed.append(m.id)
-                    try:
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(self._run(m, personas, resumed_from_restart=True))
-                    except RuntimeError:
-                        asyncio.run(self._run(m, personas, resumed_from_restart=True))
+                    _schedule(self._run(m, personas, resumed_from_restart=True))
         except Exception as exc:  # never block startup on a resume hiccup
             print("[orchestrator] resume_interrupted_missions error:", exc)
         return resumed
@@ -157,11 +176,7 @@ class Supervisor:
             return {"ok": False, "error": f"mission already {mission.status}"}
         personas = self._load_personas_for(mission)
         _CANCEL[mission.id] = False
-        try:
-            loop = asyncio.get_event_loop()
-            loop.create_task(self._run(mission, personas, resumed_from_restart=True))
-        except RuntimeError:
-            asyncio.run(self._run(mission, personas, resumed_from_restart=True))
+        _schedule(self._run(mission, personas, resumed_from_restart=True))
         return {"ok": True, "id": mission.id, "status": mission.status}
 
     # -- background run ----------------------------------------------------

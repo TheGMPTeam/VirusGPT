@@ -10,7 +10,7 @@ verified agent publish its output back to the local repo ("update repo").
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from autonomous.database import Repository
 from autonomous.events import Event, bus
@@ -21,8 +21,14 @@ from services import llm
 TOOL_ROUNDS = 4  # max tool-call / observation cycles per task
 
 
-def _ollama_tools() -> List[dict]:
-    return agent_tools.tools_for_ollama()
+def _ollama_tools(allowed: Optional[List[str]] = None) -> List[dict]:
+    """Tools exposed to a persona. If `allowed` is set (a persona's `tools`
+    array), only those tools are offered; otherwise all registered tools are."""
+    tools = agent_tools.tools_for_ollama()
+    if not allowed:
+        return tools
+    allowed_set = set(allowed)
+    return [t for t in tools if t["function"]["name"] in allowed_set]
 
 
 class AgentRuntime:
@@ -40,8 +46,9 @@ class AgentRuntime:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ]
-        ollama_tools = _ollama_tools()
+        ollama_tools = _ollama_tools(persona.get("tools"))
         final_text = ""
+        generated_images: List[str] = []  # real /api/generated/... urls from render_image
 
         for _ in range(TOOL_ROUNDS):
             assistant_msg: Dict[str, Any] = {"role": "assistant", "content": ""}
@@ -82,6 +89,11 @@ class AgentRuntime:
                     args = {}
                 result = await agent_tools.run_tool(name, args)
                 ok = not (isinstance(result, dict) and result.get("error"))
+                # Capture real generated-image URLs so the result is correct
+                # even if the model mis-states the URL in its summary.
+                if name == "render_image" and isinstance(result, dict) and result.get("status") == "completed":
+                    if result.get("url"):
+                        generated_images.append(result["url"])
                 await bus.publish(Event(
                     mission_id=mission_id, task_id=task_id,
                     agent=persona.get("name", "unknown"), event="tool.call",
@@ -97,7 +109,10 @@ class AgentRuntime:
         if not final_text or len(final_text) < 20:
             return {"status": "failed", "summary": "empty or too-short response", "findings": [], "confidence": 0.0}
 
-        result = {"status": "completed", "summary": final_text, "findings": [], "confidence": 0.9, "tools_used": True}
+
+        result = {"status": "completed", "summary": final_text, "findings": [],
+                  "confidence": 0.9, "tools_used": True,
+                  "generated_images": generated_images}
         await bus.publish(Event(
             mission_id=mission_id, task_id=task_id,
             agent=persona.get("name", "unknown"), event="task.completed",
