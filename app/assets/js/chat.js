@@ -55,6 +55,8 @@ async function runSlashCommand(raw){
   if(cmd==='clear'){
     const rm=activeRoom(); rm.messages=[]; saveJSON('vg_rooms',rooms);
     $('#messages').innerHTML='';
+    // A fresh session is quiet for streaming auto-play until the speaker is on.
+    sessionAutoPlay=false; stopTTS();
     pushMessage('system','🧹 Session cleared.');
     return;
   }

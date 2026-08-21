@@ -43,12 +43,12 @@ function splitSentences(t){
   return out.length?out:cleaned;
 }
 /* Per-sentence play button: icon-only ▶ on the same inline row; each plays
-   ONLY its (markdown-cleaned) sentence through the serial queue. */
+   ONLY its own sentence, in isolation (it must not trigger the whole reply). */
 function makeSentencePlay(text, persona){
   const c=cleanMd(text);
   const b=document.createElement('button'); b.className='play';
   b.textContent='▶'; b.title=c;
-  b.onclick=()=>playSentenceNow(c, persona);
+  b.onclick=()=>playSingle(c, persona);
   return b;
 }
 /* "Replay all" button: icon-only ⟲; re-streams the whole reply sentence-by-sentence. */

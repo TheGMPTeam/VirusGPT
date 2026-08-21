@@ -18,6 +18,10 @@ function boot(){
     initMatrix();
     $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇';
     $('#btn-tts-toggle').classList.toggle('tts-on', !!TTS_ON);
+    // Seed per-session auto-play from the saved speaker state: if the speaker is
+    // ON at boot, the first session auto-plays; after /clear or /new it resets to
+    // off until the user clicks the speaker again.
+    sessionAutoPlay = !!TTS_ON;
     refreshHealth(); setInterval(refreshHealth,15000);
     window.addEventListener('resize',()=>{ if(document.querySelector('.tab[data-tab=memory]').classList.contains('active')){ clearTimeout(window.__mgResizeT); window.__mgResizeT=setTimeout(loadMemoryGraph,200); } });
   }catch(err){

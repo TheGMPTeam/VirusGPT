@@ -7,6 +7,9 @@ let ttsQueue=[];           // [{text, persona}] played strictly in order, one at
 let ttsPlaying=false;
 let ttsCurrentAudio=null;  // the single Audio element currently sounding (so we never overlap)
 let audioUnlocked=false;
+/* Per-session auto-play. After /clear or /new the session starts muted for
+   streaming auto-play; toggling the speaker button (TTS_ON) re-enables it. */
+let sessionAutoPlay = false;
 // Hard-stop any in-flight playback and clear the queue. Used before a fresh
 // replay / test so sentences from different sources can never overlap.
 function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} ttsQueue=[]; ttsPlaying=false; ttsBuf=''; ttsDone=0; }
@@ -17,11 +20,26 @@ function unlockAudio(){ if(audioUnlocked) return; audioUnlocked=true;
 function feedTTS(t, persona){ ttsBuf+=t; drainSentences(false, persona); }
 function flushTTS(persona){ drainSentences(true, persona); }
 function autoPlaySentence(text, persona){
-  // AUTO-PLAY only — gated by the speaker button (TTS_ON). Used while streaming.
-  if(!TTS_ON) return;
+  // AUTO-PLAY only — gated by the speaker button (TTS_ON) AND the per-session
+  // auto-play flag (turned off by /clear and /new so a fresh session is quiet
+  // unless the user re-enables the speaker). Used while streaming.
+  if(!TTS_ON || !sessionAutoPlay) return;
   const c=cleanMd(text);
   if(!c) return;
   ttsQueue.push({text:c, persona}); pumpTTS();
+}
+/* Play exactly ONE sentence, isolated from the shared auto-play queue and from
+   any in-flight playback. Used by the per-sentence ▶ buttons so clicking the
+   3rd button plays ONLY the 3rd sentence — never the whole reply. */
+function playSingle(text, persona){
+  const c=cleanMd(text);
+  if(!c) return;
+  // Stop whatever is sounding (incl. an auto-play run) so a manual click always
+  // wins, then play this one sentence and nothing else.
+  try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){}
+  ttsQueue=[]; ttsPlaying=false;
+  const v=(persona?.voice)||(selectedPersonaObj()?.voice)||HEALTH.default_voice||'alba';
+  playTTS(c, {voice:v}).catch(()=>{});
 }
 function playSentenceNow(text, persona){
   // MANUAL play — always plays, regardless of the autoplay (speaker) toggle.

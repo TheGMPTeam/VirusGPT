@@ -43,6 +43,8 @@ function newSession(){
   const rm={name, messages:[], personas: personas.map(p=>p.name)};
   rooms.push(rm); currentRoom=name; saveJSON('vg_rooms',rooms);
   $('#messages').innerHTML=''; renderSessions(); renderPersonas();
+  // Fresh session: streaming auto-play stays off until the speaker is enabled.
+  sessionAutoPlay=false; stopTTS();
   pushMessage('system','✨ New session: '+name);
 }
 // Wire the New button (declared in markup) once DOM is ready.

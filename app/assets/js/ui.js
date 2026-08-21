@@ -30,7 +30,8 @@ function initModals(){
     b.textContent=TTS_ON?'🔊':'🔇';
     b.classList.toggle('tts-on', TTS_ON);
     // Tie auto-playback to this button: muting immediately halts any in-flight audio.
-    if(!TTS_ON) stopTTS();
+    if(!TTS_ON){ stopTTS(); sessionAutoPlay=false; }
+    else { sessionAutoPlay=true; }   // re-enabling the speaker resumes auto-play
   };
   // Reflect the live "playing" state on the speaker button (pulse while audio sounds).
   window.__vg_tts_pulse=setInterval(()=>{
