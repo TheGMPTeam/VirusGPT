@@ -32,7 +32,8 @@ _DEFAULTS: dict[str, Any] = {
     # Each may be enabled/disabled independently; endpoints are overridable via
     # VG_* env vars (see load_config below). Missing services degrade gracefully.
     "services": {
-        "n8n":     {"enabled": True,  "base_url": "http://10.0.0.120:5678", "timeout": 30},
+        "n8n":     {"enabled": True,  "base_url": "http://10.0.0.120:5678", "timeout": 30,
+                    "api_key": ""},
         "comfyui": {"enabled": True,  "base_url": "http://10.0.0.120:8188", "timeout": 180,
                     "default_model": ""},
         "blender": {"enabled": False, "base_url": "http://10.0.0.120:8008", "timeout": 300},
@@ -92,6 +93,10 @@ def load_config() -> dict:
     ):
         if os.environ.get(env) and isinstance(cfg.get("services"), dict) and svc in cfg["services"]:
             cfg["services"][svc]["base_url"] = os.environ[env]
+    # n8n API key (sent as X-N8N-API-KEY). NEVER put the real token in the
+    # tracked config.json — supply it via VG_N8N_TOKEN at runtime.
+    if os.environ.get("VG_N8N_TOKEN") and isinstance(cfg.get("services"), dict) and "n8n" in cfg["services"]:
+        cfg["services"]["n8n"]["api_key"] = os.environ["VG_N8N_TOKEN"]
     if os.environ.get("VG_MARTON_KEY") and isinstance(cfg.get("services"), dict) and "marton" in cfg["services"]:
         cfg["services"]["marton"]["api_key"] = os.environ["VG_MARTON_KEY"]
     return cfg
