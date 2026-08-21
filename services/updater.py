@@ -217,10 +217,15 @@ def _run_update(target: str | None = None):
     info = get_buildinfo()
     src = Path(info["source_dir"])
     venv_py = info["venv"]
-    # target channel: explicit choice, else the tracked branch. Switching the
-    # tracked branch to the target so future checks default there.
+    # target channel: explicit choice, else the tracked branch.
     br = (target or update_branch()).strip() or "beta"
-    set_branch(br)
+    # Persist the chosen channel to the SOURCE repo's file (NOT the frozen
+    # bundle's ROOT, which build-macos.py copies into the next build) so the
+    # rebuilt app ships with the correct channel.
+    try:
+        (src / "app" / "update_branch.json").write_text(json.dumps({"branch": br}))
+    except Exception:
+        pass
     apps_app = Path(f"/Applications/{APP_NAME}.app")
     if not apps_app.exists():
         apps_app = src / "apps" / f"{APP_NAME}.app"
