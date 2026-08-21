@@ -1,7 +1,8 @@
 /* updates.js — version-bar click -> update popup.
-   Shows the running version + channel, the available update targets (stay on
-   the same channel for a newer build, or switch to the other channel), release
-   notes, and drives a background update (git pull + rebuild + replace). */
+   Shows the running version + channel. Offers two update targets:
+     • update on the SAME channel (only if a newer commit exists)
+     • switch to the OTHER channel (always allowed, rebuilds to it)
+   You can never be offered to "switch to" the channel you are already on. */
 
 function initUpdates(){
   const ver = document.getElementById('version-info');
@@ -17,56 +18,15 @@ function initUpdates(){
   const notes = document.getElementById('up-notes');
   const curEl = document.getElementById('up-current');
   const latEl = document.getElementById('up-latest');
-  const branchBox = document.getElementById('up-branches');
 
   let _pollTimer = null;
   let _tracked = 'beta';
-  let _features = { "in_app_updater": true, "is_beta": true, "channel": "beta" };
   let _other = 'main';
+  let _features = { "in_app_updater": true, "is_beta": true, "channel": "beta" };
 
   function applyFeatureGating(){
     const note = document.getElementById('up-feature-note');
     if(note) note.classList.add('hidden');
-  }
-
-  function renderBranches(list, tracked){
-    _tracked = tracked;
-    _other = (tracked === 'main') ? 'beta' : 'main';
-    if(!branchBox) return;
-    branchBox.innerHTML = '';
-    (list||[]).forEach(b=>{
-      const btn = document.createElement('button');
-      btn.className = 'branch-chip' + (b===tracked ? ' active' : '');
-      btn.textContent = b;
-      btn.onclick = ()=> selectBranch(b);
-      branchBox.appendChild(btn);
-    });
-  }
-
-  async function loadBranches(){
-    try{
-      const r = await fetch('api/update/branches', {cache:'no-store'});
-      if(r.ok){
-        const d = await r.json();
-        renderBranches(d.available, d.tracked);
-        return;
-      }
-    }catch(e){ /* ignore */ }
-    renderBranches(['beta','main'], _tracked);
-  }
-
-  async function selectBranch(b){
-    try{
-      const r = await fetch('api/update/branch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({branch:b})});
-      if(r.ok){
-        const d = await r.json();
-        renderBranches(d.available, d.tracked);
-      } else {
-        renderBranches([b], b);
-      }
-    }catch(e){ renderBranches([b], b); }
-    loadFeatures();
-    doCheck();
   }
 
   function open(){
@@ -74,7 +34,6 @@ function initUpdates(){
     msg.textContent = '';
     if(applyBox) applyBox.classList.add('hidden');
     prog.classList.add('hidden');
-    loadBranches();
     loadFeatures();
     fetchVersionThenCheck();
   }
@@ -82,7 +41,11 @@ function initUpdates(){
   async function loadFeatures(){
     try{
       const r = await fetch('api/features', {cache:'no-store'});
-      if(r.ok){ _features = await r.json(); }
+      if(r.ok){
+        _features = await r.json();
+        _tracked = (_features.channel === 'main') ? 'main' : 'beta';
+        _other = (_tracked === 'main') ? 'beta' : 'main';
+      }
     }catch(e){ /* keep defaults */ }
     applyFeatureGating();
   }
@@ -121,21 +84,19 @@ function initUpdates(){
     check.classList.remove('hidden');
   }
 
-  // Build the two target buttons: same-channel update (if newer exists) and
-  // switch-to-other-channel (always allowed, even at the same commit).
-  function renderTargets(sameCheck, otherCheck){
+  // Build the target buttons. Same-channel update only if a newer commit exists.
+  // Switch-to-other-channel is always offered (rebuild to the other channel).
+  function renderTargets(same, other){
     if(!applyBox) return;
     applyBox.innerHTML = '';
-    // Same channel: only offer if there is a newer commit.
-    if(sameCheck && sameCheck.behind){
-      const b = mkTargetBtn(`Update on ${_tracked}`, _tracked, 'Update available for this channel.');
-      applyBox.appendChild(b);
+    if(same && same.behind){
+      applyBox.appendChild(mkTargetBtn(
+        `Update on ${_tracked}`, _tracked, 'Update to the latest build on this channel.'));
     }
-    // Other channel: always offer a switch (rebuild to the other channel).
-    const otherLabel = (otherCheck && otherCheck.latest === otherCheck.current)
-      ? `Switch to ${_other}` : `Switch to ${_other} (${otherCheck ? otherCheck.latest : '…'})`;
-    const ob = mkTargetBtn(otherLabel, _other, 'Rebuild to the other channel.');
-    applyBox.appendChild(ob);
+    const otherLabel = (other && other.latest === other.current)
+      ? `Switch to ${_other}` : `Switch to ${_other}`;
+    applyBox.appendChild(mkTargetBtn(
+      otherLabel, _other, `Rebuild the app on the ${_other} channel.`));
     applyBox.classList.remove('hidden');
   }
   function mkTargetBtn(label, target, title){
@@ -153,10 +114,8 @@ function initUpdates(){
     notes.innerHTML = '';
     latEl.textContent = '—';
     try{
-      // same channel
       const rs = await fetch(`api/update/check?target=${encodeURIComponent(_tracked)}`, {cache:'no-store'});
       const same = await rs.json();
-      // other channel
       const ro = await fetch(`api/update/check?target=${encodeURIComponent(_other)}`, {cache:'no-store'});
       const other = await ro.json();
       latEl.textContent = same.latest ? `v… · ${same.latest}` : (same.current || '—');
