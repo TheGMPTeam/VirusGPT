@@ -44,11 +44,15 @@ function boot(){
     refreshHealth(); setInterval(refreshHealth,15000);
     showVersion();
     window.addEventListener('resize',()=>{ if(document.querySelector('.tab[data-tab=memory]').classList.contains('active')){ clearTimeout(window.__mgResizeT); window.__mgResizeT=setTimeout(loadMemoryGraph,200); } });
-    // Dismiss the boot/loading screen now that the UI is initialized.
+    // Dismiss the boot/loading screen once the full page has painted (window.load),
+    // not on a fixed timer — keeps the colored loader as the first thing shown and
+    // prevents a late flash after the UI is already visible.
     const bootEl=document.getElementById('boot-screen');
     const bootStatus=document.getElementById('boot-status');
     if(bootStatus) bootStatus.textContent='Ready';
-    if(bootEl){ setTimeout(()=>{ bootEl.classList.add('hide'); setTimeout(()=>bootEl.remove(), 450); }, 250); }
+    const hideBoot=()=>{ if(bootEl){ bootEl.classList.add('hide'); setTimeout(()=>bootEl.remove(), 450); } };
+    if(document.readyState==='complete'){ setTimeout(hideBoot, 200); }
+    else { window.addEventListener('load', ()=> setTimeout(hideBoot, 200)); }
   }catch(err){
     console.error('[VG boot error]', err);
     const m=document.querySelector('#messages');

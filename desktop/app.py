@@ -139,6 +139,7 @@ def main():
             min_size=(900, 600),
             text_select=True,
             confirm_close=False,
+            background_color="#05070a",
         )
         try:
             webview.start()
