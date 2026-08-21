@@ -12,11 +12,19 @@ function showVersion(){
     el.textContent = `v${v.version} · ${v.commit}` + (channel ? ` · ${channel}` : '');
   };
   if(window.__VG_VERSION && window.__VG_VERSION.version){
-    paint(window.__VG_VERSION, (window.__VG_CHANNEL)||null); return;
+    paint(window.__VG_VERSION, (window.__VG_CHANNEL)||null);
   }
+  // Always re-resolve the LIVE channel from /api/features so the bottom bar
+  // matches the running channel (not just the baked-in build-time value).
+  fetch('api/features', {cache:'no-store'}).then(r=>r.ok?r.json():null).then(f=>{
+    if(f && f.channel){
+      const g = window.__VG_VERSION || null;
+      paint(g, f.channel);
+    }
+  }).catch(()=>{});
   fetch('version.json', {cache:'no-store'}).then(r=>r.ok?r.json():null)
-    .then(j=>{ if(j && j.version) paint(j); else el.textContent='dev'; })
-    .catch(()=>{ el.textContent='dev'; });
+    .then(j=>{ if(j && j.version) paint(j, el.textContent.split('· ').pop()); })
+    .catch(()=>{ if(!el.textContent) el.textContent='dev'; });
 }
 
 function boot(){
