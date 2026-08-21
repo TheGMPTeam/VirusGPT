@@ -27,6 +27,7 @@ from pathlib import Path
 # ROOT is the repo root when running from source, or the frozen Resources dir
 # (apps/VirusGPT.app/Contents/Resources) when running from the built app.
 ROOT = Path(__file__).resolve().parent.parent
+APP_NAME = "VirusGPT"
 BUILDINFO = ROOT / "app" / "buildinfo.json"
 VERSION_FILE = ROOT / "app" / "version.json"
 
@@ -161,7 +162,11 @@ def _run_update():
     info = get_buildinfo()
     src = Path(info["source_dir"])
     venv_py = info["venv"]
-    apps_app = src / "apps" / "VirusGPT.app"
+    # The build script installs into /Applications/VirusGPT.app (falling back to
+    # repo apps/ if /Applications isn't writable). Match that target here.
+    apps_app = Path(f"/Applications/{APP_NAME}.app")
+    if not apps_app.exists():
+        apps_app = src / "apps" / f"{APP_NAME}.app"
     _STATE["running"] = True
     _STATE["started_at"] = time.time()
     _STATE["error"] = None

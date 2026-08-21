@@ -2,8 +2,9 @@
 
 Builds dist/VirusGPT.app, stamps it with the git version + commit (written to
 app/version.json and injected into the frozen index.html as window.__VG_VERSION),
-then MOVES it into apps/VirusGPT.app — replacing any prior build there — so there
-is exactly ONE shipped app. The app launches the FastAPI server in-process and
+then INSTALLS it into /Applications/VirusGPT.app — replacing any prior build there
+— so there is exactly ONE shipped app. Falls back to a repo-local apps/ copy if
+/Applications isn't writable. The app launches the FastAPI server in-process and
 opens a native WebView window (pywebview -> WKWebView). Cross-platform: the
 Linux/Windows variants use the same spec with a different --name/icon.
 """
@@ -18,8 +19,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP_NAME = "VirusGPT"
-APPS_DIR = ROOT / "apps"
-DEST_APP = APPS_DIR / f"{APP_NAME}.app"
 
 
 def git_version():
@@ -93,8 +92,8 @@ def build():
         "--hidden-import", "memory",
         "--hidden-import", "gateway",
         "--add-data", f"app{os_sep()}app",
-        "--add-data", f"config.json{os_sep()}config.json",
-        "--add-data", f"server.py{os_sep()}server.py",
+        "--add-data", f"config.json{os_sep()}.",
+        "--add-data", f"server.py{os_sep()}.",
         "--add-data", f"desktop{os_sep()}desktop",
         "desktop/run.py",
     ]
@@ -102,17 +101,17 @@ def build():
     rc = subprocess.call(spec, cwd=str(ROOT))
     if rc != 0:
         return rc
-    # Move the freshly built bundle into apps/, replacing any previous build.
+    # Move the freshly built bundle into /Applications, replacing any previous
+    # build, so there is exactly ONE shipped app. /Applications needs admin, so
+    # fall back to a repo-local apps/ copy (and reveal it in Finder) if we cannot
+    # write there.
     built = ROOT / "dist" / f"{APP_NAME}.app"
     if not built.exists():
         print(f"[build] ERROR: expected built bundle at {built}, none found")
         return 1
-    APPS_DIR.mkdir(parents=True, exist_ok=True)
-    if DEST_APP.exists():
-        print(f"[build] removing previous {DEST_APP}")
-        shutil.rmtree(DEST_APP)
-    shutil.move(str(built), str(DEST_APP))
-    print(f"[build] moved bundle -> {DEST_APP}")
+    placed = _install_to_applications(built, APP_NAME)
+    DEST_APP = placed
+    print(f"[build] installed bundle -> {DEST_APP}")
     # Inject the version global into the frozen index.html so the bottom bar shows
     # it even if version.json fetch is blocked (file:// / offline WebView).
     inject_version_global(DEST_APP / "Contents" / "Resources" / "app" / "index.html",
@@ -122,6 +121,45 @@ def build():
     if left.exists():
         shutil.rmtree(left)
     return 0
+
+
+def _install_to_applications(built, app_name):
+    """Install built .app into /Applications/VirusGPT.app (replace in place).
+
+    Uses `sudo mv` for the admin write, falling back to a repo-local apps/ copy
+    if /Applications isn't writable. Returns the final installed path.
+    """
+    dest = Path(f"/Applications/{app_name}.app")
+    repo_apps = ROOT / "apps"
+    # 1) try a plain move (works if user already owns /Applications or SIP allows)
+    try:
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.move(str(built), str(dest))
+        return dest
+    except PermissionError:
+        pass
+    # 2) try sudo mv
+    try:
+        if dest.exists():
+            subprocess.run(["sudo", "rm", "-rf", str(dest)], check=True)
+        subprocess.run(["sudo", "mv", str(built), str(dest)], check=True)
+        return dest
+    except Exception as e:
+        print(f"[build] (warn) could not write to /Applications ({e}); "
+              f"installing into repo apps/ instead.")
+    # 3) fallback: repo-local apps/
+    repo_apps.mkdir(parents=True, exist_ok=True)
+    fallback = repo_apps / f"{app_name}.app"
+    if fallback.exists():
+        shutil.rmtree(fallback)
+    shutil.move(str(built), str(fallback))
+    return fallback
+
+
+def _reveal_in_finder(path):
+    """No-op: the user does not want a Finder reveal window."""
+    return
 
 
 def inject_version_global(index_html, version, commit):

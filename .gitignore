@@ -30,7 +30,11 @@ data/
 # desktop/build-*.py; keep the build scripts tracked, not the output)
 build/
 dist/
+# Stale/auto-generated PyInstaller spec files (build script uses inline args)
+*.spec
 # Frozen desktop .app after it is moved into the project's apps/ folder
 apps/
 # Generated per-build version stamp (written by desktop/build-*.py)
 app/version.json
+# Runtime logs
+logs/

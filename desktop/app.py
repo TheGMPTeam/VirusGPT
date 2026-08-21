@@ -33,7 +33,6 @@ ROOT = Path(__file__).resolve().parent.parent
 PORT = int(os.environ.get("VG_PORT", "8500"))
 NO_GUI = os.environ.get("VG_NO_GUI", "").lower() in ("1", "true", "yes")
 
-
 def _backend_url_from_config() -> str:
     """Read an optional remote backend URL from config.json (desktop.backend_url)."""
     cfg_path = ROOT / "config.json"
@@ -129,10 +128,15 @@ def main():
         sys.exit(0)
 
     # SELF-CONTAINED MODE: start the server in-process, then open localhost.
+    # Use the fixed port (default 8500). If something else already holds it
+    # (e.g. a stale dev server.py / launch.sh), take it over so THIS bundle's
+    # UI is what the window loads.
+    global PORT
+    _free_port_8500()
     srv = threading.Thread(target=_serve, daemon=True)
     srv.start()
     url = f"http://localhost:{PORT}"
-    print("[desktop] starting server (in-process)...", flush=True)
+    print(f"[desktop] starting server (in-process) on {url}...", flush=True)
     if not _wait_health(url):
         print("[desktop] WARNING: server did not come up in time", flush=True)
 
