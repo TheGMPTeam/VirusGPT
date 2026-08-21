@@ -92,14 +92,20 @@ async def api_version():
 
 
 @app.get("/api/update/check")
-async def api_update_check():
-    return JSONResponse(_updater.check_update())
+async def api_update_check(target: str | None = None):
+    return JSONResponse(_updater.check_update(target))
 
 
 @app.post("/api/update/apply")
-async def api_update_apply():
+async def api_update_apply(req: Request):
     # Kicks off a background git-pull + rebuild that replaces apps/VirusGPT.app.
-    return JSONResponse(_updater.apply_update())
+    # Optional body {"target": "beta"|"main"} switches the channel being updated to.
+    try:
+        data = await req.json()
+    except Exception:
+        data = {}
+    target = (data or {}).get("target") if isinstance(data, dict) else None
+    return JSONResponse(_updater.apply_update(target))
 
 
 @app.get("/api/update/status")

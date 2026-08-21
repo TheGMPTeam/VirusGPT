@@ -490,31 +490,34 @@ def test_version_endpoint(client, monkeypatch):
 
 def test_update_check_endpoint(client, monkeypatch):
     from services import updater
-    monkeypatch.setattr(updater, "check_update", lambda: {
-        "current": "abc1234", "latest": "def5678", "behind": True,
+    monkeypatch.setattr(updater, "check_update", lambda target=None: {
+        "current": "abc1234", "target": target or "beta", "latest": "def5678", "behind": True,
         "updatable": True, "notes": ["fix: thing", "feat: other"], "error": None,
     })
     r = client.get("/api/update/check")
     assert r.status_code == 200
     d = r.json()
     assert d["behind"] is True and len(d["notes"]) == 2
+    # target query param is forwarded
+    r2 = client.get("/api/update/check?target=main")
+    assert r2.json()["target"] == "main"
 
 
 def test_update_apply_then_status(client, monkeypatch):
     from services import updater
     state = {"running": False, "stage": "idle", "progress": 0, "message": "",
-             "error": None, "started_at": None, "finished_at": None}
-    monkeypatch.setattr(updater, "apply_update", lambda: dict(state))
+             "error": None, "started_at": None, "finished_at": None, "target": "beta"}
+    monkeypatch.setattr(updater, "apply_update", lambda target=None: dict(state))
     monkeypatch.setattr(updater, "get_status", lambda: dict(state))
-    r = client.post("/api/update/apply")
+    r = client.post("/api/update/apply", json={"target": "main"})
     assert r.status_code == 200
     assert client.get("/api/update/status").json()["stage"] == "idle"
 
 
 def test_update_check_not_updatable(client, monkeypatch):
     from services import updater
-    monkeypatch.setattr(updater, "check_update", lambda: {
-        "current": "abc", "latest": "abc", "behind": False,
+    monkeypatch.setattr(updater, "check_update", lambda target=None: {
+        "current": "abc", "target": target or "beta", "latest": "abc", "behind": False,
         "updatable": False, "notes": [], "error": "not_updatable",
     })
     d = client.get("/api/update/check").json()

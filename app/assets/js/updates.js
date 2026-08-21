@@ -1,6 +1,7 @@
 /* updates.js — version-bar click -> update popup.
-   Shows the currently-running version + latest available, release notes, and
-   drives a background update (git pull + rebuild + replace) via the API. */
+   Shows the running version + channel, the available update targets (stay on
+   the same channel for a newer build, or switch to the other channel), release
+   notes, and drives a background update (git pull + rebuild + replace). */
 
 function initUpdates(){
   const ver = document.getElementById('version-info');
@@ -8,7 +9,7 @@ function initUpdates(){
   const overlay = document.getElementById('update-overlay');
   const close = document.getElementById('up-btn-close');
   const check = document.getElementById('up-check');
-  const apply = document.getElementById('up-apply');
+  const applyBox = document.getElementById('up-apply-box'); // holds the target buttons
   const prog = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar-fill');
   const status = document.getElementById('up-status');
@@ -20,17 +21,17 @@ function initUpdates(){
 
   let _pollTimer = null;
   let _tracked = 'beta';
-  let _features = { "in_app_updater": true, "is_beta": true };
+  let _features = { "in_app_updater": true, "is_beta": true, "channel": "beta" };
+  let _other = 'main';
 
   function applyFeatureGating(){
-    // Updating is always allowed (from main or beta). Experimental UI flags can
-    // be toggled here later; for now the channel chips + update controls stay on.
     const note = document.getElementById('up-feature-note');
     if(note) note.classList.add('hidden');
   }
 
   function renderBranches(list, tracked){
     _tracked = tracked;
+    _other = (tracked === 'main') ? 'beta' : 'main';
     if(!branchBox) return;
     branchBox.innerHTML = '';
     (list||[]).forEach(b=>{
@@ -64,7 +65,6 @@ function initUpdates(){
         renderBranches([b], b);
       }
     }catch(e){ renderBranches([b], b); }
-    // re-check against the newly selected branch
     loadFeatures();
     doCheck();
   }
@@ -72,11 +72,10 @@ function initUpdates(){
   function open(){
     if(overlay) overlay.classList.remove('hidden');
     msg.textContent = '';
-    apply.classList.add('hidden');
+    if(applyBox) applyBox.classList.add('hidden');
     prog.classList.add('hidden');
     loadBranches();
     loadFeatures();
-    // Immediately show the running version from the injected global / version.json.
     fetchVersionThenCheck();
   }
 
@@ -106,9 +105,6 @@ function initUpdates(){
   }
 
   async function fetchVersionThenCheck(){
-    // The running version is authoritative from the injected global (set at
-    // build time). Show it immediately; only enrich/override from the API if
-    // the global is missing (dev runs without a build stamp).
     if(fillCurrent()){
       check.classList.remove('hidden');
       return;
@@ -125,43 +121,73 @@ function initUpdates(){
     check.classList.remove('hidden');
   }
 
+  // Build the two target buttons: same-channel update (if newer exists) and
+  // switch-to-other-channel (always allowed, even at the same commit).
+  function renderTargets(sameCheck, otherCheck){
+    if(!applyBox) return;
+    applyBox.innerHTML = '';
+    // Same channel: only offer if there is a newer commit.
+    if(sameCheck && sameCheck.behind){
+      const b = mkTargetBtn(`Update on ${_tracked}`, _tracked, 'Update available for this channel.');
+      applyBox.appendChild(b);
+    }
+    // Other channel: always offer a switch (rebuild to the other channel).
+    const otherLabel = (otherCheck && otherCheck.latest === otherCheck.current)
+      ? `Switch to ${_other}` : `Switch to ${_other} (${otherCheck ? otherCheck.latest : '…'})`;
+    const ob = mkTargetBtn(otherLabel, _other, 'Rebuild to the other channel.');
+    applyBox.appendChild(ob);
+    applyBox.classList.remove('hidden');
+  }
+  function mkTargetBtn(label, target, title){
+    const btn = document.createElement('button');
+    btn.className = 'btn-accent up-target-btn';
+    btn.textContent = label;
+    btn.title = title;
+    btn.onclick = ()=> doApply(target);
+    return btn;
+  }
+
   async function doCheck(){
     msg.textContent = 'Checking…';
-    apply.classList.add('hidden');
+    if(applyBox) applyBox.classList.add('hidden');
     notes.innerHTML = '';
     latEl.textContent = '—';
     try{
-      const r = await fetch('api/update/check', {cache:'no-store'});
-      const d = await r.json();
-      latEl.textContent = d.latest ? `v… · ${d.latest}` : (d.current || '—');
-      if(d.error === 'not_updatable'){
+      // same channel
+      const rs = await fetch(`api/update/check?target=${encodeURIComponent(_tracked)}`, {cache:'no-store'});
+      const same = await rs.json();
+      // other channel
+      const ro = await fetch(`api/update/check?target=${encodeURIComponent(_other)}`, {cache:'no-store'});
+      const other = await ro.json();
+      latEl.textContent = same.latest ? `v… · ${same.latest}` : (same.current || '—');
+      if(same.error === 'not_updatable'){
         msg.textContent = 'This build cannot self-update (no source/venv). Pull & rebuild manually.';
         return;
       }
-      if(d.behind && d.notes && d.notes.length){
-        notes.innerHTML = '<div class="up-notes-h">What\'s new:</div>' +
-          d.notes.map(n=>`<div class="up-note">• ${escapeHtml(n)}</div>`).join('');
-        apply.classList.remove('hidden');
-        msg.textContent = 'An update is available.';
-      } else if(d.latest === d.current){
-        msg.textContent = 'You are on the latest version.';
+      if(same.behind && same.notes && same.notes.length){
+        notes.innerHTML = `<div class="up-notes-h">What's new on ${_tracked}:</div>` +
+          same.notes.map(n=>`<div class="up-note">• ${escapeHtml(n)}</div>`).join('');
+      }
+      renderTargets(same, other);
+      if(!same.behind){
+        msg.textContent = 'You are on the latest ' + _tracked + '. You can still switch channels below.';
       } else {
-        msg.textContent = d.error ? `Check failed: ${d.error}` : 'No update available.';
+        msg.textContent = 'An update is available.';
       }
     }catch(e){
       msg.textContent = 'Check failed: ' + (e.message||e);
     }
   }
 
-  async function doApply(){
-    apply.classList.add('hidden');
-    check.classList.add('hidden');
+  async function doApply(target){
+    if(applyBox) applyBox.classList.add('hidden');
+    if(check) check.classList.add('hidden');
     prog.classList.remove('hidden');
     bar.style.width = '5%';
-    status.textContent = 'Starting update…';
+    status.textContent = `Starting update to ${target}…`;
     msg.textContent = '';
     try{
-      await fetch('api/update/apply', {method:'POST'});
+      await fetch('api/update/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({target})});
     }catch(e){ /* continue polling status */ }
     if(_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(pollStatus, 1500);
@@ -181,7 +207,7 @@ function initUpdates(){
         clearInterval(_pollTimer); _pollTimer = null;
         prog.classList.add('hidden');
         msg.textContent = 'Update failed: ' + (s.error||'unknown error');
-        check.classList.remove('hidden');
+        if(check) check.classList.remove('hidden');
       }
     }catch(e){ /* keep polling */ }
   }
@@ -189,7 +215,6 @@ function initUpdates(){
   if(ver) ver.onclick = open;
   if(close) close.onclick = closePopup;
   if(check) check.onclick = doCheck;
-  if(apply) apply.onclick = doApply;
   if(overlay) overlay.addEventListener('click', e=>{ if(e.target===overlay) closePopup(); });
 }
 

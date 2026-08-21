@@ -149,8 +149,9 @@ def _git_ok(cwd=None):
 # --------------------------------------------------------------------------
 # Update check
 # --------------------------------------------------------------------------
-def check_update() -> dict:
-    """Compare the running commit against the latest remote (origin/main).
+def check_update(target: str | None = None) -> dict:
+    """Compare the running commit against the latest remote for `target` channel
+    (beta/main). Defaults to the tracked branch.
 
     Returns current/latest commits, whether we are behind, and a short list of
     commit subjects that would be applied. Never raises — surfaces errors.
@@ -158,8 +159,10 @@ def check_update() -> dict:
     info = get_buildinfo()
     src = info["source_dir"]
     current = get_version().get("commit", "")
+    br = (target or update_branch()).strip() or "beta"
     out = {
         "current": current,
+        "target": br,
         "latest": current,
         "behind": False,
         "updatable": info["updatable"],
@@ -171,7 +174,6 @@ def check_update() -> dict:
         return out
     try:
         _git("fetch", "origin", cwd=src, timeout=60)
-        br = update_branch()
         latest = _git("rev-parse", f"origin/{br}", cwd=src, timeout=30)[:7]
         if not latest:
             latest = _git("rev-parse", "HEAD", cwd=src, timeout=30)[:7]
@@ -194,11 +196,12 @@ def get_status() -> dict:
     return dict(_STATE)
 
 
-def apply_update() -> dict:
-    """Kick off a background update. Returns the initial status dict."""
+def apply_update(target: str | None = None) -> dict:
+    """Kick off a background update to `target` channel (beta/main). Defaults to
+    the currently tracked branch. Returns the initial status dict."""
     if _STATE["running"]:
         return get_status()
-    t = threading.Thread(target=_run_update, daemon=True)
+    t = threading.Thread(target=_run_update, daemon=True, args=(target,))
     t.start()
     return get_status()
 
@@ -210,22 +213,26 @@ def _set(stage, progress, message, **extra):
     _STATE.update(extra)
 
 
-def _run_update():
+def _run_update(target: str | None = None):
     info = get_buildinfo()
     src = Path(info["source_dir"])
     venv_py = info["venv"]
-    br = update_branch()
+    # target channel: explicit choice, else the tracked branch. Switching the
+    # tracked branch to the target so future checks default there.
+    br = (target or update_branch()).strip() or "beta"
+    set_branch(br)
     apps_app = Path(f"/Applications/{APP_NAME}.app")
     if not apps_app.exists():
         apps_app = src / "apps" / f"{APP_NAME}.app"
     _STATE["running"] = True
     _STATE["started_at"] = time.time()
     _STATE["error"] = None
+    _STATE["target"] = br
     try:
         # 1) Fast git steps IN-PROCESS (low risk, quick): fetch + point tree at the
-        #    tracked branch. The build/relaunch below runs DETACHED so the app can
+        #    target branch. The build/relaunch below runs DETACHED so the app can
         #    fully quit before its own bundle is replaced (no self-overwrite race).
-        _set("fetching", 10, "Fetching latest source…")
+        _set("fetching", 10, f"Fetching {br}…")
         if not _git_ok(src):
             raise RuntimeError("not a git work tree")
         _git("remote", "set-branches", "origin", br, cwd=src, timeout=30)
