@@ -16,14 +16,56 @@ function initUpdates(){
   const notes = document.getElementById('up-notes');
   const curEl = document.getElementById('up-current');
   const latEl = document.getElementById('up-latest');
+  const branchBox = document.getElementById('up-branches');
 
   let _pollTimer = null;
+  let _tracked = 'beta';
+
+  function renderBranches(list, tracked){
+    _tracked = tracked;
+    if(!branchBox) return;
+    branchBox.innerHTML = '';
+    (list||[]).forEach(b=>{
+      const btn = document.createElement('button');
+      btn.className = 'branch-chip' + (b===tracked ? ' active' : '');
+      btn.textContent = b;
+      btn.onclick = ()=> selectBranch(b);
+      branchBox.appendChild(btn);
+    });
+  }
+
+  async function loadBranches(){
+    try{
+      const r = await fetch('api/update/branches', {cache:'no-store'});
+      if(r.ok){
+        const d = await r.json();
+        renderBranches(d.available, d.tracked);
+        return;
+      }
+    }catch(e){ /* ignore */ }
+    renderBranches(['beta','main'], _tracked);
+  }
+
+  async function selectBranch(b){
+    try{
+      const r = await fetch('api/update/branch', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({branch:b})});
+      if(r.ok){
+        const d = await r.json();
+        renderBranches(d.available, d.tracked);
+      } else {
+        renderBranches([b], b);
+      }
+    }catch(e){ renderBranches([b], b); }
+    // re-check against the newly selected branch
+    doCheck();
+  }
 
   function open(){
     if(overlay) overlay.classList.remove('hidden');
     msg.textContent = '';
     apply.classList.add('hidden');
     prog.classList.add('hidden');
+    loadBranches();
     // Immediately show the running version from the injected global / version.json.
     fetchVersionThenCheck();
   }

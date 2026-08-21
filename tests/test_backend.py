@@ -521,6 +521,21 @@ def test_update_check_not_updatable(client, monkeypatch):
     assert d["error"] == "not_updatable" and d["updatable"] is False
 
 
+def test_update_branches_and_set_branch(client, monkeypatch):
+    from services import updater
+    monkeypatch.setattr(updater, "_git", lambda *a, **k: "okhash")  # branches exist
+    monkeypatch.setattr(updater, "get_branches", updater.get_branches)  # real
+    monkeypatch.setattr(updater, "set_branch", updater.set_branch)
+    r = client.get("/api/update/branches")
+    assert r.status_code == 200
+    assert "beta" in r.json()["available"] and "main" in r.json()["available"]
+    r2 = client.post("/api/update/branch", json={"branch": "main"})
+    assert r2.status_code == 200 and r2.json()["branch"] == "main"
+    assert updater.update_branch() == "main"
+    # reset back to beta for cleanliness
+    client.post("/api/update/branch", json={"branch": "beta"})
+
+
 def test_update_apply_spawns_detached_build_and_relaunch(monkeypatch, tmp_path):
     """REGRESSION: the build+relaunch must run in a DETACHED process
     (start_new_session=True) so the app can fully quit before its own bundle is

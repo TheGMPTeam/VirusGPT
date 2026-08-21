@@ -107,6 +107,21 @@ async def api_update_status():
     return JSONResponse(_updater.get_status())
 
 
+@app.get("/api/update/branches")
+async def api_update_branches():
+    return JSONResponse(_updater.get_branches())
+
+
+@app.post("/api/update/branch")
+async def api_update_branch(req: Request):
+    try:
+        data = await req.json()
+    except Exception:
+        data = {}
+    branch = _updater.set_branch((data or {}).get("branch", ""))
+    return JSONResponse({"branch": branch, **_updater.get_branches()})
+
+
 # -------------------------------------------------------------------------
 # Chat — proxy to Ollama, stream SSE {content|done|error}
 # -------------------------------------------------------------------------

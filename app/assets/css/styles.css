@@ -140,6 +140,10 @@
   .up-notes{max-height:200px;overflow-y:auto;padding:4px 18px 10px;border-top:1px dashed var(--border);margin-top:4px}
   .up-notes-h{font-size:12px;color:var(--neon2);letter-spacing:.5px;margin-bottom:6px}
   .up-note{font-size:12px;color:var(--txt);padding:2px 0;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .up-branches{display:flex;gap:8px;flex-wrap:wrap}
+  .branch-chip{background:var(--bg2);color:var(--txt-dim);border:1px solid var(--border);border-radius:999px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.5px}
+  .branch-chip:hover{border-color:var(--neon2)}
+  .branch-chip.active{background:var(--neon);color:#04130d;border-color:var(--neon)}
   .up-progress{padding:14px 18px}
   .up-bar{height:8px;background:var(--bg2);border-radius:6px;overflow:hidden;border:1px solid var(--border)}
   .up-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--neon),var(--neon2));transition:width .4s ease}

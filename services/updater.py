@@ -37,11 +37,42 @@ APP_NAME = "VirusGPT"
 BUILDINFO = ROOT / "app" / "buildinfo.json"
 VERSION_FILE = ROOT / "app" / "version.json"
 
-# Branch the updater tracks. Defaults to `beta` so production `main` is never
-# auto-pulled into a running app; override with VG_UPDATE_BRANCH to point at a
-# different branch (e.g. `main` for a production hotfix, or a feature branch).
+# Branch the updater tracks. Persisted in app/update_branch.json (default beta)
+# so the user can switch between beta and main from the popup; VG_UPDATE_BRANCH
+# (env) overrides everything. Production `main` is never auto-pulled unless chosen.
+BRANCH_FILE = ROOT / "app" / "update_branch.json"
+def _read_branch_file() -> str:
+    try:
+        return (json.loads(BRANCH_FILE.read_text()).get("branch") or "").strip()
+    except Exception:
+        return ""
 def update_branch() -> str:
-    return os.environ.get("VG_UPDATE_BRANCH", "beta").strip() or "beta"
+    return (os.environ.get("VG_UPDATE_BRANCH")
+            or _read_branch_file()
+            or "beta").strip() or "beta"
+def set_branch(branch: str) -> str:
+    """Persist the tracked branch (beta/main/...). Returns the stored value."""
+    branch = (branch or "").strip() or "beta"
+    try:
+        BRANCH_FILE.parent.mkdir(parents=True, exist_ok=True)
+        BRANCH_FILE.write_text(json.dumps({"branch": branch}))
+    except Exception:
+        pass
+    return branch
+def get_branches() -> dict:
+    """List branches the updater can target: always main + beta (if they exist
+    on origin), plus whatever is currently tracked."""
+    tracked = update_branch()
+    wanted = ["beta", "main"]
+    available = []
+    for b in wanted:
+        # only offer branches that exist locally or on origin
+        if _git(f"rev-parse", "--verify", f"origin/{b}", cwd=ROOT, timeout=20) or \
+           _git(f"rev-parse", "--verify", b, cwd=ROOT, timeout=20):
+            available.append(b)
+    if tracked not in available:
+        available.append(tracked)
+    return {"available": available, "tracked": tracked}
 
 # In-flight update state, polled by the frontend via /api/update/status.
 _STATE = {
