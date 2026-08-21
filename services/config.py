@@ -11,6 +11,13 @@ CONFIG_PATH = ROOT / "config.json"
 _DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",
     "port": 8500,
+    # TLS for secure-context features (mic/Whisper on mobile Chrome needs HTTPS).
+    # If https=true and the cert/key below are missing, the server auto-generates
+    # a self-signed cert into data/ssl/ on first start. Trust it once on the
+    # phone (Settings -> install CA) or accept the browser warning.
+    "https": True,
+    "ssl_certfile": "data/ssl/virusgpt.crt",
+    "ssl_keyfile": "data/ssl/virusgpt.key",
     "title": "VirusGPT",
     "default_theme": "cyber",
     "ollama": {"base_url": "http://10.0.0.120:11434", "default_model": "qwen2.5:3b"},
@@ -20,6 +27,17 @@ _DEFAULTS: dict[str, Any] = {
         "enabled": True,
         "bundle": "data/memory",
         "note": "VirusGPT's own OKF-style concept store (built fresh for this project; not linked to any external Docker/Hermes pool)",
+    },
+    # Modular LAN services (media/automation stack on the Windows Docker box).
+    # Each may be enabled/disabled independently; endpoints are overridable via
+    # VG_* env vars (see load_config below). Missing services degrade gracefully.
+    "services": {
+        "n8n":     {"enabled": False, "base_url": "http://10.0.0.120:5678", "timeout": 30},
+        "comfyui": {"enabled": True,  "base_url": "http://10.0.0.120:8188", "timeout": 180,
+                    "default_model": ""},
+        "blender": {"enabled": False, "base_url": "http://10.0.0.120:8008", "timeout": 300},
+        "ffmpeg":  {"enabled": False, "base_url": "http://10.0.0.120:8009", "timeout": 300},
+        "marton":  {"enabled": False, "base_url": "", "api_key": "", "timeout": 60},
     },
     # Chat behavior: small-context by default (good for qwen2.5:3b), inject the
     # knowledge graph as DEFAULT context, and constrain history to a window.

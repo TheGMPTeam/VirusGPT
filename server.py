@@ -64,12 +64,16 @@ async def health():
     oll = await llm.ollama_healthy(cfg.CONFIG["ollama"]["base_url"])
     tt = await tts.tts_health(cfg.CONFIG["tts"]["base_url"]) if cfg.CONFIG["tts"]["enabled"] else False
     st = await stt.stt_health(cfg.CONFIG["stt"]["base_url"]) if cfg.CONFIG["stt"]["enabled"] else False
+    # Modular LAN services (graceful: report reachability, never fail the health check)
+    from services import comfyui as _comfy
+    cf = await _comfy.comfyui_health() if cfg.CONFIG["services"]["comfyui"]["enabled"] else False
     models = await llm.list_models(cfg.CONFIG["ollama"]["base_url"]) if oll else []
     voices = await tts.list_voices(cfg.CONFIG["tts"]["base_url"]) if tt else []
     return JSONResponse({
         "ollama": oll,
         "tts": tt,
         "whisper": st,
+        "comfyui": cf,
         "models": models or [cfg.CONFIG["ollama"]["default_model"]],
         "default_model": cfg.CONFIG["ollama"]["default_model"],
         "voices": voices or ["alba", "azelma", "cosette", "eponine", "fantine", "javert", "jean", "marius"],
@@ -339,12 +343,15 @@ async def tts_preview(req: Request):
 async def stt_proxy(req: Request):
     form = await req.form()
     audio = form.get("audio")
-    if not audio or not getattr(audio, "filename", None):
+    # form values can be UploadFile or str; only UploadFile has .read()
+    if audio is None or not hasattr(audio, "read"):
         return JSONResponse({"error": "no audio"}, status_code=400)
     max_mb = float(cfg.CONFIG.get("max_upload_mb", 25))
-    if getattr(audio, "size", 0) > max_mb * 1024 * 1024:
-        return JSONResponse({"error": f"audio too large (max {max_mb:.0f}MB)"}, status_code=413)
     data = await audio.read()
+    if len(data) == 0:
+        return JSONResponse({"error": "empty audio"}, status_code=400)
+    if len(data) > max_mb * 1024 * 1024:
+        return JSONResponse({"error": f"audio too large (max {max_mb:.0f}MB)"}, status_code=413)
     mt = getattr(audio, "content_type", "audio/webm") or "audio/webm"
     res = await stt.transcribe(data, mt, cfg.CONFIG["stt"]["base_url"],
                                timeout=float(cfg.CONFIG["stt"].get("timeout", 30)))
@@ -459,6 +466,69 @@ async def gateway_status():
         "heartbeat": hb,
         "crontab": (ROOT / "data" / "gateway" / "crontab.json").exists(),
     })
+
+
+# -------------------------------------------------------------------------
+# Modular LAN services — status, image generation, and served output
+# -------------------------------------------------------------------------
+@app.get("/api/services/status")
+async def services_status():
+    """Health of every modular LAN service (media/automation stack)."""
+    from services import comfyui as _comfy
+    cf = False
+    cf_models = []
+    if cfg.CONFIG["services"]["comfyui"]["enabled"]:
+        cf = await _comfy.comfyui_health()
+        if cf:
+            cf_models = await _comfy.comfyui_models()
+    return JSONResponse({
+        "comfyui": {"enabled": cfg.CONFIG["services"]["comfyui"]["enabled"],
+                    "healthy": cf,
+                    "base_url": cfg.CONFIG["services"]["comfyui"]["base_url"],
+                    "models": cf_models},
+        "configured": {"comfyui": bool(cfg.CONFIG["services"]["comfyui"]["base_url"])},
+    })
+
+
+@app.post("/api/generate")
+async def generate_image(req: Request):
+    """Generate an image via ComfyUI and return a local URL.
+
+    Body: {prompt, negative_prompt?, model?, steps?, cfg_scale?, width?, height?}
+    """
+    if not cfg.CONFIG["services"]["comfyui"]["enabled"]:
+        return JSONResponse({"status": "failed", "error": "ComfyUI service disabled"}, status_code=503)
+    body = await req.json()
+    if not (body.get("prompt") or "").strip():
+        return JSONResponse({"status": "failed", "error": "missing prompt"}, status_code=400)
+    from services import comfyui as _comfy
+    res = await _comfy.render_image(
+        body["prompt"],
+        model=body.get("model") or None,
+        negative_prompt=body.get("negative_prompt") or "",
+        steps=int(body.get("steps") or 25),
+        cfg_scale=float(body.get("cfg_scale") or 7.0),
+        width=int(body.get("width") or 1024),
+        height=int(body.get("height") or 1024),
+    )
+    if res.get("status") == "completed":
+        return JSONResponse(res)
+    return JSONResponse(res, status_code=502)
+
+
+@app.get("/api/generated/{filename}")
+async def generated_image(filename: str):
+    """Serve a generated image from data/generated/ (path-confined)."""
+    name = os.path.basename(filename)
+    p = (ROOT / "data" / "generated" / name).resolve()
+    allowed = (ROOT / "data" / "generated").resolve()
+    try:
+        p.relative_to(allowed)
+    except ValueError:
+        return JSONResponse({"error": "invalid filename"}, status_code=400)
+    if not p.exists() or not p.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(p)
 
 
 # --------------------------------------------------------------------------
@@ -665,6 +735,8 @@ async def autonomous_status(mission_id: str):
                 "priority": t.priority,
                 "attempts": t.attempts,
                 "dependencies": t.dependencies,
+                "result": t.result,
+                "verification": t.verification,
             }
             for t in tasks
         ],
@@ -789,6 +861,19 @@ async def get_mission(mission_id: str):
     })
 
 
+@app.on_event("startup")
+async def _startup():
+    # Capture the running uvicorn event loop so the autonomous supervisor can
+    # schedule background missions on the SAME loop (otherwise a sync route would
+    # schedule them on a dead threadpool loop and they'd never run).
+    import asyncio as _asyncio
+    from autonomous.orchestrator import set_loop
+    try:
+        set_loop(_asyncio.get_running_loop())
+    except RuntimeError:
+        pass
+
+
 @app.on_event("shutdown")
 async def _shutdown():
     await close_client()
@@ -796,10 +881,58 @@ async def _shutdown():
 
 def main():
     import uvicorn
-    print(f"[VirusGPT] macOS server on http://{cfg.CONFIG['host']}:{cfg.CONFIG['port']}")
+    from pathlib import Path as _P
+    host = cfg.CONFIG["host"]
+    port = int(cfg.CONFIG["port"])
+    ssl_ctx = None
+    if cfg.CONFIG.get("https"):
+        cert = _P(cfg.CONFIG["ssl_certfile"])
+        key = _P(cfg.CONFIG["ssl_keyfile"])
+        if not (cert.exists() and key.exists()):
+            # Auto-generate a self-signed cert so HTTPS (and thus mic on mobile)
+            # works out of the box. SAN includes the LAN IP(s) so phones can trust it.
+            try:
+                import subprocess, socket
+                cert.parent.mkdir(parents=True, exist_ok=True)
+                # Resolve a real LAN IP (not 127.0.0.1 / ::1).
+                lan_ip = ""
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    lan_ip = s.getsockname()[0]
+                    s.close()
+                except Exception:
+                    pass
+                if not lan_ip or lan_ip.startswith("127."):
+                    lan_ip = socket.gethostbyname(socket.gethostname())
+                san = f"IP:{lan_ip},DNS:localhost"
+                # LibreSSL (macOS) is picky about -addext; use a config file instead.
+                cnf = cert.parent / "openssl_vg.cnf"
+                cnf.write_text(
+                    "distinguished_name = dn\n[dn]\n[san]\nsubjectAltName = " + san + "\n"
+                )
+                subprocess.run([
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-keyout", str(key), "-out", str(cert), "-days", "825",
+                    "-subj", "/CN=VirusGPT",
+                    "-reqexts", "san", "-extensions", "san", "-config", str(cnf),
+                ], check=True, capture_output=True)
+                cnf.unlink(missing_ok=True)
+                print(f"[VirusGPT] generated self-signed cert (SAN {san}) -> {cert}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[VirusGPT] WARNING: HTTPS enabled but cert gen failed ({exc}); falling back to HTTP")
+                ssl_ctx = None
+        if cert.exists() and key.exists():
+            ssl_ctx = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
+    scheme = "https" if ssl_ctx else "http"
+    print(f"[VirusGPT] macOS server on {scheme}://{host}:{port}")
     print(f"[VirusGPT] Ollama -> {cfg.CONFIG['ollama']['base_url']}")
     print("[VirusGPT] Memory: local concept store (data/memory/)")
-    uvicorn.run(app, host=cfg.CONFIG["host"], port=int(cfg.CONFIG["port"]))
+    if ssl_ctx:
+        uvicorn.run(app, host=host, port=port, ssl_certfile=ssl_ctx["ssl_certfile"],
+                    ssl_keyfile=ssl_ctx["ssl_keyfile"])
+    else:
+        uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
