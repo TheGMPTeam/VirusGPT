@@ -44,10 +44,17 @@ function boot(){
     refreshHealth(); setInterval(refreshHealth,15000);
     showVersion();
     window.addEventListener('resize',()=>{ if(document.querySelector('.tab[data-tab=memory]').classList.contains('active')){ clearTimeout(window.__mgResizeT); window.__mgResizeT=setTimeout(loadMemoryGraph,200); } });
+    // Dismiss the boot/loading screen now that the UI is initialized.
+    const bootEl=document.getElementById('boot-screen');
+    const bootStatus=document.getElementById('boot-status');
+    if(bootStatus) bootStatus.textContent='Ready';
+    if(bootEl){ setTimeout(()=>{ bootEl.classList.add('hide'); setTimeout(()=>bootEl.remove(), 450); }, 250); }
   }catch(err){
     console.error('[VG boot error]', err);
     const m=document.querySelector('#messages');
     if(m) m.innerHTML='<div class="msg bot"><div class="bubble">⚠ boot error: '+(err&&err.message||err)+'</div></div>';
+    const bootEl=document.getElementById('boot-screen');
+    if(bootEl){ bootEl.classList.add('hide'); setTimeout(()=>bootEl.remove(), 450); }
   }
 }
 // Render immediately (DOM is ready — scripts are at end of body) and again on load as a safety net.
