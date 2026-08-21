@@ -92,10 +92,13 @@ function initUpdates(){
     if(_pollTimer){ clearInterval(_pollTimer); _pollTimer = null; }
   }
 
+  function channelTag(){
+    return _features && _features.channel ? ` · ${_features.channel}` : '';
+  }
   function fillCurrent(){
     const g = (window.__VG_VERSION)||{};
     if(g.version){
-      curEl.textContent = `v${g.version} · ${g.commit}`;
+      curEl.textContent = `v${g.version} · ${g.commit}${channelTag()}`;
       check.classList.remove('hidden');
       return true;
     }
@@ -114,7 +117,7 @@ function initUpdates(){
       const r = await fetch('api/version', {cache:'no-store'});
       if(r.ok){
         const v = await r.json();
-        curEl.textContent = `v${v.version} · ${v.commit}`;
+        curEl.textContent = `v${v.version} · ${v.commit}${channelTag()}`;
       } else {
         curEl.textContent = 'unknown';
       }
