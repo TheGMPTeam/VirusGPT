@@ -498,7 +498,18 @@ def cmd_desktop(args):
         return subprocess.call([sys.executable, str(script)])
     if action == "install-deps":
         req = ROOT / "desktop" / "requirements.txt"
-        return subprocess.call([sys.executable, "-m", "pip", "install", "-r", str(req)])
+        rc = subprocess.call([sys.executable, "-m", "pip", "install", "-r", str(req)])
+        if rc != 0:
+            return rc
+        # Re-apply the pywebview patch (dark/frameless/non-flashing macOS window)
+        # so a fresh venv build still renders correctly.
+        patch = ROOT / "desktop" / "patch_pywebview.py"
+        if patch.exists():
+            print("[install-deps] applying pywebview patch for dark frameless window…")
+            prc = subprocess.call([sys.executable, str(patch)])
+            if prc != 0:
+                print(red("pywebview patch failed — desktop window may flash white"))
+        return 0
     print(red("unknown desktop action"))
     return 1
 
