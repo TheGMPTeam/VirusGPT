@@ -36,6 +36,9 @@ function initUpdates(){
     prog.classList.add('hidden');
     loadFeatures();
     fetchVersionThenCheck();
+    // Auto-run the check so update targets (incl. switch-to-other-channel) show
+    // immediately — no extra "Check" click needed.
+    doCheck();
   }
 
   async function loadFeatures(){
