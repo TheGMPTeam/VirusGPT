@@ -61,6 +61,23 @@ semantic versioning (`v1.0` = first tagged, installable release).
   only). Drift (a not-built item that exists, or a live item that's missing)
   fails the build. Wired into GitHub Actions as a new CI step.
 
+### Fixed
+- **Tool calls were never logged in the mission UI.** The autonomous status
+  endpoint (`/api/autonomous/status/{id}`, which the kanban/tool-log UI polls)
+  returned each event's `data` field as a raw JSON *string*, so the frontend's
+  `if(ev.data && ev.data.tool)` guard was always false and `logToolCall` never
+  fired. The event bus stores `data` as a string (durable) but the API now
+  parses it back to a dict on the way out (matching the SSE stream handler).
+  `logToolCall` also now defensively `JSON.parse`s string args.
+- **Chat TTS per-sentence playback finalized inconsistently.** The streaming
+  turn appended per-sentence ▶ buttons live, but the finalized bubble only got a
+  `⟲ replay-all` (no per-sentence buttons, no end-of-message "play all"). Added
+  `buildSentencePlays()` / `makePlayAll()` so every assistant bubble — both the
+  live finalize and history messages — renders ONE ▶ button per clean sentence
+  (each fetches its own PocketTTS mp3 on click) plus a click-only `⏯ Play all`
+  at the end that does NOT auto-play unless clicked. Auto-play (speaker toggle)
+  still streams sentences one-after-another in order during generation.
+
 ## [v1.0] - 2026-08-20
 
 First tagged, public, installable release.

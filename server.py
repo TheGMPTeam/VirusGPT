@@ -742,7 +742,7 @@ async def autonomous_status(mission_id: str):
                 "id": e.id,
                 "event": e.event,
                 "agent": e.agent,
-                "data": e.data,
+                "data": json.loads(e.data) if isinstance(e.data, str) else e.data,
                 "created_at": e.created_at,
             }
             for e in events
@@ -850,12 +850,12 @@ async def get_mission(mission_id: str):
                 "id": e.id,
                 "event": e.event,
                 "agent": e.agent,
-                "data": e.data,
+                "data": json.loads(e.data) if isinstance(e.data, str) else e.data,
                 "created_at": e.created_at,
             }
             for e in events
         ],
-    })
+        })
 
 
 @app.on_event("startup")

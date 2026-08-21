@@ -58,6 +58,26 @@ function makeReplayAll(text, persona){
   b.onclick=()=>replayMessage(text, persona);
   return b;
 }
+/* "Play all" button: ⏯ at the END of a reply. Click-only — never auto-plays.
+   Re-streams every sentence in order through the serial queue (stop first so a
+   prior replay/auto-play can't overlap). */
+function makePlayAll(sentences, persona){
+  const b=document.createElement('button'); b.className='play'; b.textContent='⏯';
+  b.title='Play all (click to play)'; b.style.marginLeft='4px';
+  b.onclick=()=>{ stopTTS(); sentences.forEach(s=>playSentenceNow(s, persona)); };
+  return b;
+}
+/* Build a message's sentence-play row: ONE ▶ button per clean sentence, plus a
+   click-only "Play all" at the end. Used for both the live finalize and for
+   history messages so every assistant bubble is consistent. */
+function buildSentencePlays(container, text, persona){
+  if(!container) return;
+  container.innerHTML='';
+  const sents=splitSentences(text||'');
+  sents.forEach(s=>container.appendChild(makeSentencePlay(s, persona)));
+  if(sents.length) container.appendChild(makePlayAll(sents, persona));
+}
+
 /* Re-stream a full response: split into sentences, queue them serially. */
 function replayMessage(text, persona){ stopTTS(); splitSentences(text||'').forEach(s=>playSentenceNow(s, persona)); }
 
@@ -92,7 +112,7 @@ function addMsgEl(role, text, persona){
     // assistant: ONE bubble with a per-sentence play button for each sentence
     const bubble=document.createElement('div');bubble.className='bubble';bubble.textContent=text||'';
     const plays=document.createElement('div');plays.className='sentence-plays';
-    (splitSentences(text||'')).forEach(s=>plays.appendChild(makeSentencePlay(s, persona)));
+    buildSentencePlays(plays, text, persona);
     col.appendChild(bubble); col.appendChild(plays);
   }
   wrap.appendChild(av);wrap.appendChild(col);

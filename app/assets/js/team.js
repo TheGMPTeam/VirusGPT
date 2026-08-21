@@ -257,7 +257,15 @@ async function loadTools(){
 }
 function logToolCall(agent, tool, args, ok){
   const log=$('#tool-call-log'); if(!log) return;
-  const arg = args && args.query ? args.query : (args && args.url ? args.url : (args && args.command ? args.command : (args && args.expression ? args.expression : '')));
+  // `args` may arrive as a parsed object (status endpoint now returns parsed
+  // `data`) or as a JSON string (defensive). Normalize before reading fields.
+  let a=args;
+  if(typeof a==='string'){ try{ a=JSON.parse(a); }catch(_){ a={}; } }
+  const arg = (a && a.query) ? a.query
+            : (a && a.url) ? a.url
+            : (a && a.command) ? a.command
+            : (a && a.expression) ? a.expression
+            : (typeof args==='string' ? args : '');
   // Dedupe: the SSE re-sends recent events each tick, so only log each call once.
   if(!window.__toolLogKeys) window.__toolLogKeys = new Set();
   const key = agent+'|'+tool+'|'+arg+'|'+ok;

@@ -244,7 +244,7 @@ async function send(text){
       // ...and into the shared room view for display.
       const rm=activeRoom(); rm.messages=rm.messages||[]; rm.messages.push({role:'assistant',content:acc,persona:persona?.name}); saveJSON('vg_rooms',rooms);
     }
-    if(currentBot){ currentBot.acc=acc; currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; currentBot.bubble.textContent=acc; currentBot.plays.appendChild(makeReplayAll(acc, currentBot.persona)); }
+    if(currentBot){ currentBot.acc=acc; currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; currentBot.bubble.textContent=acc; buildSentencePlays(currentBot.plays, acc, currentBot.persona); }
   }catch(e){ if(myToken===runToken&&e.name!=='AbortError'){ if(currentBot) currentBot.cur.textContent='⚠ '+(e.message||'error'); } }
   finally{ currentBot=null; $('#btn-send').disabled=false; }
 }
