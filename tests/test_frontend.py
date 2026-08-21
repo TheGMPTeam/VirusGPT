@@ -335,6 +335,49 @@ def test_play_all_button_streams_every_sentence(browser):
     ctx.close()
 
 
+def test_play_all_no_infinite_loop_when_onended_never_fires(browser):
+    """REGRESSION: on WKWebView/blob-mp3 the Audio 'ended' event can fail to fire.
+    Previously playTTS() awaited onended alone, so the serial queue hung on the
+    first sentence (ttsPlaying stuck true) and every 'Play all' click piled up
+    another stuck loop -> 'replays over and over'. The queue must now drain
+    exactly once (one TTS request per sentence) even when onended never fires."""
+    ctx, page = _new_page(browser)
+    # serve a real short WAV for /api/tts so duration is known
+    wav = (ROOT / "tests" / "_silence.wav").read_bytes()
+    page.route("**/api/tts*", lambda r: r.fulfill(
+        status=200, content_type="audio/wav",
+        headers={"Access-Control-Allow-Origin": "*", "Content-Type": "audio/wav"},
+        body=wav))
+    # neuter onended for any Audio created from here on (the desktop failure mode)
+    page.evaluate(
+        "Object.defineProperty(HTMLMediaElement.prototype,'onended',"
+        "{set(){},get(){return null},configurable:true});"
+    )
+    page.evaluate("TTS_ON=false; sessionAutoPlay=false;")
+    tts = _tts_collector(page)
+    page.fill("#message-input", "hello there")
+    page.click("#btn-send")
+    page.wait_for_selector(".msg.bot .sentence-plays .play", timeout=4000)
+    page.wait_for_timeout(800)
+    plays = page.query_selector_all(".msg.bot .sentence-plays .play")
+    plays[-1].click()  # ⏯ Play all
+    # sample over time; the queue must NOT keep growing
+    page.wait_for_timeout(6000)
+    texts = _tts_texts(tts)
+    # The shared chat mock returns a 5-sentence reply; play-all must request each
+    # sentence EXACTLY once (no infinite loop / no re-queuing).
+    n_expected = len(page.evaluate(
+        "splitSentences('Plan ready. @Cipher: I will analyse the crypto. "
+        "@Coder: I will write the code. @Oracle: I will summarise. Done.')"))
+    assert len(texts) == n_expected, \
+        f"play-all must request each sentence once ({n_expected}), got {len(texts)}: {texts}"
+    # queue fully drained, not stuck
+    state = page.evaluate("({q: ttsQueue.length, playing: ttsPlaying})")
+    assert state["q"] == 0, f"queue should be empty after play-all, got {state}"
+    assert state["playing"] is False, f"ttsPlaying should be false after play-all, got {state}"
+    ctx.close()
+
+
 # ---------------------------------------------------------------------------
 # /clear and /new mute streaming auto-play
 # ---------------------------------------------------------------------------

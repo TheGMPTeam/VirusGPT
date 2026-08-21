@@ -127,10 +127,24 @@ async function playTTS(text, persona){
     a.style.display='none'; document.body.appendChild(a);   // attach so it reliably renders/plays
     ttsCurrentAudio=a;
     // Wait for the clip to actually finish before resolving -> strict no-overlap sequencing.
+    // CRITICAL: some engines (WKWebView / blob mp3) never fire 'ended', which would hang the
+    // serial queue forever (Play-all plays sentence 1 then freezes, and every re-click piles
+    // up another stuck loop). So we ALSO resolve on a duration-based timeout as a hard fallback.
     await new Promise((resolve)=>{
       let done=false; const fin=()=>{ if(done) return; done=true; resolve(); };
       a.onended=fin; a.onerror=fin;
       a.play().catch(fin);   // autoplay-blocked -> resolve so we don't hang the queue
+      // Fallback timer: once we know the duration, schedule resolution shortly after it ends.
+      // If duration is unknown (0/NaN), fall back to a generous fixed ceiling.
+      const arm=()=>{
+        const d=a.duration;
+        const ms=(isFinite(d)&&d>0) ? (d*1000)+400 : 12000;
+        setTimeout(fin, ms);
+      };
+      if(a.readyState>=1 && a.duration) arm();
+      else a.addEventListener('loadedmetadata', arm, {once:true});
+      // Absolute ceiling so a never-ending clip can never wedge the queue.
+      setTimeout(fin, 15000);
     });
     try{ URL.revokeObjectURL(a.src); }catch(e){}
     try{ a.remove(); }catch(e){}

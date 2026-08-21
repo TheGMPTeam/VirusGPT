@@ -107,6 +107,15 @@ semantic versioning (`v1.0` = first tagged, installable release).
   auto-play, tool-call logging) and the latest `server.py`. Verified: the frozen
   app boots in-process, binds `:8500`, `/api/health` returns live upstream status,
   and the WebView window opens. `dist/` is gitignored by design.
+- **FIXED: "Play all" / replay froze and re-triggered endlessly (desktop).**
+  `playTTS()` resolved *only* on the `Audio` `onended` event. On WKWebView /
+  blob-mp3 the `ended` event frequently never fires, so the serial queue hung on
+  the first sentence (`ttsPlaying` stuck `true`) and every "Play all" click piled
+  up another stuck loop — the audio appeared to "replay all over and over". Added
+  a duration-based timeout (resolves ~400ms after the clip ends, or a 12s fallback
+  when duration is unknown) plus a 15s absolute ceiling, so the queue now always
+  advances exactly once per sentence. Regression test:
+  `test_play_all_no_infinite_loop_when_onended_never_fires`. (tts.js)
  
 ## [v1.0] - 2026-08-20
 
