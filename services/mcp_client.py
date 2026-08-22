@@ -37,6 +37,9 @@ TOOL_REGISTRY: Dict[str, List[Dict[str, Any]]] = {}
 # Active sessions keyed by server name (populated on connect)
 _SESSIONS: Dict[str, Any] = {}
 
+# Direct HTTP MCP clients (n8n-mcp-http transport) keyed by server name
+_N8N_MCP_HTTP: Dict[str, Any] = {}
+
 # Open context managers keyed by server name (kept alive for the session's life)
 _CTX: Dict[str, Any] = {}
 
@@ -68,13 +71,28 @@ async def _connect_stdio(server: Dict[str, Any]) -> Optional[Any]:
 
 
 async def _connect_sse(server: Dict[str, Any]) -> Optional[Any]:
+    """Connect via HTTP (streamable-http) or legacy SSE to a remote MCP server.
+
+    n8n-mcp 2.x exposes an HTTP Streamable endpoint at `/mcp` (auth via the
+    `MCP_AUTH_TOKEN`/`AUTH_TOKEN` you set, sent as `Authorization: *** We
+    prefer the modern streamable-http transport and fall back to legacy SSE.
+    """
     from mcp import ClientSession
-    from mcp.client.sse import sse_client
     url = server["url"]
-    headers = server.get("headers") or (
-        {"X-N8N-API-KEY": os.environ.get("VG_N8N_TOKEN", "")}
-        if "n8n" in server.get("name", "").lower() else None)
-    cm = sse_client(url, headers=headers)
+    headers = dict(server.get("headers") or {})
+    # Legacy default for n8n-named servers (pre-token setups).
+    if not headers and "n8n" in server.get("name", "").lower():
+        headers = {"X-N8N-API-KEY": os.environ.get("VG_N8N_TOKEN", "")}
+    try:
+        import httpx
+        from mcp.client.streamable_http import streamable_http_client
+        http_client = httpx.AsyncClient(
+            base_url=url, headers=headers, timeout=30.0
+        ) if headers else None
+        cm = streamable_http_client(url, http_client=http_client)
+    except ImportError:
+        from mcp.client.sse import sse_client
+        cm = sse_client(url, headers=headers or None)
     read, write = await cm.__aenter__()
     session = ClientSession(read, write)
     await session.initialize()
@@ -90,6 +108,10 @@ async def _connect_external(server: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             session = await _connect_stdio(server)
         elif transport in ("sse", "streamable-http"):
             session = await _connect_sse(server)
+        elif transport == "n8n-mcp-http":
+            # Direct MCP-HTTP client (no SDK) — robust against the mcp SDK
+            # stdio/SSE deadlock. n8n-mcp exposes an HTTP Streamable /mcp.
+            return _connect_n8n_mcp_http(server)
         else:
             return {"error": f"unknown transport {transport}"}
         tools = await session.list_tools()
@@ -105,6 +127,28 @@ async def _connect_external(server: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return {"status": "failed", "error": str(exc), "server": server.get("name")}
 
 
+def _connect_n8n_mcp_http(server: Dict[str, Any]) -> Dict[str, Any]:
+    """Connect to n8n-mcp over HTTP Streamable using our direct client.
+
+    Returns the same dict shape as _connect_external (status/tool_count) and
+    stores a callable client in _N8N_MCP_HTTP for later tool calls.
+    """
+    from services.n8n_mcp_http import N8nMcpHttpClient
+    try:
+        client = N8nMcpHttpClient(server["url"], server.get("token", ""))
+        tools = client.list_tools()
+        _N8N_MCP_HTTP[server["name"]] = client
+        TOOL_REGISTRY[server["name"]] = [
+            {"server": server["name"], "name": t.get("name"),
+             "description": t.get("description", ""), "schema": t.get("inputSchema", {})}
+            for t in tools
+        ]
+        return {"status": "ok", "server": server["name"],
+                "tool_count": len(tools)}
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "error": str(exc), "server": server.get("name")}
+
+
 def _register_n8n_adapter():
     """Register the virtual n8n MCP tool provider (no network session needed)."""
     TOOL_REGISTRY["n8n-adapter"] = _N8N_PROVIDER_TOOLS
@@ -113,45 +157,73 @@ def _register_n8n_adapter():
 async def connect_all():
     """Connect to every configured external MCP server + register the n8n adapter.
 
-    Automatically appends an `n8n-mcp` stdio client when n8n is enabled and
-    `npx` is available — this gives VirusGPT the maintained n8n-MCP toolset
-    (workflow build/trigger, credentials/auth, spreadsheets, executions).
-    n8n-mcp reads N8N_API_URL / N8N_API_KEY from the environment, which we set
-    from our own n8n config (so a single source of truth).
+    Auto-wires the n8n-mcp server (Direction B's real n8n tooling) when n8n is
+    enabled: it spawns n8n-mcp as an **HTTP server** (the documented, stable
+    deployment — see czlonkowski/n8n-mcp docs/N8N_DEPLOYMENT.md) on a local
+    port, then connects to it over HTTP Streamable/SSE with an auth token.
+    This avoids the Python `mcp` SDK's stdio_client deadlock (anyio cancel-
+    scope) that occurs when n8n-mcp is spawned as a stdio subprocess.
+    n8n-mcp reads N8N_API_URL / N8N_API_KEY from the env we pass it.
 
     RESILIENCE: each external connect runs in a watchdog thread with a hard
-    wall-clock timeout. The `mcp` Python SDK's stdio_client can deadlock on
-    certain Node/n8n-mcp builds (the initialize() handshake never returns and
-    asyncio.wait_for cannot cancel the anyio cancel-scope). A hung connect must
-    NOT block the rest of the bridge or app startup, so we kill the orphaned
-    subprocess and mark the server failed (non-fatal) instead of hanging.
+    wall-clock timeout (no asyncio.wait_for, which triggers the anyio
+    cancel-scope crash on cancel). A hung connect is killed + marked failed
+    (non-fatal) so it never blocks the bridge or app startup.
     """
     _register_n8n_adapter()
     clients = list(cfg.CONFIG.get("mcp", {}).get("clients") or [])
+    _SPAWNED_PROCESSES: List = []
 
-    # Auto-wire n8n-mcp (Direction B's real n8n tooling) when n8n is configured.
+    # Auto-wire n8n-mcp (real n8n tooling) when n8n is configured + node present.
     if cfg.CONFIG.get("services", {}).get("n8n", {}).get("enabled"):
-        import shutil
+        import shutil, subprocess, secrets, glob
         n8n_cfg = cfg.CONFIG["services"]["n8n"]
-        if shutil.which("npx") and not any(c.get("name") == "n8n-mcp" for c in clients):
-            clients.append({
-                "name": "n8n-mcp",
-                "transport": "stdio",
-                "command": "npx",
-                "args": ["-y", "n8n-mcp"],
-                "env": {
-                    "MCP_MODE": "stdio",
-                    "LOG_LEVEL": "error",
-                    "DISABLE_CONSOLE_OUTPUT": "true",
-                    "N8N_API_URL": n8n_cfg.get("base_url", ""),
-                    "N8N_API_KEY": os.environ.get("VG_N8N_TOKEN", n8n_cfg.get("api_key", "")),
-                },
-            })
+        node_bin = shutil.which("node")
+        npm_root = subprocess.run(
+            ["npm", "root", "-g"], capture_output=True, text=True, timeout=10
+        ).stdout.strip() if shutil.which("npm") else ""
+        cached = sorted(glob.glob(
+            os.path.expanduser("~/.npm/_npx/*/node_modules/n8n-mcp/dist/mcp/index.js")))
+        bin_path = cached[-1] if cached else (
+            f"{npm_root}/n8n-mcp/dist/mcp/index.js" if npm_root else None)
+        if node_bin and bin_path and not any(c.get("name") == "n8n-mcp" for c in clients):
+            port = int(os.environ.get("VG_N8N_MCP_PORT", "8705"))
+            token = secrets.token_hex(32)
+            os.environ["VG_N8N_MCP_TOKEN"] = token
+            os.environ["VG_N8N_MCP_PORT"] = str(port)
+            env = {
+                **os.environ,
+                "N8N_MODE": "true",
+                "MCP_MODE": "http",
+                "N8N_API_URL": n8n_cfg.get("base_url", ""),
+                "N8N_API_KEY": os.environ.get("VG_N8N_TOKEN", n8n_cfg.get("api_key", "")),
+                "MCP_AUTH_TOKEN": token,
+                "AUTH_TOKEN": token,
+                "PORT": str(port),
+                "LOG_LEVEL": "error",
+            }
+            try:
+                proc = subprocess.Popen(
+                    [node_bin, bin_path], env=env,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                _SPAWNED_PROCESSES.append(proc)
+                await asyncio.sleep(2)
+                # Connect via our direct MCP-HTTP client (no SDK -> no deadlock).
+                clients.append({
+                    "name": "n8n-mcp",
+                    "transport": "n8n-mcp-http",
+                    "url": f"http://127.0.0.1:{port}/mcp",
+                    "token": token,
+                })
+            except Exception as exc:  # noqa: BLE001
+                print(f"[mcp] n8n-mcp spawn failed: {exc}", flush=True)
 
     CONNECT_TIMEOUT = 30  # seconds; a connect that exceeds this is killed
 
     def _connect_watchdog(srv):
-        """Run _connect_external in a thread; kill any orphaned subprocess on hang."""
+        """Run _connect_external in a thread (no asyncio.wait_for -> avoids the
+        anyio cancel-scope crash). A hung connect is reaped, not fatal."""
         import threading
         result = {}
         def _run():
@@ -164,15 +236,13 @@ async def connect_all():
         t.start()
         t.join(CONNECT_TIMEOUT)
         if t.is_alive():
-            # Deadlock detected (e.g. mcp stdio_client hang). Kill orphaned
-            # n8n-mcp / node subprocesses so they don't leak or block startup.
             _kill_server_subprocesses(srv.get("name"))
             return {"status": "failed",
                     "error": f"connect timed out after {CONNECT_TIMEOUT}s (deadlock guard)",
                     "server": srv.get("name")}
         return result.get("value", {"status": "failed", "error": "no result"})
 
-    # Run all connects concurrently via threads (so one hang doesn't block others).
+    # Run all connects concurrently via threads (one hang can't block others).
     import concurrent.futures
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(clients))) as ex:
@@ -221,9 +291,17 @@ def list_mcp_tools() -> List[Dict[str, Any]]:
 
 
 async def call_mcp_tool(server: str, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Call a discovered MCP tool. Handles both real sessions and the n8n adapter."""
+    """Call a discovered MCP tool. Handles real sessions, the n8n adapter,
+    and the direct HTTP n8n-mcp client."""
     if server == "n8n-adapter":
         return await _call_n8n_adapter(name, arguments)
+    # Direct HTTP MCP client (n8n-mcp-http transport).
+    http_client = _N8N_MCP_HTTP.get(server)
+    if http_client is not None:
+        try:
+            return http_client.call_tool(name, arguments)
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "failed", "error": str(exc)}
     session = _SESSIONS.get(server)
     if not session:
         return {"status": "failed", "error": f"no active session for {server}"}
