@@ -30,6 +30,7 @@ function showVersion(){
 function boot(){
   try{
     setTheme(lsGet('vg_theme', 'cyber'));
+    if(window.initIcons) initIcons();   // fill .vg-ico placeholders from icons.js
     initTabs();
     initSessions();      // builds the left-side session list + New button
     renderPersonas();

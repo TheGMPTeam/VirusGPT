@@ -22,23 +22,22 @@ APP_NAME = "VirusGPT"
 
 def git_version():
     """Return (version, commit) from git. version = latest tag (or '1.0'),
-    commit = short hash. Falls back to ('dev', 'unknown') if git is unavailable."""
+    commit = short hash of HEAD. Falls back to ('dev', 'unknown') if git is
+    unavailable.
+
+    The commit field is ALWAYS the short commit hash (never the tag name) so the
+    updater can compare running vs origin/<branch> by hash. The tag only drives
+    the human-readable version label.
+    """
     version = "1.0"
     commit = "unknown"
     try:
-        tag = subprocess.run(
-            ["git", "-C", str(ROOT), "describe", "--tags", "--always"],
+        # Commit hash first — this is what the updater compares.
+        commit = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
             capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        if tag:
-            # describe gives e.g. "v1.0-3-gabcd123" or "gabcd123"; strip leading g/
-            commit = tag.split("-")[-1].lstrip("g")
-        else:
-            commit = subprocess.run(
-                ["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
-                capture_output=True, text=True, timeout=10,
-            ).stdout.strip()
-        # use the most recent tag if present for the version label
+        ).stdout.strip() or "unknown"
+        # Version label = most recent tag (if any), else 1.0.
         taglist = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--sort=-creatordate"],
             capture_output=True, text=True, timeout=10,

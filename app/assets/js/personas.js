@@ -62,12 +62,12 @@ function renderPersonaCards(){
         <input type="file" class="clone-audio" accept="audio/*">
         <div style="display:flex;gap:8px">
           <button class="btn-accent clone-do">Upload &amp; Clone</button>
-          <button class="btn-secondary clone-prev">🔊 Preview</button>
+          <button class="btn-secondary clone-prev"><span class="vg-ico" data-ico="speaker_on"></span> Preview</button>
         </div>
       </div>
       <div class="clone-status ${isClone?'ready':''}">${isClone?'✔ cloned voice ('+p.voice+')':'select a voice or clone a new one'}</div>
       <div class="actions">
-        <button class="btn-secondary pf-test">🔊 Test</button>
+        <button class="btn-secondary pf-test"><span class="vg-ico" data-ico="speaker_on"></span> Test</button>
         <button class="btn-secondary pf-del">Delete</button>
         <button class="btn-accent pf-save">Save</button>
       </div>`;
