@@ -458,32 +458,33 @@
     #tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap}
     #tabs .tab{padding:9px 12px;font-size:13px;flex:0 0 auto}
 
-    /* 4) Chat input bar: compact, icon-only actions, prominent Send. */
+    /* 4) Chat input bar: text field on TOP (full width), action buttons in a
+       wrapped row below it. Achieved with row+wrap and the textarea taking
+       100% basis so it forces a line break before the buttons. */
     #input-bar{
-      gap:6px;padding:8px 8px;border-top:1px solid var(--border);
-      background:var(--panel);align-items:flex-end;
+      flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;
+      padding:10px 10px;border-top:1px solid var(--border);
+      background:var(--panel);
       position:sticky;bottom:0;z-index:5;
     }
     #message-input{
-      flex:1 1 auto;min-height:40px;max-height:120px;font-size:15px;
-      padding:9px 11px;border-radius:20px;width:auto;
+      flex:0 0 100%;min-height:44px;max-height:140px;font-size:16px;
+      padding:11px 14px;border-radius:20px;width:100%;
     }
-    /* Collapse "Improve" / "Image" to icon-only chips to save width. */
-    #btn-improve,#btn-gen-image{
-      padding:0;width:38px;height:38px;border-radius:50%;flex:0 0 auto;
-      font-size:0;justify-content:center;
-    }
-    #btn-improve .vg-ico,#btn-gen-image .vg-ico{font-size:17px;width:1.1em;height:1.1em}
-    #btn-mic,#btn-stop-all{
-      width:38px;height:38px;border-radius:50%;flex:0 0 auto;
+    /* Button row: sits BELOW the text field, wraps, evenly spaced. */
+    #btn-improve,#btn-gen-image,#btn-mic,#btn-stop-all,#btn-send{
+      width:44px;height:44px;border-radius:50%;flex:0 0 auto;
       display:flex;align-items:center;justify-content:center;padding:0;
     }
+    /* Collapse "Improve" / "Image" to icon-only chips to save width. */
+    #btn-improve,#btn-gen-image{font-size:0}
+    #btn-improve .vg-ico,#btn-gen-image .vg-ico{font-size:18px;width:1.2em;height:1.2em}
+    #btn-mic .vg-ico,#btn-stop-all .vg-ico{font-size:18px;width:1.2em;height:1.2em}
     #btn-send{
-      width:46px;height:46px;border-radius:50%;flex:0 0 auto;
-      display:flex;align-items:center;justify-content:center;
+      width:50px;height:50px;
       box-shadow:0 0 14px rgba(0,255,156,.45);
     }
-    #btn-send .vg-ico{width:1.3em;height:1.3em}
+    #btn-send .vg-ico{font-size:20px;width:1.3em;height:1.3em}
     /* keep labels for accessibility but hide visually */
     #btn-improve span:not(.vg-ico),#btn-gen-image span:not(.vg-ico){display:none}
 
