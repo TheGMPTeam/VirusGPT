@@ -32,27 +32,27 @@
         <option value="amber">Amber Gears</option>
         <option value="ice">Ice Neon</option>
       </select>
-      <button id="btn-settings" class="accent" title="Settings">⚙ Settings</button>
-      <button id="btn-tts-toggle" class="icon-btn" title="Toggle TTS">🔊</button>
-      <span class="win-ctl" title="Minimize" onclick="window.pywebview.api.minimize()">–</span>
-      <span class="win-ctl" title="Maximize" onclick="window.pywebview.api.toggle_maximize()">▢</span>
-      <span class="win-ctl win-ctl-close" title="Close" onclick="window.pywebview.api.close()">✕</span>
+      <button id="btn-settings" class="accent" title="Settings"><span class="vg-ico" data-ico="gear"></span> Settings</button>
+      <button id="btn-tts-toggle" class="icon-btn" title="Toggle TTS"><span class="vg-ico" data-ico="speaker_on"></span></button>
+      <span class="win-ctl" title="Minimize" onclick="window.pywebview.api.minimize()"><span class="vg-ico" data-ico="window"></span></span>
+      <span class="win-ctl" title="Maximize" onclick="window.pywebview.api.toggle_maximize()"><span class="vg-ico" data-ico="window"></span></span>
+      <span class="win-ctl win-ctl-close" title="Close" onclick="window.pywebview.api.close()"><span class="vg-ico" data-ico="close"></span></span>
     </div>
   </header>
 
   <div id="tabs">
-    <div class="tab active" data-tab="chat">💬 Chat</div>
-    <div class="tab" data-tab="personas">🧬 Personas</div>
-    <div class="tab" data-tab="memory">🕸 Memory Graph</div>
+    <div class="tab active" data-tab="chat"><span class="vg-ico" data-ico="chat"></span> Chat</div>
+    <div class="tab" data-tab="personas"><span class="vg-ico" data-ico="dna"></span> Personas</div>
+    <div class="tab" data-tab="memory"><span class="vg-ico" data-ico="graph"></span> Memory Graph</div>
   </div>
 
   <!-- CHAT -->
   <section id="pane-chat" class="tabpane active">
     <!-- Mobile-only panel tabs: collapse the two sidebars into swappable views. -->
     <div id="mobile-panel-tabs" class="mobile-only">
-      <div class="mtab active" data-target="chat">💬 Chat</div>
-      <div class="mtab" data-target="room">🧬 Room</div>
-      <div class="mtab" data-target="tools">🛠 Tools</div>
+      <div class="mtab active" data-target="chat"><span class="vg-ico" data-ico="chat"></span> Chat</div>
+      <div class="mtab" data-target="room"><span class="vg-ico" data-ico="dna"></span> Room</div>
+      <div class="mtab" data-target="tools"><span class="vg-ico" data-ico="tools"></span> Tools</div>
     </div>
     <div id="main-layout">
       <aside id="sidebar" class="chat-panel-pane" data-pane="room">
@@ -76,46 +76,46 @@
         <div id="cmd-popup"></div>
         <div id="input-bar">
           <textarea id="message-input" placeholder="Transmit a message to VirusGPT…" rows="1"></textarea>
-          <button id="btn-mic" class="icon-btn" title="Voice input">🎙</button>
-          <button id="btn-improve" class="icon-btn" title="Rewrite & improve the typed text with AI" style="font-size:13px;line-height:1;padding:0 8px;white-space:nowrap">✨ Improve</button>
-          <button id="btn-gen-image" class="icon-btn" title="Generate an image from the typed prompt via ComfyUI (Studio)" style="font-size:13px;line-height:1;padding:0 8px;white-space:nowrap">🎨 Image</button>
-          <button id="btn-send" title="Send">▶</button>
-          <button id="btn-stop-all" class="icon-btn" title="Stop all: halt auto-chat + kill speech" style="color:var(--danger,#ff4d4d)">⏹</button>
+          <button id="btn-mic" class="icon-btn" title="Voice input"><span class="vg-ico" data-ico="mic"></span></button>
+          <button id="btn-improve" class="icon-btn" title="Rewrite & improve the typed text with AI" style="font-size:13px;line-height:1;padding:0 8px;white-space:nowrap"><span class="vg-ico" data-ico="spark"></span> Improve</button>
+          <button id="btn-gen-image" class="icon-btn" title="Generate an image from the typed prompt via ComfyUI (Studio)" style="font-size:13px;line-height:1;padding:0 8px;white-space:nowrap"><span class="vg-ico" data-ico="brush"></span> Image</button>
+          <button id="btn-send" title="Send"><span class="vg-ico" data-ico="send"></span></button>
+          <button id="btn-stop-all" class="icon-btn" title="Stop all: halt auto-chat + kill speech" style="color:var(--danger,#ff4d4d)"><span class="vg-ico" data-ico="stop"></span></button>
         </div>
       </main>
       <aside id="rightbar" class="chat-panel-pane" data-pane="tools">
         <div style="padding-top:0">
-          <h3>🤖 Team Workflow</h3>
+          <h3><span class="vg-ico" data-ico="robot"></span> Team Workflow</h3>
           <div class="rightbar-hint" style="margin-top:8px">
             Team rounds now run through <b>Autonomous Mission</b> below.
           </div>
           <div class="rightbar-hint" style="margin-top:8px">
-            ✨ <b>Improve</b> rewrites your typed draft into a cleaner version.<br>
+            <span class="vg-ico" data-ico="spark"></span> <b>Improve</b> rewrites your typed draft into a cleaner version.<br>
             Type <kbd>/</kbd> <kbd>@</kbd> <kbd>#</kbd> for commands/personas/tags — and free text shows AI completions.
           </div>
         </div>
         <div id="mission-panel" style="padding-top:0">
-          <h3 style="margin:0 0 8px">🚀 Autonomous Mission</h3>
+          <h3 style="margin:0 0 8px"><span class="vg-ico" data-ico="rocket"></span> Autonomous Mission</h3>
           <textarea id="mission-goal" rows="2" placeholder="Mission goal — e.g. 'Build a YouTube automation pipeline'" style="width:100%;resize:vertical;font:inherit;background:var(--panel2);color:var(--txt);border:1px solid var(--border);border-radius:8px;padding:8px"></textarea>
           <div style="display:flex;gap:6px;margin-top:8px">
-            <button id="btn-mission-start" class="btn-accent" style="flex:1">▶ Start</button>
+            <button id="btn-mission-start" class="btn-accent" style="flex:1"><span class="vg-ico" data-ico="play"></span> Start</button>
             <button id="btn-mission-stop" class="btn-danger hidden" style="flex:1">■ Stop</button>
-            <button id="btn-mission-refresh" class="accent">⟳</button>
+            <button id="btn-mission-refresh" class="accent"><span class="vg-ico" data-ico="refresh"></span></button>
           </div>
           <div id="mission-state" style="font-size:12px;color:var(--txt-dim);margin-top:8px">No active mission.</div>
         </div>
 
         <div id="team-plan-panel">
-          <h3 style="margin:0 0 8px;display:flex;align-items:center;gap:8px">🧠 Team Board <span id="team-plan-status" style="color:var(--neon2);font-size:12px;font-weight:400"></span></h3>
+          <h3 style="margin:0 0 8px;display:flex;align-items:center;gap:8px"><span class="vg-ico" data-ico="brain"></span> Team Board <span id="team-plan-status" style="color:var(--neon2);font-size:12px;font-weight:400"></span></h3>
           <div id="kanban" class="kanban">
-            <div class="kanban-col" data-col="backlog"><div class="kanban-h">📋 Backlog <span class="kanban-count">0</span></div><div class="kanban-body" id="kb-backlog"></div></div>
-            <div class="kanban-col" data-col="progress"><div class="kanban-h">⚙️ In Progress <span class="kanban-count">0</span></div><div class="kanban-body" id="kb-progress"></div></div>
-            <div class="kanban-col" data-col="done"><div class="kanban-h">✅ Done <span class="kanban-count">0</span></div><div class="kanban-body" id="kb-done"></div></div>
+            <div class="kanban-col" data-col="backlog"><div class="kanban-h"><span class="vg-ico" data-ico="clipboard"></span> Backlog <span class="kanban-count">0</span></div><div class="kanban-body" id="kb-backlog"></div></div>
+            <div class="kanban-col" data-col="progress"><div class="kanban-h"><span class="vg-ico" data-ico="cog_small"></span> In Progress <span class="kanban-count">0</span></div><div class="kanban-body" id="kb-progress"></div></div>
+            <div class="kanban-col" data-col="done"><div class="kanban-h"><span class="vg-ico" data-ico="check"></span> Done <span class="kanban-count">0</span></div><div class="kanban-body" id="kb-done"></div></div>
           </div>
         </div>
 
         <div id="tools-panel" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-          <h3 style="margin:0 0 8px">🛠 Agent Tools <span id="tools-count" style="color:var(--neon2);font-size:12px;font-weight:400"></span></h3>
+          <h3 style="margin:0 0 8px"><span class="vg-ico" data-ico="tools"></span> Agent Tools <span id="tools-count" style="color:var(--neon2);font-size:12px;font-weight:400"></span></h3>
           <div id="tools-list" style="display:flex;flex-wrap:wrap;gap:5px"></div>
           <div id="tool-call-log" style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;color:var(--txt-dim);border-top:1px dashed var(--border);padding-top:6px"></div>
         </div>
@@ -145,7 +145,7 @@
       <div class="stat"><b id="mg-links">–</b><small>links</small></div>
       <div class="stat"><b id="mg-orphans">–</b><small>orphans</small></div>
       <div class="stat"><b id="mg-conform">–</b><small>conformant</small></div>
-      <button id="mem-refresh" class="accent">⟳ Refresh</button>
+      <button id="mem-refresh" class="accent"><span class="vg-ico" data-ico="refresh"></span> Refresh</button>
     </div>
     <div id="mem-legend"></div>
     <div id="graph-wrap"><canvas id="graph-canvas"></canvas></div>
@@ -156,12 +156,12 @@
   <!-- Settings Modal -->
   <div id="settings-overlay" class="modal-overlay hidden">
     <div class="modal-box modal-box-settings">
-      <div class="modal-header"><h2>Settings</h2><button id="st-btn-close" class="btn-icon-close">✕</button></div>
+      <div class="modal-header"><h2>Settings</h2><button id="st-btn-close" class="btn-icon-close"><span class="vg-ico" data-ico="close"></span></button></div>
       <div class="st-cols">
         <!-- Column 1: original settings -->
         <div class="st-col st-col-basic">
           <div class="st-col-title">General</div>
-          <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px">⟳</button></div>
+          <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px"><span class="vg-ico" data-ico="refresh"></span></button></div>
           <div class="form-row"><label>Default TTS Voice</label><select id="st-voice"></select></div>
           <div class="form-row"><label>Backend URL</label><input id="st-url" value=""></div>
           <div class="form-rows"><label>Think timeout (ms)</label><input id="st-timeout" type="number" value="60000"></div>
@@ -186,7 +186,7 @@
   <!-- UPDATE POPUP (opened by clicking the version text in the status bar) -->
   <div id="update-overlay" class="modal-overlay hidden">
     <div class="modal-box">
-      <div class="modal-header"><h2>App Update</h2><button id="up-btn-close" class="btn-icon-close">✕</button></div>
+      <div class="modal-header"><h2>App Update</h2><button id="up-btn-close" class="btn-icon-close"><span class="vg-ico" data-ico="close"></span></button></div>
       <div id="up-body">
         <div class="up-row"><span class="up-label">Current</span><span id="up-current" class="up-val">—</span></div>
         <div class="up-row"><span class="up-label">Latest</span><span id="up-latest" class="up-val">—</span></div>
@@ -206,7 +206,8 @@
   </div>
 
 
-  <script src="/assets/js/config.js?v=13"></script>
+  <script src="/assets/js/icons.js?v=1"></script>
+  <script src="/assets/js/config.js?v=14"></script>
   <script src="/assets/js/utils.js?v=13"></script>
   <script src="/assets/js/tts.js?v=13"></script>
   <script src="/assets/js/messages.js?v=13"></script>

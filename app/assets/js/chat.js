@@ -78,7 +78,7 @@ async function generateImageFromInput(promptOverride){
   const box=$('#message-input');
   const prompt=(promptOverride && promptOverride.trim()) || (box.value||'').trim();
   if(!prompt){ alert('Type an image description first, then click 🎨 Image.'); return; }
-  const btn=$('#btn-gen-image'); if(btn){ btn.disabled=true; btn.textContent='🎨…'; }
+  const btn=$('#btn-gen-image'); if(btn){ const ic=btn.querySelector('.vg-ico'); if(ic){ setIcon(ic,'brush',true); } btn.disabled=true; }
   if(!promptOverride) pushMessage('user', '🎨 '+prompt, 'YOU');
   // A minimal bot placeholder so the user sees activity.
   const bot=addBotMsg(personaByName('Studio')||selectedPersonaObj()||personas[0]);
@@ -102,7 +102,7 @@ async function generateImageFromInput(promptOverride){
     if(bot) bot.cur.textContent='⚠ '+(e.message||'image generation failed');
   }finally{
     currentBot=null;
-    if(btn){ btn.disabled=false; btn.textContent='🎨 Image'; }
+    if(btn){ const ic=btn.querySelector('.vg-ico'); if(ic){ setIcon(ic,'brush',false); } btn.disabled=false; }
   }
 }
 

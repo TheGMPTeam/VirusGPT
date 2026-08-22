@@ -33,6 +33,12 @@
   button{cursor:pointer;transition:.15s}
   button:hover{border-color:var(--neon);box-shadow:0 0 10px rgba(0,255,156,0.25);color:var(--neon)}
   .icon-btn{padding:7px 10px}
+  /* inline SVG icons */
+  .vg-ico,.vg-svg{display:inline-flex;align-items:center;justify-content:center;width:1.15em;height:1.15em;vertical-align:-0.18em;line-height:0}
+  .vg-svg{width:1em;height:1em}
+  .icon-btn .vg-ico,.win-ctl .vg-ico,.btn-accent .vg-ico,.accent .vg-ico{width:1.05em;height:1.05em}
+  .vg-spin{animation:vg-spin 1s linear infinite}
+  @keyframes vg-spin{to{transform:rotate(360deg)}}
   #btn-tts-toggle.tts-on{color:var(--neon);border-color:var(--neon);box-shadow:0 0 10px rgba(0,255,156,0.3)}
   #btn-tts-toggle.speaking{animation:tts-pulse .8s ease-in-out infinite}
   @keyframes tts-pulse{0%,100%{box-shadow:0 0 6px rgba(0,255,156,0.25)}50%{box-shadow:0 0 16px rgba(0,255,156,0.7)}}

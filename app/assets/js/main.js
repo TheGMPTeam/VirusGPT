@@ -44,7 +44,7 @@ function boot(){
     initMatrix();
     initUpdates();
     initServicesPanel();
-    $('#btn-tts-toggle').textContent=TTS_ON?'🔊':'🔇';
+    $('#btn-tts-toggle').innerHTML=VG_ICON(TTS_ON?'speaker_on':'speaker_off');
     $('#btn-tts-toggle').classList.toggle('tts-on', !!TTS_ON);
     // Seed per-session auto-play from the saved speaker state: if the speaker is
     // ON at boot, the first session auto-plays; after /clear or /new it resets to

@@ -53,7 +53,7 @@ function splitSentences(t){
 function makeSentencePlay(text, persona){
   const c=cleanMd(text);
   const b=document.createElement('button'); b.className='play';
-  b.textContent='▶'; b.title=c;
+  b.innerHTML=VG_ICON('play'); b.title=c;
   b.onclick=()=>playSingle(c, persona);
   return b;
 }

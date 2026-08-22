@@ -27,7 +27,7 @@ function initModals(){
     TTS_ON=!TTS_ON;
     lsSet('vg_tts',TTS_ON?'on':'off');
     const b=$('#btn-tts-toggle');
-    b.textContent=TTS_ON?'🔊':'🔇';
+    b.innerHTML=VG_ICON(TTS_ON?'speaker_on':'speaker_off');
     b.classList.toggle('tts-on', TTS_ON);
     // Tie auto-playback to this button: muting immediately halts any in-flight audio.
     if(!TTS_ON){ stopTTS(); sessionAutoPlay=false; }
@@ -89,7 +89,7 @@ function initMic(){
       mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
       mr.onstop=async()=>{
         try{
-          if(__micBtn){ __micBtn.textContent='🎙'; __micBtn.style.background=''; }
+          if(__micBtn){ setIcon(__micBtn,'mic'); __micBtn.style.background=''; }
           const blob=new Blob(chunks, {type:mime||'audio/webm'});
           if(blob.size===0){ return; }
           const fd=new FormData();
@@ -102,7 +102,7 @@ function initMic(){
         finally{ if(__micStream){ __micStream.getTracks().forEach(t=>t.stop()); __micStream=null; } __micRec=null; }
       };
       mr.start(); __micRec=mr;
-      __micBtn=$('#btn-mic'); if(__micBtn){ __micBtn.textContent='⏹'; __micBtn.style.background='var(--neon,#23e0ff)'; }
+      __micBtn=$('#btn-mic'); if(__micBtn){ setIcon(__micBtn,'stop',true); __micBtn.style.background='var(--neon,#23e0ff)'; }
     }catch(e){
       let msg=e.message||'mic error';
       if(e && (e.name==='NotAllowedError'||e.name==='SecurityError')) msg='Microphone permission denied / blocked. On mobile Chrome this also happens over http:// — use the https:// address.';
