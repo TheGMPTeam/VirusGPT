@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ _DEFAULTS: dict[str, Any] = {
                     "default_model": ""},
         "blender": {"enabled": False, "base_url": "http://10.0.0.120:8008", "timeout": 300},
         "ffmpeg":  {"enabled": False, "base_url": "http://10.0.0.120:8009", "timeout": 300},
-        "marton":  {"enabled": False, "base_url": "", "api_key": "", "timeout": 60},
+        "marton":  {"enabled": True,  "base_url": "https://api.maton.ai", "api_key": "", "connection_id": "", "timeout": 60},
     },
     # Chat behavior: small-context by default (good for qwen2.5:3b), inject the
     # knowledge graph as DEFAULT context, and constrain history to a window.
@@ -67,9 +68,36 @@ _DEFAULTS: dict[str, Any] = {
 }
 
 
+def _load_dotenv_local() -> None:
+    """Minimal dependency-free .env loader (gitignored local secrets).
+
+    Reads .env from the project root into os.environ if a variable is unset.
+    No external package required. Keeps VG_* secrets (VG_MARTON_KEY,
+    VG_N8N_TOKEN, ...) out of tracked config.json while still auto-loading
+    them when the server starts. Only fills keys that are not already set.
+    """
+    root = Path(__file__).resolve().parent.parent
+    env_path = root / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip('"').strip("'")
+            if k and k not in os.environ:
+                os.environ[k] = v
+    except Exception:
+        pass
+
+
+_load_dotenv_local()
+
+
 def load_config() -> dict:
     import copy
-    import os
     cfg = copy.deepcopy(_DEFAULTS)
     if CONFIG_PATH.exists():
         try:
@@ -127,6 +155,31 @@ def service_timeout(name: str, default: float = 120.0) -> float:
     except (TypeError, ValueError):
         return default
 
+
+
+def save_service_config(name: str, patch: dict) -> None:
+    """Persist non-secret fields of a service block to config.json on disk.
+
+    Reads the on-disk config.json, deep-merges `patch` into
+    services.<name>, and writes it back. Secret keys (api_key/token/...)
+    are never passed here (callers in settings_base strip them). If the file
+    is missing or unreadable, the call is a no-op (runtime config still holds
+    the change). Keeps user edits safe — only the given fields are touched.
+    """
+    if not patch:
+        return
+    try:
+        text = CONFIG_PATH.read_text() if CONFIG_PATH.exists() else "{}"
+        disk = json.loads(text) if text.strip() else {}
+    except Exception:
+        return
+    services = disk.setdefault("services", {})
+    block = services.setdefault(name, {})
+    _deep_merge(block, patch)
+    try:
+        CONFIG_PATH.write_text(json.dumps(disk, indent=2) + "\n")
+    except Exception:
+        pass
 
 
 def _deep_merge(base: dict, override: dict) -> None:

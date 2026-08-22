@@ -20,7 +20,21 @@ from fastapi.staticfiles import StaticFiles
 from services import config as cfg
 from services import llm, tts, stt, memory
 from services import n8n as _n8n
+from services import marton as _marton
+from services import settings_base as base
+from services import n8n_settings as _n8n_set, comfyui_settings as _comfy_set
+from services import youtube_settings as _yt_set, gmail_settings as _gmail_set, snapchat_settings as _snap_set
 from services import close_client
+
+# Per-service settings/tools dispatcher (each connected service has its own
+# settings module). Add new services here as their settings modules land.
+SERVICE_MODULES = {
+    "n8n": _n8n_set,
+    "comfyui": _comfy_set,
+    "youtube": _yt_set,
+    "gmail": _gmail_set,
+    "snapchat": _snap_set,
+}
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -529,7 +543,7 @@ async def gateway_status():
 @app.get("/api/services/status")
 async def services_status():
     """Health of every modular LAN service (media/automation stack)."""
-    from services import comfyui as _comfy, n8n as _n8n
+    from services import comfyui as _comfy, n8n as _n8n, marton as _marton
     cf = False
     cf_models = []
     if cfg.CONFIG["services"]["comfyui"]["enabled"]:
@@ -537,14 +551,17 @@ async def services_status():
         if cf:
             cf_models = await _comfy.comfyui_models()
     n8n_st = await _n8n.n8n_status()
+    marton_st = await _marton.marton_status()
     return JSONResponse({
         "comfyui": {"enabled": cfg.CONFIG["services"]["comfyui"]["enabled"],
                     "healthy": cf,
                     "base_url": cfg.CONFIG["services"]["comfyui"]["base_url"],
                     "models": cf_models},
         "n8n": n8n_st,
+        "marton": marton_st,
         "configured": {"comfyui": bool(cfg.CONFIG["services"]["comfyui"]["base_url"]),
-                       "n8n": bool(n8n_st["base_url"])},
+                       "n8n": bool(n8n_st["base_url"]),
+                       "marton": bool(marton_st["configured"])},
     })
 
 
@@ -574,6 +591,163 @@ async def n8n_create(req: Request):
         body["name"], body["nodes"], body.get("connections"), body.get("active", False)))
 
 
+# -------------------------------------------------------------------------
+# Maton API Gateway — YouTube / Gmail / Snapchat (full control)
+# -------------------------------------------------------------------------
+@app.get("/api/marton/status")
+async def marton_status_route():
+    """Connection state for each Maton-connected app (youtube/gmail/snapchat)."""
+    return JSONResponse(await _marton.marton_status())
+
+
+# --- YouTube ----------------------------------------------------------
+@app.get("/api/marton/youtube/channel")
+async def marton_yt_channel():
+    return JSONResponse(await _marton.youtube_channel())
+
+
+@app.get("/api/marton/youtube/playlists")
+async def marton_yt_playlists(max_results: int = 25):
+    return JSONResponse(await _marton.youtube_list_playlists(max_results))
+
+
+@app.post("/api/marton/youtube/upload")
+async def marton_yt_upload(req: Request):
+    """Upload a video. Body: {file_path, title, description?, privacy?, confirm?}.
+
+    `confirm=true` is REQUIRED (external publish side effect).
+    """
+    body = await req.json() if (await req.body()) else {}
+    fp = body.get("file_path")
+    title = body.get("title")
+    if not fp or not title:
+        return JSONResponse({"status": "failed", "error": "missing file_path/title"}, status_code=400)
+    return JSONResponse(await _marton.youtube_upload_video(
+        fp, title, body.get("description", ""), body.get("privacy", "private"),
+        confirm=bool(body.get("confirm"))))
+
+
+# --- Gmail ------------------------------------------------------------
+@app.get("/api/marton/gmail/profile")
+async def marton_gmail_profile():
+    return JSONResponse(await _marton.gmail_profile())
+
+
+@app.get("/api/marton/gmail/messages")
+async def marton_gmail_messages(query: str = "", max_results: int = 10):
+    return JSONResponse(await _marton.gmail_list_messages(query, max_results))
+
+
+@app.post("/api/marton/gmail/send")
+async def marton_gmail_send(req: Request):
+    """Send email. Body: {to, subject, body, confirm?}. confirm=true REQUIRED."""
+    body = await req.json() if (await req.body()) else {}
+    if not (body.get("to") and body.get("subject")):
+        return JSONResponse({"status": "failed", "error": "missing to/subject"}, status_code=400)
+    return JSONResponse(await _marton.gmail_send(
+        body["to"], body["subject"], body.get("body", ""), confirm=bool(body.get("confirm"))))
+
+
+# --- Snapchat ---------------------------------------------------------
+@app.get("/api/marton/snapchat/me")
+async def marton_snap_me():
+    return JSONResponse(await _marton.snapchat_me())
+
+
+@app.get("/api/marton/snapchat/organizations")
+async def marton_snap_orgs():
+    return JSONResponse(await _marton.snapchat_organizations())
+
+
+@app.get("/api/marton/snapchat/adaccounts/{organization_id}")
+async def marton_snap_accts(organization_id: str):
+    return JSONResponse(await _marton.snapchat_ad_accounts(organization_id))
+
+
+@app.get("/api/marton/snapchat/campaigns/{ad_account_id}")
+async def marton_snap_campaigns(ad_account_id: str):
+    return JSONResponse(await _marton.snapchat_list_campaigns(ad_account_id))
+
+
+@app.post("/api/marton/snapchat/upload")
+async def marton_snap_upload(req: Request):
+    """Upload a creative. Body: {ad_account_id, file_path, name?, confirm?}.
+
+    confirm=true REQUIRED (external upload side effect).
+    """
+    body = await req.json() if (await req.body()) else {}
+    if not (body.get("ad_account_id") and body.get("file_path")):
+        return JSONResponse({"status": "failed", "error": "missing ad_account_id/file_path"}, status_code=400)
+    return JSONResponse(await _marton.snapchat_upload_media(
+        body["ad_account_id"], body["file_path"], body.get("name", ""),
+        confirm=bool(body.get("confirm"))))
+
+
+# -------------------------------------------------------------------------
+# Per-service Settings + Tools (each connected service has its own module)
+# -------------------------------------------------------------------------
+@app.get("/api/services")
+async def services_index():
+    """List all connected services and their registered tool counts."""
+    out = {}
+    for name, mod in SERVICE_MODULES.items():
+        try:
+            tools = mod.list_tools().get("tools", [])
+        except Exception:
+            tools = []
+        out[name] = {"tool_count": len(tools)}
+    return JSONResponse(out)
+
+
+@app.get("/api/services/{name}/settings")
+async def service_settings_get(name: str):
+    mod = SERVICE_MODULES.get(name)
+    if not mod:
+        return JSONResponse({"status": "failed", "error": f"unknown service '{name}'"}, status_code=404)
+    return JSONResponse(mod.read_settings())
+
+
+@app.post("/api/services/{name}/settings")
+async def service_settings_post(name: str, req: Request):
+    mod = SERVICE_MODULES.get(name)
+    if not mod:
+        return JSONResponse({"status": "failed", "error": f"unknown service '{name}'"}, status_code=404)
+    body = await req.json() if (await req.body()) else {}
+    return JSONResponse(mod.write_settings(body or {}))
+
+
+@app.get("/api/services/{name}/status")
+async def service_status_get(name: str):
+    mod = SERVICE_MODULES.get(name)
+    if not mod:
+        return JSONResponse({"status": "failed", "error": f"unknown service '{name}'"}, status_code=404)
+    return JSONResponse(await base.get_status(name))
+
+
+@app.get("/api/services/{name}/tools")
+async def service_tools_get(name: str):
+    mod = SERVICE_MODULES.get(name)
+    if not mod:
+        return JSONResponse({"status": "failed", "error": f"unknown service '{name}'"}, status_code=404)
+    return JSONResponse(mod.list_tools())
+
+
+@app.post("/api/services/{name}/tools/run")
+async def service_tools_run(name: str, req: Request):
+    mod = SERVICE_MODULES.get(name)
+    if not mod:
+        return JSONResponse({"status": "failed", "error": f"unknown service '{name}'"}, status_code=404)
+    body = await req.json() if (await req.body()) else {}
+    tool = body.get("tool")
+    if not tool:
+        return JSONResponse({"status": "failed", "error": "missing 'tool'"}, status_code=400)
+    kwargs = {k: v for k, v in (body or {}).items() if k != "tool"}
+    return JSONResponse(await mod.run_tool(tool, **kwargs))
+
+
+# -------------------------------------------------------------------------
+# MCP bridge status
+# -------------------------------------------------------------------------
 @app.get("/api/mcp/status")
 async def mcp_status():
     """Status of the MCP bridge (server + discovered client tools)."""

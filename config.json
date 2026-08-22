@@ -46,10 +46,36 @@
     "mysql_ssl": true
   },
   "services": {
-    "n8n":     {"enabled": true,  "base_url": "http://10.0.0.120:5678", "timeout": 30},
-    "comfyui": {"enabled": true,  "base_url": "http://10.0.0.120:8188", "timeout": 180, "default_model": ""},
-    "blender": {"enabled": false, "base_url": "http://10.0.0.120:8008", "timeout": 300},
-    "ffmpeg":  {"enabled": false, "base_url": "http://10.0.0.120:8009", "timeout": 300},
-    "marton":  {"enabled": false, "base_url": "", "api_key": "", "timeout": 60}
+    "n8n": {
+      "enabled": true,
+      "base_url": "http://10.0.0.120:5678",
+      "timeout": 30
+    },
+    "comfyui": {
+      "enabled": true,
+      "base_url": "http://10.0.0.120:8188",
+      "timeout": 180,
+      "default_model": ""
+    },
+    "blender": {
+      "enabled": false,
+      "base_url": "http://10.0.0.120:8008",
+      "timeout": 300
+    },
+    "ffmpeg": {
+      "enabled": false,
+      "base_url": "http://10.0.0.120:8009",
+      "timeout": 300
+    },
+    "marton": {
+      "enabled": true,
+      "base_url": "https://api.maton.ai",
+      "api_key": "",
+      "connection_id": "",
+      "timeout": 60
+    },
+    "youtube": {
+      "timeout": 60
+    }
   }
-  }
+}

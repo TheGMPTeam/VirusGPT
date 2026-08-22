@@ -123,6 +123,21 @@ def on_closed():
 
 def main():
     import webview
+    from services import updater as _upd
+
+    # Register the updater's quit hook: when an in-app update is applied, the
+    # server (running in a worker thread) calls request_quit(), which invokes
+    # this to destroy the native window on the GUI thread. webview.start()
+    # then returns and the app exits cleanly, freeing the bundle for the
+    # detached rebuild to replace it (open /Applications/VirusGPT.app).
+    def _quit_app():
+        try:
+            if webview.windows:
+                webview.windows[0].destroy()
+        except Exception:
+            pass
+
+    _upd.register_quit_hook(_quit_app)
 
     remote = backend_url()
     if remote:

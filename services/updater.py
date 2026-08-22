@@ -74,6 +74,46 @@ def set_branch(branch: str) -> str:
     except Exception:
         pass
     return branch
+# -------------------------------------------------------------------------
+# GUI quit hook
+# -------------------------------------------------------------------------
+# The updater runs server-side, but to replace the running bundle the whole
+# desktop APP (native window + in-process server) must quit. The GUI shell
+# (desktop/app.py) registers a hook here that destroys the native window from
+# the GUI thread; once the last window closes, webview.start() returns and the
+# app exits cleanly. If no hook is registered (headless / dev server), we fall
+# back to a hard process exit. This replaces the old `os._exit(0)` from a
+# worker thread, which did NOT reliably close the macOS pywebview app.
+_QUIT_HOOK = None
+
+
+def register_quit_hook(fn) -> None:
+    """Register a callable the updater invokes to close the desktop app.
+
+    The desktop shell passes a function that destroys the native window on the
+    GUI thread. Kept GUI-agnostic here so server.py / updater have no hard
+    dependency on pywebview.
+    """
+    global _QUIT_HOOK
+    _QUIT_HOOK = fn
+
+
+def request_quit() -> None:
+    """Ask the app to quit so the detached rebuild can replace the bundle.
+
+    Prefers the registered GUI hook (clean window teardown on the main thread);
+    falls back to a hard exit if none was registered.
+    """
+    if _QUIT_HOOK is not None:
+        try:
+            _QUIT_HOOK()
+            return
+        except Exception:
+            pass
+    # Fallback: nothing else can quit the app for us.
+    os._exit(0)
+
+
 def get_branches() -> dict:
     """List the channels the updater can target. `main` and `beta` are the two
     fixed channels and are ALWAYS offered (so the user can always switch), plus
@@ -276,8 +316,12 @@ def _run_update(target: str | None = None):
         _STATE["finished_at"] = time.time()
         _set("done", 100, "Update pulled. Rebuilding & restarting…")
         time.sleep(1.0)
-        # Quit THIS (old) app so the detached rebuild can replace the bundle safely.
-        os._exit(0)
+        # Quit THIS (old) app so the detached rebuild can replace the bundle
+        # safely. request_quit() destroys the native window on the GUI thread;
+        # when the last window closes, webview.start() returns and the app
+        # exits cleanly — unlike a hard os._exit() from a worker thread, which
+        # left the macOS pywebview window open ("not closing to update").
+        request_quit()
     except Exception as e:
         _STATE["error"] = str(e)
         _STATE["stage"] = "error"

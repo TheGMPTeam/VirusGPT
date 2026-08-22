@@ -352,6 +352,21 @@ function maybeEmitArtifact(a, st){
     : `📎 ${label}`;
   pushMessage('assistant', text, who);
 }
+
+/* When a mission finishes, deliver its synthesized final answer to chat (once).
+   The backend stores this in mission.final_result after _synthesize(); the
+   status endpoint returns it as `final_result`, but the per-task/artifact
+   emitters above never touch it — so without this the final answer is computed
+   and persisted but never shown. Guarded by __emittedFinal so it posts once. */
+let __emittedFinal = {};
+function maybeEmitFinal(st){
+  if(!st || !st.final_result || !st.final_result.trim()) return;
+  if(__emittedFinal[st.id]) return;
+  if(!(st.status==='completed'||st.status==='failed'||st.status==='cancelled')) return;
+  __emittedFinal[st.id] = true;
+  const who = st.planner || 'Mission';
+  pushMessage('assistant', st.final_result.trim(), who);
+}
 async function startMission(goalOverride){
   // The button is wired as `onclick = startMission`, so a click passes a DOM
   // Event as the first arg. Ignore anything that isn't a string goal.
@@ -370,7 +385,7 @@ async function startMission(goalOverride){
   $('#mission-goal').value = goal;
   $('#mission-state').innerHTML = 'Starting mission…';
   kbReset();
-  __missionTaskCards = {}; __emittedTaskResults = {}; __emittedArtifacts = {};
+  __missionTaskCards = {}; __emittedTaskResults = {}; __emittedArtifacts = {}; __emittedFinal = {};
   __missionCard = kbAdd('progress','Mission (Planner)', goal, 'progress thinking');
   // Stop any prior poll/stream.
   if(__missionStream){ try{__missionStream.close();}catch(e){} __missionStream=null; }
@@ -408,6 +423,7 @@ async function startMission(goalOverride){
         }
         if(Array.isArray(st.tasks)) st.tasks.forEach(t=>maybeEmitTaskResult(t));
         if(Array.isArray(st.artifacts)) st.artifacts.forEach(a=>maybeEmitArtifact(a, st));
+        maybeEmitFinal(st);
       }catch(e){}
     };
     render(await (await fetch(API.base+'/api/autonomous/status/'+encodeURIComponent(data.mission_id))).json());
