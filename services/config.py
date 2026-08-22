@@ -7,7 +7,27 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "config.json"
+# config.json ships next to the running module (dev: project root; frozen:
+# Contents/Resources or Contents/Frameworks). Resolve it robustly across both
+# layouts so the bundled (build-time patched) config is always the one loaded.
+def _resolve_config_path() -> Path:
+    candidates = [
+        ROOT / "config.json",
+        Path(__file__).resolve().parent / "config.json",
+        Path.cwd() / "config.json",
+    ]
+    # Walk up from this file looking for config.json (covers nested bundles).
+    p = Path(__file__).resolve().parent
+    for _ in range(6):
+        candidates.append(p / "config.json")
+        p = p.parent
+    for c in candidates:
+        if c.exists():
+            return c
+    return ROOT / "config.json"  # fall back to defaults if none found
+
+
+CONFIG_PATH = _resolve_config_path()
 
 _DEFAULTS: dict[str, Any] = {
     "host": "0.0.0.0",

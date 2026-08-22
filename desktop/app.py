@@ -110,10 +110,56 @@ def _serve():
     Importing `server` here makes PyInstaller collect server.py AND every module
     it pulls in (fastapi, uvicorn, services, autonomous, memory, gateway, ...),
     so the frozen bundle is fully self-contained — no external interpreter needed.
+    Serves HTTPS when config https=true (cert auto-generated into data/ssl/ if
+    missing), so the local web UI works on the LAN / Android with a secure context
+    (required for mic/Whisper STT on mobile Chrome).
     """
     import uvicorn
     import server  # bundled module (also collects all its dependencies)
-    uvicorn.run(server.app, host="0.0.0.0", port=PORT, log_level="warning")
+    from services import config as _cfg
+    ssl_kwargs = {}
+    if _cfg.CONFIG.get("https"):
+        cert = Path(_cfg.CONFIG.get("ssl_certfile", ""))
+        key = Path(_cfg.CONFIG.get("ssl_keyfile", ""))
+        if not (cert.exists() and key.exists()):
+            # Auto-generate a self-signed cert (SAN = LAN IP + localhost) so the
+            # phone can trust it. Mirrors server.main()'s gen, kept here because
+            # the desktop wrapper is the real launch path.
+            try:
+                import socket, subprocess
+                ssl_dir = cert.parent
+                ssl_dir.mkdir(parents=True, exist_ok=True)
+                lan_ip = ""
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    lan_ip = s.getsockname()[0]
+                    s.close()
+                except Exception:
+                    pass
+                if not lan_ip or lan_ip.startswith("127."):
+                    lan_ip = socket.gethostbyname(socket.gethostname())
+                san = f"IP:{lan_ip},DNS:localhost"
+                cnf = ssl_dir / "openssl_vg.cnf"
+                cnf.write_text("distinguished_name = dn\n[dn]\n[san]\nsubjectAltName = " + san + "\n")
+                subprocess.run([
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-keyout", str(key), "-out", str(cert), "-days", "825",
+                    "-subj", "/CN=VirusGPT",
+                    "-reqexts", "san", "-extensions", "san", "-config", str(cnf),
+                ], check=True, capture_output=True)
+                cnf.unlink(missing_ok=True)
+                print(f"[desktop] generated self-signed cert (SAN {san})", flush=True)
+            except Exception as exc:
+                print(f"[desktop] WARNING: HTTPS cert gen failed ({exc})", flush=True)
+        if cert.exists() and key.exists():
+            ssl_kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
+            print(f"[desktop] serving HTTPS on 0.0.0.0:{PORT}", flush=True)
+        else:
+            print(f"[desktop] WARNING: HTTPS configured but cert unavailable; falling back to HTTP", flush=True)
+    else:
+        print(f"[desktop] serving HTTP on 0.0.0.0:{PORT}", flush=True)
+    uvicorn.run(server.app, host="0.0.0.0", port=PORT, log_level="warning", **ssl_kwargs)
 
 
 def on_closed():
@@ -175,7 +221,11 @@ def main():
     # localhost resolves to IPv6 ::1 first, but the server binds IPv4 only,
     # so a WebView loading http://localhost:8500 would hit ::1 and show a
     # blank/white screen. Binding 0.0.0.0 + loading 127.0.0.1 avoids the mismatch.
-    url = f"http://127.0.0.1:{PORT}"
+    # When HTTPS is enabled, load the secure URL (self-signed cert -> accept the
+    # browser warning once, or install the CA on the phone).
+    from services import config as _cfg
+    scheme = "https" if _cfg.CONFIG.get("https") else "http"
+    url = f"{scheme}://127.0.0.1:{PORT}"
     print(f"[desktop] starting server (in-process) on {url}...", flush=True)
     if not _wait_health(url):
         print("[desktop] WARNING: server did not come up in time", flush=True)

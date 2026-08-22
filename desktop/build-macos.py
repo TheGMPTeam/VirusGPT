@@ -153,6 +153,11 @@ def build():
         pass
     inject_version_global(DEST_APP / "Contents" / "Resources" / "app" / "index.html",
                           version, commit, channel)
+    # --- HTTPS for the local web UI (Android/phone mic + secure context) -----
+    # Enabled at build time only; nothing HTTPS-related is committed to the
+    # repo. Generates a self-signed cert (SAN = LAN IP + localhost) if absent
+    # and patches the bundled config.json so the app serves HTTPS out of the box.
+    _enable_https_in_bundle(DEST_APP)
     # Remove the leftover dist/ copy so there is never a second app on disk.
     left = ROOT / "dist" / f"{APP_NAME}.app"
     if left.exists():
@@ -182,6 +187,62 @@ def build():
     except Exception as e:
         print(f"[build] (warn) could not auto-launch {placed}: {e}")
     return 0
+
+
+def _enable_https_in_bundle(dest_app: Path) -> None:
+    """Enable HTTPS in the built bundle (no repo change).
+
+    Generates a self-signed cert (SAN = LAN IP + localhost) under the project's
+    data/ssl/ if absent, then patches BOTH bundled config.json copies so the app
+    serves HTTPS on launch. The cert lives on disk only — never in git.
+    """
+    try:
+        import socket, subprocess
+        ssl_dir = ROOT / "data" / "ssl"
+        ssl_dir.mkdir(parents=True, exist_ok=True)
+        cert = ssl_dir / "virusgpt.crt"
+        key = ssl_dir / "virusgpt.key"
+        if not (cert.exists() and key.exists()):
+            lan_ip = ""
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                lan_ip = s.getsockname()[0]
+                s.close()
+            except Exception:
+                pass
+            if not lan_ip or lan_ip.startswith("127."):
+                lan_ip = socket.gethostbyname(socket.gethostname())
+            san = f"IP:{lan_ip},DNS:localhost"
+            cnf = ssl_dir / "openssl_vg.cnf"
+            cnf.write_text(
+                "distinguished_name = dn\n[dn]\n[san]\nsubjectAltName = " + san + "\n"
+            )
+            subprocess.run([
+                "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                "-keyout", str(key), "-out", str(cert), "-days", "825",
+                "-subj", "/CN=VirusGPT",
+                "-reqexts", "san", "-extensions", "san", "-config", str(cnf),
+            ], check=True, capture_output=True)
+            cnf.unlink(missing_ok=True)
+            print(f"[build] generated self-signed cert (SAN {san})")
+        cert_abs, key_abs = str(cert.resolve()), str(key.resolve())
+        patched = 0
+        for cfg_path in dest_app.rglob("config.json"):
+            try:
+                c = json.loads(cfg_path.read_text())
+                c["https"] = True
+                c["ssl_certfile"] = cert_abs
+                c["ssl_keyfile"] = key_abs
+                if not c.get("host") or c["host"] == "127.0.0.1":
+                    c["host"] = "0.0.0.0"
+                cfg_path.write_text(json.dumps(c, indent=2))
+                patched += 1
+            except Exception as exc:
+                print(f"[build] (warn) could not patch {cfg_path}: {exc}")
+        print(f"[build] HTTPS enabled in {patched} bundled config(s)")
+    except Exception as exc:
+        print(f"[build] (warn) HTTPS setup skipped: {exc}")
 
 
 def _install_to_applications(built, app_name):
