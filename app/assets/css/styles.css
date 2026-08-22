@@ -435,3 +435,90 @@
   }
   [data-theme="nova"] #btn-tts-toggle.tts-on{border-color:var(--neon);box-shadow:0 0 12px rgba(199,125,255,0.4)}
   [data-theme="nova"] .cursor{background:var(--neon)}
+
+  /* =========================================================================
+     MOBILE (phones ≤ 600px) — VirusGPT web UI on Android / iOS
+     Goal: clean single-column layout, hidden desktop-only chrome (the window
+     min/max/close "X-box" that does nothing in a browser), a compact chat
+     input bar with icon-only actions, and a stacked (not 3-column) Settings.
+     ========================================================================= */
+  @media(max-width:600px){
+    /* 1) Hide desktop window controls — they're meaningless in a mobile browser
+       and the ✕ was the "X-box" cluttering the header. */
+    .win-ctl{display:none !important}
+    /* 2) Header: drop the THEME label, tighten, keep Settings + TTS. */
+    #topbar{gap:8px;padding:8px 10px;flex-wrap:wrap}
+    #topbar h1{font-size:15px;letter-spacing:1px}
+    .topbar-actions{gap:6px}
+    .topbar-actions label[for="theme-select"]{display:none}
+    #theme-select{padding:5px 6px;font-size:12px;max-width:120px}
+    #btn-settings{padding:6px 9px;font-size:12px}
+
+    /* 3) Tabs: keep them tappable, allow horizontal scroll if cramped. */
+    #tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap}
+    #tabs .tab{padding:9px 12px;font-size:13px;flex:0 0 auto}
+
+    /* 4) Chat input bar: compact, icon-only actions, prominent Send. */
+    #input-bar{
+      gap:6px;padding:8px 8px;border-top:1px solid var(--border);
+      background:var(--panel);align-items:flex-end;
+      position:sticky;bottom:0;z-index:5;
+    }
+    #message-input{
+      flex:1 1 auto;min-height:40px;max-height:120px;font-size:15px;
+      padding:9px 11px;border-radius:20px;width:auto;
+    }
+    /* Collapse "Improve" / "Image" to icon-only chips to save width. */
+    #btn-improve,#btn-gen-image{
+      padding:0;width:38px;height:38px;border-radius:50%;flex:0 0 auto;
+      font-size:0;justify-content:center;
+    }
+    #btn-improve .vg-ico,#btn-gen-image .vg-ico{font-size:17px;width:1.1em;height:1.1em}
+    #btn-mic,#btn-stop-all{
+      width:38px;height:38px;border-radius:50%;flex:0 0 auto;
+      display:flex;align-items:center;justify-content:center;padding:0;
+    }
+    #btn-send{
+      width:46px;height:46px;border-radius:50%;flex:0 0 auto;
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 0 14px rgba(0,255,156,.45);
+    }
+    #btn-send .vg-ico{width:1.3em;height:1.3em}
+    /* keep labels for accessibility but hide visually */
+    #btn-improve span:not(.vg-ico),#btn-gen-image span:not(.vg-ico){display:none}
+
+    /* 5) Sidebars already collapse via the #mobile-panel-tabs; make panes fill. */
+    #chat-panel.chat-panel-pane.active{min-height:0;flex:1 1 auto}
+    #sidebar.chat-panel-pane.active,
+    #rightbar.chat-panel-pane.active{max-height:none}
+
+    /* 6) Status bar: smaller, wrap. */
+    #statusbar{font-size:11px;gap:8px;flex-wrap:wrap;padding:5px 10px}
+
+    /* 7) SETTINGS — stack the 3 columns into one scrollable column. */
+    .modal-box-settings{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;border:none}
+    .modal-overlay{padding:0}
+    .st-cols{
+      grid-template-columns:1fr;gap:0;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+    .st-col{padding:14px;width:100%;border-left:none !important}
+    .st-col + .st-col{border-top:1px solid var(--border)}
+    .st-col-title{font-size:13px}
+    /* full-width service rows + fields for thumb reach */
+    .st-svc-name{font-size:15px;padding:13px 14px;border-radius:11px}
+    .st-svc-field{flex-direction:column;align-items:stretch;gap:4px}
+    .st-svc-field label{width:auto}
+    .st-svc-field input,.st-svc-field select{font-size:15px;padding:11px}
+    .st-svc-save,.st-svc-tool{
+      font-size:15px;padding:12px 14px;border-radius:10px;width:100%;text-align:center;
+    }
+    .st-svc-tools{gap:8px}
+    /* One Save button per screen is enough — emphasise the service Save,
+       keep the General "Save" visible but de-emphasised. */
+    #st-save{width:100%;padding:12px;font-size:15px}
+    .form-row{display:flex;flex-direction:column;gap:5px;align-items:stretch}
+    .form-row label{width:auto}
+    .form-row input,.form-row select{font-size:15px;padding:11px}
+    .form-row #st-refresh-models{margin-left:0;align-self:flex-start}
+  }
