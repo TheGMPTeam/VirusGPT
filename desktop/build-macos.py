@@ -156,6 +156,12 @@ def build():
     left = ROOT / "dist" / f"{APP_NAME}.app"
     if left.exists():
         shutil.rmtree(left)
+    # Launch the freshly built app so the new build is immediately runnable.
+    try:
+        subprocess.run(["open", str(placed)], timeout=10)
+        print(f"[build] launched -> {placed}")
+    except Exception as e:
+        print(f"[build] (warn) could not auto-launch {placed}: {e}")
     return 0
 
 
