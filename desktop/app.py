@@ -110,21 +110,28 @@ def _serve():
     Importing `server` here makes PyInstaller collect server.py AND every module
     it pulls in (fastapi, uvicorn, services, autonomous, memory, gateway, ...),
     so the frozen bundle is fully self-contained — no external interpreter needed.
-    Serves HTTPS when config https=true (cert auto-generated into data/ssl/ if
-    missing), so the local web UI works on the LAN / Android with a secure context
-    (required for mic/Whisper STT on mobile Chrome).
+
+    Two listeners are started:
+      • HTTPS on 0.0.0.0:PORT  — for the LAN / Android phone. Mobile Chrome only
+        grants the mic (Whisper STT) in a secure context, so the phone needs HTTPS.
+      • HTTP  on 127.0.0.1:PORT+1 — for the desktop WebView window. pywebview's
+        WKWebView refuses self-signed certificates (no "accept" dialog), so the
+        native window loads plain HTTP on localhost, which is fine: the desktop
+        app uses its own native mic, not the browser, so no secure context needed.
     """
     import uvicorn
     import server  # bundled module (also collects all its dependencies)
     from services import config as _cfg
+    import threading
+
+    http_port = PORT + 1
+
+    # HTTPS listener for the LAN / phone (skipped if cert unavailable).
     ssl_kwargs = {}
     if _cfg.CONFIG.get("https"):
         cert = Path(_cfg.CONFIG.get("ssl_certfile", ""))
         key = Path(_cfg.CONFIG.get("ssl_keyfile", ""))
         if not (cert.exists() and key.exists()):
-            # Auto-generate a self-signed cert (SAN = LAN IP + localhost) so the
-            # phone can trust it. Mirrors server.main()'s gen, kept here because
-            # the desktop wrapper is the real launch path.
             try:
                 import socket, subprocess
                 ssl_dir = cert.parent
@@ -154,12 +161,26 @@ def _serve():
                 print(f"[desktop] WARNING: HTTPS cert gen failed ({exc})", flush=True)
         if cert.exists() and key.exists():
             ssl_kwargs = {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
-            print(f"[desktop] serving HTTPS on 0.0.0.0:{PORT}", flush=True)
+            print(f"[desktop] serving HTTPS on 0.0.0.0:{PORT} (phone/LAN)", flush=True)
         else:
-            print(f"[desktop] WARNING: HTTPS configured but cert unavailable; falling back to HTTP", flush=True)
+            print(f"[desktop] WARNING: HTTPS configured but cert unavailable; LAN will be HTTP", flush=True)
+
+    # HTTP listener for the desktop window (always on, localhost only).
+    def _run_http():
+        uvicorn.run(server.app, host="127.0.0.1", port=http_port, log_level="warning")
+    threading.Thread(target=_run_http, daemon=True).start()
+    print(f"[desktop] serving HTTP on 127.0.0.1:{http_port} (desktop window)", flush=True)
+
+    if ssl_kwargs:
+        uvicorn.run(server.app, host="0.0.0.0", port=PORT, log_level="warning", **ssl_kwargs)
     else:
-        print(f"[desktop] serving HTTP on 0.0.0.0:{PORT}", flush=True)
-    uvicorn.run(server.app, host="0.0.0.0", port=PORT, log_level="warning", **ssl_kwargs)
+        uvicorn.run(server.app, host="0.0.0.0", port=PORT, log_level="warning")
+
+
+# The desktop WebView window loads the localhost HTTP listener (WKWebView
+# cannot accept a self-signed cert). The phone uses the HTTPS LAN listener.
+def _window_url() -> str:
+    return f"http://127.0.0.1:{PORT + 1}"
 
 
 def on_closed():
@@ -217,16 +238,12 @@ def main():
     _free_port_8500()
     srv = threading.Thread(target=_serve, daemon=True)
     srv.start()
-    # Use the explicit IPv4 loopback (127.0.0.1), NOT "localhost": on macOS
-    # localhost resolves to IPv6 ::1 first, but the server binds IPv4 only,
-    # so a WebView loading http://localhost:8500 would hit ::1 and show a
-    # blank/white screen. Binding 0.0.0.0 + loading 127.0.0.1 avoids the mismatch.
-    # When HTTPS is enabled, load the secure URL (self-signed cert -> accept the
-    # browser warning once, or install the CA on the phone).
-    from services import config as _cfg
-    scheme = "https" if _cfg.CONFIG.get("https") else "http"
-    url = f"{scheme}://127.0.0.1:{PORT}"
-    print(f"[desktop] starting server (in-process) on {url}...", flush=True)
+    # The desktop WebView window loads the LOCALHOST HTTP listener
+    # (127.0.0.1:8501) — see _window_url(). WKWebView (pywebview) refuses
+    # self-signed certs with no "accept" dialog, so we never point the native
+    # window at the HTTPS URL. The phone uses the HTTPS LAN listener instead.
+    url = _window_url()
+    print(f"[desktop] starting server (in-process); window -> {url}...", flush=True)
     if not _wait_health(url):
         print("[desktop] WARNING: server did not come up in time", flush=True)
 
