@@ -88,8 +88,13 @@ def _load_dotenv_local() -> None:
             Path("/Users/Master/virusgpt-mac/.env"),
             Path.cwd() / ".env",
         ]
-        for lvl in range(1, 6):
-            candidates.append(Path(__file__).resolve().parent.parents[lvl] / ".env")
+        p = Path(__file__).resolve().parent
+        # Walk up the parent chain (bounded by depth) looking for .env. Using
+        # parents[lvl] directly can raise IndexError inside a shallow frozen
+        # bundle, so iterate on the actual path.
+        for _ in range(6):
+            p = p.parent
+            candidates.append(p / ".env")
         for c in candidates:
             if c.exists():
                 env_path = c
