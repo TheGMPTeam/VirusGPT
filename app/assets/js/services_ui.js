@@ -106,6 +106,9 @@ function renderServiceDetail(name, data) {
     + `<span class="st-svc-status ${statusCls}">${statusTxt}</span>`;
   pane.appendChild(head);
 
+  // Services that expose an editable secret key in the UI.
+  const KEY_FIELDS = { n8n: "api_key", marton: "api_key" };
+
   // settings fields (read-only summary + the same editable save)
   const editable = ["base_url", "enabled", "timeout", "default_model", "connection_id"];
   const fields = document.createElement("div");
@@ -124,6 +127,24 @@ function renderServiceDetail(name, data) {
     row.appendChild(lab); row.appendChild(inp);
     fields.appendChild(row);
   }
+
+  // Editable secret key (api_key) for services that expose one. Rendered as a
+  // password field; the backend masks the value on read and applies it live.
+  const keyName = KEY_FIELDS[name];
+  if (keyName) {
+    const row = document.createElement("div");
+    row.className = "st-svc-field";
+    const lab = document.createElement("label");
+    lab.textContent = keyName + " (secret)";
+    const inp = document.createElement("input");
+    inp.type = "password";
+    inp.placeholder = "enter new key to update";
+    inp.dataset.key = keyName;
+    inp.dataset.secret = "1";
+    row.appendChild(lab); row.appendChild(inp);
+    fields.appendChild(row);
+  }
+
   if (fields.childElementCount) {
     const fTitle = document.createElement("div");
     fTitle.className = "st-detail-sub"; fTitle.textContent = "Settings";
@@ -138,10 +159,21 @@ function renderServiceDetail(name, data) {
     const patch = {};
     fields.querySelectorAll("input[data-key]").forEach(inp => {
       const k = inp.dataset.key;
+      // Secret fields: only include if the user typed something, so leaving
+      // the field blank doesn't wipe an existing key.
+      if (inp.dataset.secret === "1") {
+        if (inp.value && inp.value.trim()) patch[k] = inp.value.trim();
+        return;
+      }
       if (k === "enabled") patch[k] = inp.checked;
       else if (k === "timeout") patch[k] = inp.value === "" ? null : Number(inp.value);
       else patch[k] = inp.value;
     });
+    if (!Object.keys(patch).length) {
+      saveBtn.textContent = "no changes";
+      setTimeout(() => { saveBtn.textContent = "Save settings"; }, 1200);
+      return;
+    }
     saveBtn.disabled = true; saveBtn.textContent = "saving…";
     try {
       const r = await fetch(`api/services/${name}/settings`, {

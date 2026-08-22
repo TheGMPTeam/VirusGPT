@@ -14,6 +14,7 @@ the tracked config.json — exactly the rule used for VG_* env vars.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
@@ -68,11 +69,26 @@ def write_settings(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         runtime[k] = v
         if k.lower() in SECRET_KEYS:
+            # Also push the secret into the live process env so the service
+            # client (which reads os.environ first) picks it up immediately
+            # without a restart. This mirrors VG_*_TOKEN bootstrap behaviour.
+            env_name = _SECRET_ENV_MAP.get((name, k.lower()))
+            if env_name:
+                os.environ[env_name] = "" if v is None else str(v)
             continue
         persisted[k] = v
     if persisted:
         cfg.save_service_config(name, persisted)
     return read_settings(name)
+
+
+# Service -> env var that its secret key maps to (so a UI key update lands in
+# the process env the client actually reads).
+_SECRET_ENV_MAP = {
+    ("n8n", "api_key"): "VG_N8N_TOKEN",
+    ("marton", "api_key"): "VG_MARTON_KEY",
+    ("marton", "connection_id"): "VG_MARTON_CONN",
+}
 
 
 # --------------------------------------------------------------------------
