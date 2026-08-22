@@ -71,7 +71,40 @@ def _now_iso():
         return ""
 
 
+def _quit_running_app(app_name):
+    """Quit any already-running instance of the app before we rebuild.
+
+    Building over a live .app (or leaving a stale process around) causes the
+    installer to fail or the old process to linger. We terminate the running
+    process by name; on macOS this cleanly quits the GUI app.
+    """
+    import time as _time
+    # 1) Kill the running process by bundle/executable name.
+    for sig in ("TERM", "KILL"):
+        try:
+            rc = subprocess.run(
+                ["pgrep", "-f", f"{app_name}.app/Contents/MacOS/{app_name}"],
+                capture_output=True, text=True, timeout=10,
+            )
+            pids = [p for p in rc.stdout.split() if p.strip()]
+            if not pids:
+                break
+            subprocess.run(["pkill", "-f", f"{app_name}.app/Contents/MacOS/{app_name}"], timeout=10)
+            if sig == "TERM":
+                _time.sleep(1.5)
+        except Exception as e:
+            print(f"[build] (warn) could not quit running {app_name}: {e}")
+            break
+    # 2) Also drop any stray python that holds the bundle's MacOS binary.
+    try:
+        subprocess.run(["pkill", "-f", f"MacOS/{app_name}"], timeout=10)
+    except Exception:
+        pass
+
+
 def build():
+    # Quit any running instance so we rebuild cleanly (no live bundle / stale proc).
+    _quit_running_app(APP_NAME)
     version, commit = stamp_version()
     spec = [
         sys.executable, "-m", "PyInstaller",
