@@ -168,21 +168,23 @@
   .st-col-action{margin-left:auto;padding:3px 10px;font-size:12px;border-radius:7px;cursor:pointer}
 
   /* glass cards for service rows */
-  .st-services-list{display:flex;flex-direction:column;gap:9px;padding-right:4px}
+  .st-services-list{display:flex;flex-direction:column;gap:7px;padding-right:4px}
   .st-muted{color:var(--txt-dim);font-size:12px}
-  .st-svc-card{
-    background:linear-gradient(135deg,rgba(35,224,255,0.06),rgba(180,90,255,0.05));
-    border:1px solid rgba(35,224,255,0.28);border-radius:10px;padding:9px 12px;
-    transition:border-color .2s,box-shadow .2s,transform .1s;
+  /* middle column: simple service name buttons w/ status dot */
+  .st-svc-name{
+    display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+    background:linear-gradient(135deg,rgba(35,224,255,0.05),rgba(180,90,255,0.04));
+    border:1px solid rgba(35,224,255,0.22);border-radius:9px;padding:9px 12px;
+    color:#cdfaff;font-size:13px;font-weight:600;letter-spacing:.4px;cursor:pointer;
+    transition:border-color .2s,box-shadow .2s,background .2s;
   }
-  .st-svc-card:hover{border-color:rgba(35,224,255,0.6);box-shadow:0 0 16px rgba(35,224,255,0.18)}
-  .st-svc-card.active{border-color:var(--neon);box-shadow:0 0 22px rgba(35,224,255,0.4);background:linear-gradient(135deg,rgba(35,224,255,0.14),rgba(180,90,255,0.10))}
-  .st-svc-head{display:flex;align-items:center;gap:10px}
-  .st-svc-title{font-weight:700;letter-spacing:.5px;color:#cdfaff;text-shadow:0 0 8px rgba(35,224,255,0.4)}
-  .st-svc-status{margin-left:auto;font-size:11px;font-weight:700}
-  .st-svc-status.ok{color:#25e08a;text-shadow:0 0 8px rgba(37,224,138,0.5)}
-  .st-svc-status.warn{color:#ffcc55;text-shadow:0 0 8px rgba(255,204,85,0.4)}
-  .st-svc-status.off{color:var(--txt-dim)}
+  .st-svc-name:hover{border-color:rgba(35,224,255,0.55);box-shadow:0 0 14px rgba(35,224,255,0.15)}
+  .st-svc-name.active{border-color:var(--neon);box-shadow:0 0 20px rgba(35,224,255,0.38);background:linear-gradient(135deg,rgba(35,224,255,0.14),rgba(180,90,255,0.10))}
+  .st-svc-dot{font-size:10px;line-height:1;width:12px;text-align:center;color:var(--txt-dim)}
+  .st-svc-dot.ok{color:#25e08a;text-shadow:0 0 8px rgba(37,224,138,0.6)}
+  .st-svc-dot.warn{color:#ffcc55;text-shadow:0 0 8px rgba(255,204,85,0.5)}
+  .st-svc-dot.off{color:var(--txt-dim)}
+  .st-svc-name-label{flex:1}
   .st-svc-body{margin-top:8px;display:flex;flex-direction:column;gap:8px}
   .st-svc-fields{display:flex;flex-direction:column;gap:6px}
   .st-svc-field{display:flex;align-items:center;gap:8px}
