@@ -195,19 +195,20 @@ def main():
             try: webview.windows[0].toggle_fullscreen()
             except Exception: pass
         def close(self):
-            # User-initiated close: tear down the native window, then GUARANTEE
-            # the process exits. On macOS, webview.start() does not always
-            # return after window.close (the NSApplication run loop can keep
-            # spinning), which froze the app on Close. destroy() schedules the
-            # close on the main thread; os._exit forces termination so the app
-            # actually quits. (No bundle-replace race here, unlike the update
-            # flow, so a hard exit is safe and correct for a manual quit.)
+            # Same clean exit path as the in-app updater: request_quit() tears
+            # down the native window on the GUI thread (no hard os._exit), so
+            # the Close (✕) button and the update flow exit identically and
+            # gracefully. The quit hook is registered above in main().
             try:
-                if webview.windows:
-                    webview.windows[0].destroy()
+                _upd.request_quit()
             except Exception:
-                pass
-            os._exit(0)
+                # Last-resort fallback if the hook isn't registered.
+                try:
+                    if webview.windows:
+                        webview.windows[0].destroy()
+                except Exception:
+                    pass
+                os._exit(0)
 
     webview.create_window(
         "VirusGPT",
