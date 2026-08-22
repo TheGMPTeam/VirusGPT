@@ -24,6 +24,7 @@ from services import marton as _marton
 from services import settings_base as base
 from services import n8n_settings as _n8n_set, comfyui_settings as _comfy_set
 from services import youtube_settings as _yt_set, gmail_settings as _gmail_set, snapchat_settings as _snap_set
+from services import marton_settings as _mart
 from services import close_client
 
 # Per-service settings/tools dispatcher (each connected service has its own
@@ -34,6 +35,7 @@ SERVICE_MODULES = {
     "youtube": _yt_set,
     "gmail": _gmail_set,
     "snapchat": _snap_set,
+    "marton": _mart,
 }
 
 ROOT = Path(__file__).resolve().parent

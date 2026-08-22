@@ -13,6 +13,7 @@
 const SERVICE_LABELS = {
   n8n: "n8n", comfyui: "ComfyUI",
   youtube: "YouTube", gmail: "Gmail", snapchat: "Snapchat",
+  marton: "Marton Gateway",
 };
 
 function _serviceLabel(name) { return SERVICE_LABELS[name] || name; }
