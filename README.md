@@ -63,6 +63,24 @@ app for those platforms.
 
 ---
 
+## Local network & Android
+
+The desktop app serves its web UI over **HTTPS on your LAN** (e.g.
+`https://10.0.0.125:8500/`), so you can open it from a phone browser on the
+same network. This is on by default — the build enables HTTPS and generates a
+self-signed certificate (SAN = your LAN IP + `localhost`) into `data/ssl/`
+automatically. No config change or restart needed.
+
+- **Why HTTPS:** mobile Chrome only grants the mic (Whisper STT) in a secure
+  context. Plain HTTP on a phone blocks voice input; HTTPS unblocks it.
+- **First connect from Android:** open the URL, accept the self-signed
+  certificate warning once (or install `data/ssl/virusgpt.crt` as a CA on the
+  phone to silence it permanently).
+- **API keys / tokens** are supplied via the local `.env` file (never committed)
+  and surfaced in **Settings**; they are not stored in `config.json`.
+- **Firewall:** only the LAN can reach it (bound to `0.0.0.0:8500`). Keep the
+  machine on a trusted network.
+
 <img src="app/assets/images/sec_voice.png" width="100%" alt="">
 
 ## Requirements
