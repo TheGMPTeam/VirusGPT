@@ -38,3 +38,4 @@ apps/
 app/version.json
 # Runtime logs
 logs/
+.env.bak
