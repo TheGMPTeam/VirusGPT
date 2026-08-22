@@ -442,7 +442,7 @@
      min/max/close "X-box" that does nothing in a browser), a compact chat
      input bar with icon-only actions, and a stacked (not 3-column) Settings.
      ========================================================================= */
-  @media(max-width:600px){
+  @media(max-width:1024px){
     /* 1) Hide desktop window controls — they're meaningless in a mobile browser
        and the ✕ was the "X-box" cluttering the header. */
     .win-ctl{display:none !important}
@@ -462,8 +462,9 @@
        wrapped row below it. Achieved with row+wrap and the textarea taking
        100% basis so it forces a line break before the buttons. */
     #input-bar{
-      flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;
-      padding:10px 10px;border-top:1px solid var(--border);
+      display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;
+      gap:10px;justify-content:space-between;
+      padding:10px 12px;border-top:1px solid var(--border);
       background:var(--panel);
       position:sticky;bottom:0;z-index:5;
     }
@@ -471,10 +472,10 @@
       flex:0 0 100%;min-height:44px;max-height:140px;font-size:16px;
       padding:11px 14px;border-radius:20px;width:100%;
     }
-    /* Button row: sits BELOW the text field, wraps, evenly spaced. */
+    /* Button row: sits BELOW the text field, spaced out, never overlapping. */
     #btn-improve,#btn-gen-image,#btn-mic,#btn-stop-all,#btn-send{
       width:44px;height:44px;border-radius:50%;flex:0 0 auto;
-      display:flex;align-items:center;justify-content:center;padding:0;
+      margin:0;display:flex;align-items:center;justify-content:center;padding:0;
     }
     /* Collapse "Improve" / "Image" to icon-only chips to save width. */
     #btn-improve,#btn-gen-image{font-size:0}
