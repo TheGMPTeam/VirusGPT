@@ -353,3 +353,104 @@
   #mg-detail button.danger{border-color:#ff4d4d;color:#ff4d4d}
   #mg-detail button.danger:hover{background:rgba(255,77,77,0.12)}
   #mem-hint{margin-top:8px;font-size:10.5px;color:var(--txt-dim);text-align:center}
+
+  /* ===================================================================
+     NOVA FLUX — NEW theme option (additive; does NOT touch cyber/amber/ice).
+     Redesigned borders (rounded + glowing), bubbles (gradient, larger radius),
+     buttons (pill glow), section headers (gradient underline).
+     =================================================================== */
+  [data-theme="nova"]{
+    --radius:14px;
+  }
+  [data-theme="nova"] button,
+  [data-theme="nova"] select,
+  [data-theme="nova"] input,
+  [data-theme="nova"] textarea{
+    border-radius:10px;
+    border-color:rgba(199,125,255,0.35);
+  }
+  [data-theme="nova"] button:hover{
+    border-color:var(--neon);
+    box-shadow:0 0 14px rgba(199,125,255,0.4);
+    color:var(--neon);
+  }
+  [data-theme="nova"] #topbar{
+    background:linear-gradient(180deg,rgba(27,18,48,0.95),rgba(21,13,36,0.95));
+    border-bottom:1px solid rgba(199,125,255,0.4);
+    box-shadow:0 0 26px rgba(199,125,255,0.18);
+  }
+  [data-theme="nova"] #topbar h1{
+    color:var(--neon);
+    text-shadow:0 0 10px rgba(199,125,255,0.7);
+  }
+  .win-ctl-close:hover{color:#fff;border-color:var(--warn);background:var(--warn)}
+  [data-theme="nova"] .accent{
+    border-color:var(--neon2);color:var(--neon2);
+    background:rgba(255,92,240,0.08);
+  }
+  [data-theme="nova"] .accent:hover{background:rgba(255,92,240,0.18)}
+  [data-theme="nova"] #tabs{
+    background:linear-gradient(180deg,var(--panel),rgba(21,13,36,0.6));
+    border-bottom:1px solid rgba(199,125,255,0.4);
+  }
+  [data-theme="nova"] .tab.active{
+    color:var(--neon);
+    border-bottom-color:var(--neon);
+    text-shadow:0 0 8px rgba(199,125,255,0.6);
+  }
+  [data-theme="nova"] #sidebar,
+  [data-theme="nova"] #rightbar{
+    background:linear-gradient(180deg,var(--panel),rgba(10,7,18,0.5));
+    border-color:rgba(199,125,255,0.3);
+  }
+  [data-theme="nova"] #sidebar h3,
+  [data-theme="nova"] #rightbar h3{
+    border-left:3px solid var(--neon2);
+    color:var(--neon2);
+    background:linear-gradient(90deg,rgba(199,125,255,0.12),transparent 70%);
+    padding:6px 10px;border-radius:0 8px 8px 0;
+  }
+  [data-theme="nova"] .msg .bubble{
+    border-radius:16px;
+    background:linear-gradient(160deg,var(--panel2),rgba(199,125,255,0.08));
+    border:1px solid rgba(199,125,255,0.35);
+  }
+  [data-theme="nova"] .msg.bot .bubble{
+    border-left:3px solid var(--neon);
+    box-shadow:0 0 14px rgba(199,125,255,0.18);
+  }
+  [data-theme="nova"] .msg.user .bubble{
+    background:linear-gradient(160deg,rgba(255,92,240,0.18),rgba(255,209,102,0.10));
+    border:1px solid var(--neon2);
+    border-right:3px solid var(--neon2);
+  }
+  [data-theme="nova"] #btn-send{
+    background:linear-gradient(135deg,var(--neon),var(--neon2));
+    color:#160a22;font-weight:800;
+    box-shadow:0 0 16px rgba(199,125,255,0.5);
+  }
+  [data-theme="nova"] #btn-send:hover{box-shadow:0 0 24px rgba(199,125,255,0.8)}
+  [data-theme="nova"] .persona-chip{border-radius:12px;border-color:rgba(199,125,255,0.3)}
+  [data-theme="nova"] .pcard{
+    border-radius:16px;
+    border-color:rgba(199,125,255,0.3);
+    background:linear-gradient(160deg,var(--panel),rgba(199,125,255,0.06));
+  }
+  [data-theme="nova"] .kanban-col,
+  [data-theme="nova"] .kcard,
+  [data-theme="nova"] .session-row,
+  [data-theme="nova"] #mg-detail,
+  [data-theme="nova"] #graph-wrap{border-radius:12px;border-color:rgba(199,125,255,0.3)}
+  [data-theme="nova"] #input-bar{
+    background:linear-gradient(180deg,var(--panel),rgba(10,7,18,0.7));
+    border-top:1px solid rgba(199,125,255,0.4);
+  }
+  [data-theme="nova"] .win-ctl{border-radius:8px;border-color:rgba(199,125,255,0.3)}
+  [data-theme="nova"] .win-ctl:hover{color:var(--neon);border-color:var(--neon)}
+  [data-theme="nova"] .modal-box{
+    border-radius:18px;
+    border:1px solid rgba(199,125,255,0.4);
+    box-shadow:0 0 40px rgba(199,125,255,0.25);
+  }
+  [data-theme="nova"] #btn-tts-toggle.tts-on{border-color:var(--neon);box-shadow:0 0 12px rgba(199,125,255,0.4)}
+  [data-theme="nova"] .cursor{background:var(--neon)}

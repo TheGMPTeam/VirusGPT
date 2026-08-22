@@ -51,7 +51,16 @@ async function refreshHealth(){
 function setTheme(t){ const root=document.documentElement.style;
   if(t==='amber'){root.setProperty('--neon','#ffb000');root.setProperty('--neon2','#ff7a00');root.setProperty('--neon3','#ff3b3b');root.setProperty('--gear','#ffcf6b');root.setProperty('--grid','rgba(255,176,0,0.05)');}
   else if(t==='ice'){root.setProperty('--neon','#39f6ff');root.setProperty('--neon2','#8a7bff');root.setProperty('--neon3','#ff5cf0');root.setProperty('--gear','#bdefff');root.setProperty('--grid','rgba(57,246,255,0.05)');}
-  else{root.setProperty('--neon','#00ff9c');root.setProperty('--neon2','#23e0ff');root.setProperty('--neon3','#ff2bd6');root.setProperty('--gear','#7df9ff');root.setProperty('--grid','rgba(0,255,140,0.05)');}
+  else if(t==='nova'){ /* NEW theme option: violet/magenta + gold, redesigned borders/bubbles */
+    root.setProperty('--neon','#c77dff');root.setProperty('--neon2','#ff5cf0');root.setProperty('--neon3','#ffd166');root.setProperty('--gear','#e0aaff');root.setProperty('--grid','rgba(199,125,255,0.06)');
+    root.setProperty('--bg','#0a0712');root.setProperty('--bg2','#120a1f');root.setProperty('--panel','#150d24');root.setProperty('--panel2','#1b1230');root.setProperty('--border','#3a2a5a');root.setProperty('--txt','#ecd9ff');root.setProperty('--txt-dim','#8f7bb0');
+    root.setProperty('--radius','14px');root.setProperty('--bubble-shift','var(--neon2)');root.setProperty('--shadow','0 0 22px rgba(199,125,255,0.22)');root.setProperty('--warn','#ff6b9d');
+  }
+  else{root.setProperty('--neon','#00ff9c');root.setProperty('--neon2','#23e0ff');root.setProperty('--neon3','#ff2bd6');root.setProperty('--gear','#7df9ff');root.setProperty('--grid','rgba(0,255,140,0.05)');
+    /* full reset to :root defaults so leaving Nova restores the base theme */
+    root.setProperty('--bg','#05070a');root.setProperty('--bg2','#0a0f16');root.setProperty('--panel','#0c1118');root.setProperty('--panel2','#0f1620');root.setProperty('--border','#1c2a3a');root.setProperty('--txt','#c9f7e4');root.setProperty('--txt-dim','#5d7a72');root.setProperty('--warn','#ff5a5a');
+    root.setProperty('--radius','6px');root.setProperty('--bubble-shift','var(--neon2)');root.setProperty('--shadow','0 0 18px rgba(0,255,156,0.18)');}
+  document.documentElement.setAttribute('data-theme', t);
   lsSet('vg_theme',t);
 }
 
