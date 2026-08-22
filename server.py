@@ -469,11 +469,41 @@ async def memory_get_concept(name: str):
     return JSONResponse(c)
 
 
+@app.post("/api/memory/add")
+async def memory_add_concept(req: Request):
+    """Create a new memory concept (used by the UI 'save' action).
+
+    Body: {name, body, type?}. If a concept with the same name already
+    exists, this falls through to an update so the UI 'save' works for both
+    new and existing nodes.
+    """
+    b = await req.json()
+    name = b.get("name", "")
+    body = b.get("body", "")
+    typ = b.get("type") or "concept"
+    if not name or not body:
+        return JSONResponse({"ok": False, "error": "name and body required"}, status_code=400)
+    existing = memory.memory_get(name)
+    if existing is None:
+        res = await memory.memory_add(name, body, typ)
+    else:
+        res = memory.memory_update(name, body=body, typ=typ, links=b.get("links"))
+    return JSONResponse(res)
+
+
 @app.post("/api/memory/update")
 async def memory_update_concept(req: Request):
     b = await req.json()
-    res = memory.memory_update(b.get("name", ""), body=b.get("body"),
-                               typ=b.get("type"), links=b.get("links"))
+    name = b.get("name", "")
+    if not name:
+        return JSONResponse({"ok": False, "error": "name required"}, status_code=400)
+    # Auto-create if the node does not yet exist, so a single 'save' works for
+    # both new and existing concepts.
+    if memory.memory_get(name) is None:
+        res = await memory.memory_add(name, b.get("body", ""), b.get("type") or "concept")
+    else:
+        res = memory.memory_update(name, body=b.get("body"),
+                                   typ=b.get("type"), links=b.get("links"))
     return JSONResponse(res)
 
 
