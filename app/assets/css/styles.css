@@ -134,6 +134,9 @@
   /* modals */
   .modal-overlay{position:fixed;inset:0;z-index:20;background:rgba(2,5,8,0.78);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
   .modal-box{background:var(--panel);border:1px solid var(--neon2);border-radius:12px;width:min(620px,92vw);max-height:88vh;overflow-y:auto;box-shadow:0 0 40px rgba(35,224,255,0.2)}
+  .form-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px}
+  .btn-accent{background:var(--neon);color:#04130d;border:none;font-weight:700}
+  .btn-accent:hover{background:#23e0ff}
 
   /* ── Settings modal: same plain panel as main's modals, 3 columns ── */
   .modal-box-settings{
@@ -195,8 +198,6 @@
     background:rgba(0,0,0,0.35);border:1px solid rgba(35,224,255,0.25);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:13px;
   }
   #settings-overlay .form-row input:focus,#settings-overlay .form-row select:focus{outline:none;border-color:var(--neon);box-shadow:0 0 10px rgba(35,224,255,0.3)}
-  .btn-accent{background:var(--neon);color:#04130d;border:none;font-weight:700}
-  .btn-accent:hover{background:#23e0ff}
 
 
   /* Boot / loading screen — paints immediately, hidden once boot() finishes. */
