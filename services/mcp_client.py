@@ -109,8 +109,6 @@ async def _connect_external(server: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         elif transport in ("sse", "streamable-http"):
             session = await _connect_sse(server)
         elif transport == "n8n-mcp-http":
-            # Direct MCP-HTTP client (no SDK) — robust against the mcp SDK
-            # stdio/SSE deadlock. n8n-mcp exposes an HTTP Streamable /mcp.
             return _connect_n8n_mcp_http(server)
         else:
             return {"error": f"unknown transport {transport}"}
@@ -128,10 +126,11 @@ async def _connect_external(server: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _connect_n8n_mcp_http(server: Dict[str, Any]) -> Dict[str, Any]:
-    """Connect to n8n-mcp over HTTP Streamable using our direct client.
+    """Connect to n8n-mcp over HTTP Streamable using a direct client.
 
-    Returns the same dict shape as _connect_external (status/tool_count) and
-    stores a callable client in _N8N_MCP_HTTP for later tool calls.
+    The mcp SDK's stdio/SSE clients deadlock against n8n-mcp 2.x, so we use a
+    minimal httpx-based MCP-HTTP client (services.n8n_mcp_http). Returns the
+    same shape as _connect_external and stores the client for tool calls.
     """
     from services.n8n_mcp_http import N8nMcpHttpClient
     try:
@@ -209,7 +208,7 @@ async def connect_all():
                 )
                 _SPAWNED_PROCESSES.append(proc)
                 await asyncio.sleep(2)
-                # Connect via our direct MCP-HTTP client (no SDK -> no deadlock).
+                # Connect via the direct HTTP MCP client (n8n-mcp-http).
                 clients.append({
                     "name": "n8n-mcp",
                     "transport": "n8n-mcp-http",
@@ -295,7 +294,6 @@ async def call_mcp_tool(server: str, name: str, arguments: Dict[str, Any]) -> Di
     and the direct HTTP n8n-mcp client."""
     if server == "n8n-adapter":
         return await _call_n8n_adapter(name, arguments)
-    # Direct HTTP MCP client (n8n-mcp-http transport).
     http_client = _N8N_MCP_HTTP.get(server)
     if http_client is not None:
         try:
