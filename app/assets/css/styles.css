@@ -251,6 +251,22 @@
   .btn-secondary{background:var(--panel2)}
   .btn-icon-close{background:none;border:none;color:var(--txt-dim);font-size:16px}
   .btn-icon-close:hover{color:var(--warn);box-shadow:none}
+
+  /* Updater popup buttons share the Settings panel's holographic-glass look
+     (translucent neon border + glow on hover) for visual consistency. */
+  #up-check, .up-target-btn{
+    background:rgba(35,224,255,0.08);border:1px solid rgba(35,224,255,0.35);
+    color:#cdfaff;border-radius:7px;padding:7px 16px;font-size:12px;font-weight:600;
+    letter-spacing:.4px;cursor:pointer;transition:background .15s,box-shadow .15s,border-color .15s;
+  }
+  #up-check:hover, .up-target-btn:hover{
+    background:rgba(35,224,255,0.2);border-color:var(--neon);
+    box-shadow:0 0 14px rgba(35,224,255,0.35);
+  }
+  .up-target-btn.active{
+    background:linear-gradient(135deg,var(--neon),#23e0ff);color:#04130d;border-color:var(--neon);
+    box-shadow:0 0 14px rgba(35,224,255,0.5);
+  }
   .list-row{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border)}
   .list-row:hover{background:var(--panel2)}
   .list-row .grow{flex:1}.list-row small{color:var(--txt-dim)}
