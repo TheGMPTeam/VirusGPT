@@ -89,7 +89,13 @@ async def n8n_list_workflows(limit: int = 50, active_only: bool = False) -> dict
             timeout=_timeout(),
         )
         if r.status_code != 200:
-            return {"status": "failed", "error": f"n8n {r.status_code}: {r.text[:200]}"}
+            body = r.text[:200]
+            hint = ""
+            if r.status_code == 401:
+                hint = (" — n8n rejected the API key (all keys 401 => instance "
+                        "encryption-key mismatch or revoked key; regenerate in "
+                        "n8n Settings → API). See docs/N8N_INTEGRATION.md §5.")
+            return {"status": "failed", "error": f"n8n {r.status_code}: {body}{hint}"}
         data = r.json().get("data", [])
         if active_only:
             data = [w for w in data if w.get("active")]
@@ -114,7 +120,13 @@ async def n8n_get_workflow(workflow_id: str) -> dict:
             headers=_auth_headers(), timeout=_timeout(),
         )
         if r.status_code != 200:
-            return {"status": "failed", "error": f"n8n {r.status_code}: {r.text[:200]}"}
+            body = r.text[:200]
+            hint = ""
+            if r.status_code == 401:
+                hint = (" — n8n rejected the API key (all keys 401 => instance "
+                        "encryption-key mismatch or revoked key; regenerate in "
+                        "n8n Settings → API). See docs/N8N_INTEGRATION.md §5.")
+            return {"status": "failed", "error": f"n8n {r.status_code}: {body}{hint}"}
         return {"status": "ok", "workflow": r.json()}
     except Exception as exc:
         return {"status": "failed", "error": f"n8n error: {exc}"}
