@@ -118,6 +118,13 @@ async def connect_all():
     (workflow build/trigger, credentials/auth, spreadsheets, executions).
     n8n-mcp reads N8N_API_URL / N8N_API_KEY from the environment, which we set
     from our own n8n config (so a single source of truth).
+
+    RESILIENCE: each external connect runs in a watchdog thread with a hard
+    wall-clock timeout. The `mcp` Python SDK's stdio_client can deadlock on
+    certain Node/n8n-mcp builds (the initialize() handshake never returns and
+    asyncio.wait_for cannot cancel the anyio cancel-scope). A hung connect must
+    NOT block the rest of the bridge or app startup, so we kill the orphaned
+    subprocess and mark the server failed (non-fatal) instead of hanging.
     """
     _register_n8n_adapter()
     clients = list(cfg.CONFIG.get("mcp", {}).get("clients") or [])
@@ -141,16 +148,68 @@ async def connect_all():
                 },
             })
 
+    CONNECT_TIMEOUT = 30  # seconds; a connect that exceeds this is killed
+
+    def _connect_watchdog(srv):
+        """Run _connect_external in a thread; kill any orphaned subprocess on hang."""
+        import threading
+        result = {}
+        def _run():
+            try:
+                result["value"] = asyncio.run(_connect_external(srv))
+            except Exception as exc:  # noqa: BLE001
+                result["value"] = {"status": "failed", "error": str(exc),
+                                    "server": srv.get("name")}
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(CONNECT_TIMEOUT)
+        if t.is_alive():
+            # Deadlock detected (e.g. mcp stdio_client hang). Kill orphaned
+            # n8n-mcp / node subprocesses so they don't leak or block startup.
+            _kill_server_subprocesses(srv.get("name"))
+            return {"status": "failed",
+                    "error": f"connect timed out after {CONNECT_TIMEOUT}s (deadlock guard)",
+                    "server": srv.get("name")}
+        return result.get("value", {"status": "failed", "error": "no result"})
+
+    # Run all connects concurrently via threads (so one hang doesn't block others).
+    import concurrent.futures
     results = []
-    for srv in clients:
-        if not srv.get("name"):
-            continue
-        env = srv.pop("env", None)
-        if env:
-            os.environ.update({k: str(v) for k, v in env.items() if v})
-        res = await _connect_external(srv)
-        results.append(res)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(clients))) as ex:
+        futs = {ex.submit(_connect_watchdog, srv): srv for srv in clients if srv.get("name")}
+        for fut in concurrent.futures.as_completed(futs):
+            res = fut.result()
+            srv = futs[fut]
+            if not srv.get("name"):
+                continue
+            env = srv.pop("env", None)
+            if env:
+                os.environ.update({k: str(v) for k, v in env.items() if v})
+            results.append(res)
     return results
+
+
+def _kill_server_subprocesses(name: str) -> None:
+    """Best-effort kill of orphaned subprocesses spawned for an MCP server.
+
+    The `mcp` SDK's stdio_client can leave a hung `node`/`npx n8n-mcp` process
+    when the handshake deadlocks; reap them so they don't accumulate.
+    """
+    if not name:
+        return
+    try:
+        import subprocess
+        # Kill node processes whose command line references this server name.
+        out = subprocess.run(
+            ["pgrep", "-f", name], capture_output=True, text=True, timeout=10,
+        ).stdout.split()
+        for pid in out:
+            try:
+                subprocess.run(["kill", "-9", pid.strip()], timeout=5)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def list_mcp_tools() -> List[Dict[str, Any]]:

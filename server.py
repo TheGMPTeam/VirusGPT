@@ -1161,17 +1161,23 @@ async def _startup():
 
     # MCP bridge: start the MCP SERVER (SSE) in a daemon thread, and connect the
     # MCP CLIENT to any configured external servers + the n8n REST adapter.
+    # Keep the SERVER and CLIENT independent: a failure in one must not skip the
+    # other (e.g. a FastMCP server init error must not prevent n8n-mcp connect).
     try:
         from services import mcp_server, mcp_client as _mc
         if mcp_server.mcp_is_enabled():
             import threading
             threading.Thread(target=mcp_server.start_mcp_server, daemon=True).start()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[startup] MCP server init skipped: {exc}", flush=True)
+    try:
+        from services import mcp_client as _mc
         if _mc.mcp_client_enabled():
-            # connect_all is async; schedule it on the event loop without
-            # blocking startup (errors are absorbed inside connect_all).
+            # connect_all is resilient (watchdog timeouts, non-fatal failures);
+            # it runs in its own task and never blocks startup.
             _asyncio.create_task(_mc.connect_all())
     except Exception as exc:  # noqa: BLE001
-        print(f"[startup] MCP bridge init skipped: {exc}", flush=True)
+        print(f"[startup] MCP client init skipped: {exc}", flush=True)
 
 
 @app.on_event("shutdown")
