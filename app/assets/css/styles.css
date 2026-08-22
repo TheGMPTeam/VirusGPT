@@ -128,35 +128,88 @@
   /* modals */
   .modal-overlay{position:fixed;inset:0;z-index:20;background:rgba(2,5,8,0.78);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
   .modal-box{background:var(--panel);border:1px solid var(--neon2);border-radius:12px;width:min(620px,92vw);max-height:88vh;overflow-y:auto;box-shadow:0 0 40px rgba(35,224,255,0.2)}
-  .modal-box-sm{width:min(440px,92vw)}
-  .modal-header{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)}
-  .modal-header h2{margin:0;font-size:16px;letter-spacing:1px;color:var(--neon)}
-  .modal-header-actions{margin-left:auto;display:flex;gap:8px}
-  .form-row{padding:10px 18px;display:flex;flex-direction:column;gap:5px}
-  .form-actions{display:flex;justify-content:flex-end;gap:10px;padding:14px 18px}
-  .btn-accent{background:var(--neon);color:#04130d;border:none;font-weight:700}
-  #settings-overlay .modal-box{width:min(520px,94vw)}
-  .form-row.st-services-head{display:flex;align-items:center;gap:8px;padding:12px 18px 4px}
-  .st-divider{border:none;border-top:1px solid var(--border);margin:14px 0 4px}
-  .st-services-list{display:flex;flex-direction:column;gap:10px;padding:6px 14px 16px;max-height:46vh;overflow-y:auto}
+
+  /* ── Settings modal: holographic glass, 3 columns ── */
+  .modal-box-settings{
+    width:min(1120px,96vw);height:min(78vh,760px);max-height:92vh;
+    display:flex;flex-direction:column;overflow:hidden;
+    background:linear-gradient(135deg,rgba(10,22,32,0.72),rgba(8,14,24,0.82));
+    border:1px solid rgba(35,224,255,0.45);
+    border-radius:16px;
+    backdrop-filter:blur(18px) saturate(140%);
+    -webkit-backdrop-filter:blur(18px) saturate(140%);
+    box-shadow:0 0 40px rgba(35,224,255,0.25),inset 0 0 60px rgba(35,224,255,0.05);
+  }
+  /* faint moving scanline for the hologram feel */
+  .modal-box-settings::before{
+    content:"";position:absolute;inset:0;pointer-events:none;border-radius:16px;
+    background:repeating-linear-gradient(0deg,rgba(35,224,255,0.035) 0 1px,transparent 1px 3px);
+    mix-blend-mode:screen;opacity:.5;
+  }
+  .modal-box-settings .modal-header{
+    position:relative;z-index:1;border-bottom:1px solid rgba(35,224,255,0.25);
+    background:linear-gradient(90deg,rgba(35,224,255,0.10),transparent);
+  }
+  .modal-box-settings .modal-header h2{color:#bff7ff;text-shadow:0 0 12px rgba(35,224,255,0.6);letter-spacing:2px}
+
+  .st-cols{
+    position:relative;z-index:1;flex:1;display:grid;
+    grid-template-columns:1fr 1fr 1.2fr;gap:0;min-height:0;
+  }
+  .st-col{padding:14px 16px;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:10px}
+  .st-col + .st-col{border-left:1px solid rgba(35,224,255,0.18)}
+  .st-col-title{
+    position:sticky;top:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--neon2);padding-bottom:8px;margin-bottom:4px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    display:flex;align-items:center;gap:8px;
+    background:linear-gradient(180deg,rgba(8,14,24,0.9),transparent);backdrop-filter:blur(6px);
+  }
+  .st-col-action{margin-left:auto;padding:3px 10px;font-size:12px;border-radius:7px;cursor:pointer}
+
+  /* glass cards for service rows */
+  .st-services-list{display:flex;flex-direction:column;gap:9px;padding-right:4px}
   .st-muted{color:var(--txt-dim);font-size:12px}
-  .st-svc-card{background:rgba(0,0,0,0.22);border:1px solid var(--border);border-radius:9px;padding:10px 12px}
+  .st-svc-card{
+    background:linear-gradient(135deg,rgba(35,224,255,0.06),rgba(180,90,255,0.05));
+    border:1px solid rgba(35,224,255,0.28);border-radius:10px;padding:9px 12px;
+    transition:border-color .2s,box-shadow .2s,transform .1s;
+  }
+  .st-svc-card:hover{border-color:rgba(35,224,255,0.6);box-shadow:0 0 16px rgba(35,224,255,0.18)}
+  .st-svc-card.active{border-color:var(--neon);box-shadow:0 0 22px rgba(35,224,255,0.4);background:linear-gradient(135deg,rgba(35,224,255,0.14),rgba(180,90,255,0.10))}
   .st-svc-head{display:flex;align-items:center;gap:10px}
-  .st-svc-title{font-weight:700;letter-spacing:.5px;color:var(--neon)}
+  .st-svc-title{font-weight:700;letter-spacing:.5px;color:#cdfaff;text-shadow:0 0 8px rgba(35,224,255,0.4)}
   .st-svc-status{margin-left:auto;font-size:11px;font-weight:700}
-  .st-svc-status.ok{color:#25e08a}
-  .st-svc-status.warn{color:#ffcc55}
+  .st-svc-status.ok{color:#25e08a;text-shadow:0 0 8px rgba(37,224,138,0.5)}
+  .st-svc-status.warn{color:#ffcc55;text-shadow:0 0 8px rgba(255,204,85,0.4)}
   .st-svc-status.off{color:var(--txt-dim)}
   .st-svc-body{margin-top:8px;display:flex;flex-direction:column;gap:8px}
   .st-svc-fields{display:flex;flex-direction:column;gap:6px}
   .st-svc-field{display:flex;align-items:center;gap:8px}
   .st-svc-field label{width:120px;font-size:12px;color:var(--txt-dim)}
-  .st-svc-field input{flex:1;background:rgba(0,0,0,0.3);border:1px solid var(--border);color:var(--txt);border-radius:6px;padding:5px 7px;font-size:13px}
-  .st-svc-save{align-self:flex-start;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:12px}
-  .st-svc-tools{display:flex;flex-direction:column;gap:5px;border-top:1px dashed var(--border);padding-top:8px}
+  .st-svc-field input{flex:1;background:rgba(0,0,0,0.35);border:1px solid rgba(35,224,255,0.25);color:var(--txt);border-radius:6px;padding:5px 7px;font-size:13px}
+  .st-svc-field input:focus{outline:none;border-color:var(--neon);box-shadow:0 0 10px rgba(35,224,255,0.3)}
+  .st-svc-save{align-self:flex-start;padding:5px 14px;border-radius:7px;cursor:pointer;font-size:12px}
+  .st-svc-tools{display:flex;flex-direction:column;gap:5px;border-top:1px dashed rgba(35,224,255,0.2);padding-top:8px}
   .st-svc-tools-title{font-size:11px;color:var(--txt-dim);letter-spacing:1px;text-transform:uppercase}
-  .st-svc-tool{text-align:left;background:rgba(35,224,255,0.08);border:1px solid var(--border);color:var(--txt);border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer}
-  .st-svc-tool:hover{background:rgba(35,224,255,0.18)}
+  .st-svc-tool{text-align:left;background:rgba(35,224,255,0.08);border:1px solid rgba(35,224,255,0.25);color:var(--txt);border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer;transition:background .15s,box-shadow .15s}
+  .st-svc-tool:hover{background:rgba(35,224,255,0.2);box-shadow:0 0 12px rgba(35,224,255,0.25)}
+
+  /* right-column detail pane */
+  .st-service-detail{display:flex;flex-direction:column;gap:10px;padding-right:4px}
+  .st-detail-head{display:flex;align-items:center;gap:10px;padding-bottom:8px;border-bottom:1px solid rgba(35,224,255,0.2)}
+  .st-detail-title{font-size:15px;font-weight:800;letter-spacing:1px;color:#dffaff;text-shadow:0 0 12px rgba(35,224,255,0.5)}
+  .st-detail-sub{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--neon2);margin-top:6px}
+
+  /* keep the compact general settings readable inside the glass */
+  #settings-overlay .form-row label,#settings-overlay .form-rows label{font-size:12px;color:var(--txt-dim);letter-spacing:.5px}
+  #settings-overlay .form-row input,#settings-overlay .form-row select{
+    background:rgba(0,0,0,0.35);border:1px solid rgba(35,224,255,0.25);color:var(--txt);border-radius:6px;padding:6px 8px;font-size:13px;
+  }
+  #settings-overlay .form-row input:focus,#settings-overlay .form-row select:focus{outline:none;border-color:var(--neon);box-shadow:0 0 10px rgba(35,224,255,0.3)}
+  .btn-accent{background:linear-gradient(135deg,var(--neon),#23e0ff);color:#04130d;border:none;font-weight:700}
+  .btn-accent:hover{box-shadow:0 0 14px rgba(35,224,255,0.6)}
+
 
   /* Boot / loading screen — paints immediately, hidden once boot() finishes. */
   #boot-screen{position:fixed;inset:0;z-index:50;background:radial-gradient(circle at 50% 40%,#0a141c 0%,var(--bg) 70%);display:flex;align-items:center;justify-content:center;transition:opacity .4s ease}

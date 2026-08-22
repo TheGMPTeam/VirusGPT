@@ -155,20 +155,33 @@
 
   <!-- Settings Modal -->
   <div id="settings-overlay" class="modal-overlay hidden">
-    <div class="modal-box modal-box-sm">
+    <div class="modal-box modal-box-settings">
       <div class="modal-header"><h2>Settings</h2><button id="st-btn-close" class="btn-icon-close">✕</button></div>
-      <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px">⟳</button></div>
-      <div class="form-row"><label>Default TTS Voice</label><select id="st-voice"></select></div>
-      <div class="form-row"><label>Backend URL</label><input id="st-url" value=""></div>
-      <div class="form-rows"><label>Think timeout (ms)</label><input id="st-timeout" type="number" value="60000"></div>
-      <div class="form-actions"><button id="st-save" class="btn-accent">Save</button></div>
-
-      <hr class="st-divider">
-      <div class="form-row st-services-head">
-        <h3 style="margin:0">Connected Services</h3>
-        <button id="st-services-refresh" class="btn-accent" style="margin-left:auto">⟳ Refresh</button>
+      <div class="st-cols">
+        <!-- Column 1: original settings -->
+        <div class="st-col st-col-basic">
+          <div class="st-col-title">General</div>
+          <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px">⟳</button></div>
+          <div class="form-row"><label>Default TTS Voice</label><select id="st-voice"></select></div>
+          <div class="form-row"><label>Backend URL</label><input id="st-url" value=""></div>
+          <div class="form-rows"><label>Think timeout (ms)</label><input id="st-timeout" type="number" value="60000"></div>
+          <div class="form-actions"><button id="st-save" class="btn-accent">Save</button></div>
+        </div>
+        <!-- Column 2: connected services -->
+        <div class="st-col st-col-services">
+          <div class="st-col-title">Connected Services
+            <button id="st-services-refresh" class="btn-accent st-col-action">⟳</button>
+          </div>
+          <div id="st-services-list" class="st-services-list"><span class="st-muted">loading…</span></div>
+        </div>
+        <!-- Column 3: service detail -->
+        <div class="st-col st-col-detail">
+          <div class="st-col-title">Service Detail</div>
+          <div id="st-service-detail" class="st-service-detail">
+            <span class="st-muted">Select a service to view live status, settings &amp; tools.</span>
+          </div>
+        </div>
       </div>
-      <div id="st-services-list" class="st-services-list"><span class="st-muted">loading…</span></div>
     </div>
   </div>
 
