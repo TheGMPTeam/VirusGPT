@@ -569,8 +569,24 @@ async def services_status():
 
 @app.get("/api/n8n/list")
 async def n8n_list(active_only: bool = False):
-    """List n8n workflows (delegates to services.n8n)."""
-    return JSONResponse(await _n8n.n8n_list_workflows(active_only=active_only))
+    """List n8n workflows (REST adapter; n8n-mcp as fallback)."""
+    res = await _n8n.n8n_list_workflows(active_only=active_only)
+    if res.get("status") == "ok":
+        return JSONResponse(res)
+    # Fallback to the n8n-mcp tool if REST is unavailable.
+    from services import mcp_client as _mcp
+    mcp_res = await _mcp.call_mcp_tool("n8n-mcp", "n8n_list_workflows",
+                                       {"active_only": active_only})
+    if mcp_res.get("status") == "ok":
+        try:
+            data = json.loads(mcp_res.get("result") or "{}")
+            wfs = data.get("data", data) if isinstance(data, dict) else data
+            if active_only and isinstance(wfs, list):
+                wfs = [w for w in wfs if w.get("active")]
+            return JSONResponse({"status": "ok", "count": len(wfs), "workflows": wfs})
+        except Exception:
+            return JSONResponse({"status": "ok", "raw": mcp_res.get("result")})
+    return JSONResponse(res)
 
 
 @app.post("/api/n8n/trigger")
@@ -580,7 +596,15 @@ async def n8n_trigger(req: Request):
     wid = (body or {}).get("workflow_id")
     if not wid:
         return JSONResponse({"status": "failed", "error": "missing workflow_id"}, status_code=400)
-    return JSONResponse(await _n8n.n8n_trigger_workflow(wid, (body or {}).get("data")))
+    res = await _n8n.n8n_trigger_workflow(wid, (body or {}).get("data"))
+    if res.get("status") == "ok":
+        return JSONResponse(res)
+    from services import mcp_client as _mcp
+    mcp_res = await _mcp.call_mcp_tool("n8n-mcp", "n8n_trigger_workflow",
+                                        {"workflow_id": wid, "data": (body or {}).get("data")})
+    if mcp_res.get("status") == "ok":
+        return JSONResponse({"status": "ok", "raw": mcp_res.get("result")})
+    return JSONResponse(res)
 
 
 @app.post("/api/n8n/create")
@@ -589,8 +613,35 @@ async def n8n_create(req: Request):
     body = await req.json()
     if not (body.get("name") and body.get("nodes")):
         return JSONResponse({"status": "failed", "error": "missing name/nodes"}, status_code=400)
-    return JSONResponse(await _n8n.n8n_create_workflow(
-        body["name"], body["nodes"], body.get("connections"), body.get("active", False)))
+    res = await _n8n.n8n_create_workflow(
+        body["name"], body["nodes"], body.get("connections"), body.get("active", False))
+    if res.get("status") == "ok":
+        return JSONResponse(res)
+    from services import mcp_client as _mcp
+    mcp_res = await _mcp.call_mcp_tool("n8n-mcp", "n8n_create_workflow",
+                                        {"name": body["name"], "nodes": body["nodes"],
+                                         "connections": body.get("connections"),
+                                         "active": body.get("active", False)})
+    if mcp_res.get("status") == "ok":
+        return JSONResponse({"status": "ok", "raw": mcp_res.get("result")})
+    return JSONResponse(res)
+
+
+@app.get("/api/n8n/get")
+async def n8n_get(workflow_id: str):
+    """Fetch a single n8n workflow definition (REST; n8n-mcp fallback)."""
+    res = await _n8n.n8n_get_workflow(workflow_id)
+    if res.get("status") == "ok":
+        return JSONResponse(res)
+    from services import mcp_client as _mcp
+    mcp_res = await _mcp.call_mcp_tool("n8n-mcp", "n8n_get_workflow",
+                                        {"id": workflow_id})
+    if mcp_res.get("status") == "ok":
+        try:
+            return JSONResponse({"status": "ok", "workflow": json.loads(mcp_res.get("result") or "{}")})
+        except Exception:
+            return JSONResponse({"status": "ok", "raw": mcp_res.get("result")})
+    return JSONResponse(res)
 
 
 # -------------------------------------------------------------------------

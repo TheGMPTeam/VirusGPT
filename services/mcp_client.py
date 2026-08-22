@@ -196,6 +196,7 @@ async def connect_all():
                 "MCP_MODE": "http",
                 "N8N_API_URL": n8n_cfg.get("base_url", ""),
                 "N8N_API_KEY": os.environ.get("VG_N8N_TOKEN", n8n_cfg.get("api_key", "")),
+                "WEBHOOK_SECURITY_MODE": "moderate",  # allow RFC1918 (e.g. 10.0.0.120) n8n URL
                 "MCP_AUTH_TOKEN": token,
                 "AUTH_TOKEN": token,
                 "PORT": str(port),

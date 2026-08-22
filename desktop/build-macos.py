@@ -11,6 +11,7 @@ Linux/Windows variants use the same spec with a different --name/icon.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -157,8 +158,26 @@ def build():
     if left.exists():
         shutil.rmtree(left)
     # Launch the freshly built app so the new build is immediately runnable.
+    # Launch with a CLEANED environment: load .env and let its VG_* values
+    # override anything inherited from the launching shell/launchd (a polluted
+    # VG_N8N_TOKEN in the parent env would otherwise shadow the real key).
     try:
-        subprocess.run(["open", str(placed)], timeout=10)
+        launch_env = dict(os.environ)
+        env_path = ROOT / ".env"
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k:
+                    launch_env[k] = v
+        app_bin = placed / "Contents" / "MacOS" / APP_NAME
+        if app_bin.exists():
+            subprocess.Popen([str(app_bin)], env=launch_env)
+        else:
+            subprocess.run(["open", str(placed)], timeout=10)
         print(f"[build] launched -> {placed}")
     except Exception as e:
         print(f"[build] (warn) could not auto-launch {placed}: {e}")

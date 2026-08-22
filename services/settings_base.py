@@ -60,8 +60,9 @@ def write_settings(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
 
     Non-secret fields are persisted to config.json (via cfg.save_service_config)
     and applied to the live runtime config. Secret fields are applied to the
-    runtime config ONLY (not written to disk) so credentials stay in env.
-    Returns the refreshed (masked) settings.
+    runtime config AND persisted to the local .env file (so a key added/updated
+    in Settings survives a restart — the single source of truth is .env on
+    disk, never tracked config.json). Returns the refreshed (masked) settings.
     """
     patch = patch or {}
     runtime = cfg.CONFIG.setdefault("services", {}).setdefault(name, {})
@@ -69,17 +70,45 @@ def write_settings(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in patch.items():
         runtime[k] = v
         if k.lower() in SECRET_KEYS:
-            # Also push the secret into the live process env so the service
-            # client (which reads os.environ first) picks it up immediately
-            # without a restart. This mirrors VG_*_TOKEN bootstrap behaviour.
+            # Push into live process env so the client reads it immediately.
             env_name = _SECRET_ENV_MAP.get((name, k.lower()))
             if env_name:
                 os.environ[env_name] = "" if v is None else str(v)
+                # Persist to .env on disk so it survives restart / relaunch.
+                _persist_env(env_name, "" if v is None else str(v))
             continue
         persisted[k] = v
     if persisted:
         cfg.save_service_config(name, persisted)
     return read_settings(name)
+
+
+def _persist_env(key: str, value: str) -> None:
+    """Write/update a single KEY=VALUE line in the project .env file.
+
+    Preserves all other lines. Never removes existing entries; if the key is
+    absent it is appended. Secrets live only in this gitignored file.
+    """
+    try:
+        from pathlib import Path
+        env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+        if not env_path.exists():
+            env_path.write_text(f"{key}={value}\n")
+            return
+        lines = env_path.read_text().splitlines()
+        new_lines = []
+        found = False
+        for ln in lines:
+            if ln.split("=", 1)[0].strip() == key:
+                new_lines.append(f"{key}={value}")
+                found = True
+            else:
+                new_lines.append(ln)
+        if not found:
+            new_lines.append(f"{key}={value}")
+        env_path.write_text("\n".join(new_lines) + "\n")
+    except Exception:
+        pass
 
 
 # Service -> env var that its secret key maps to (so a UI key update lands in

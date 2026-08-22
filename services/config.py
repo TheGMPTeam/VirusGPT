@@ -71,13 +71,29 @@ _DEFAULTS: dict[str, Any] = {
 def _load_dotenv_local() -> None:
     """Minimal dependency-free .env loader (gitignored local secrets).
 
-    Reads .env from the project root into os.environ if a variable is unset.
-    No external package required. Keeps VG_* secrets (VG_MARTON_KEY,
-    VG_N8N_TOKEN, ...) out of tracked config.json while still auto-loading
-    them when the server starts. Only fills keys that are not already set.
+    Reads .env from the project root into os.environ, OVERRIDING any inherited
+    value. This is the single source of truth for local VG_* secrets
+    (VG_MARTON_KEY, VG_N8N_TOKEN, ...) — kept out of tracked config.json but
+    auto-loaded at startup so a polluted parent/shell env can't shadow them.
+    Falls back across several candidate paths for frozen (PyInstaller) builds.
     """
     root = Path(__file__).resolve().parent.parent
     env_path = root / ".env"
+    if not env_path.exists():
+        # Frozen/PyInstaller build: __file__ lives inside the bundle, so walk
+        # up a few levels and also try the canonical project root where .env
+        # actually lives. Without this the app silently falls back to the
+        # inherited (launchd) environment, which may hold a stale/bad token.
+        candidates = [
+            Path("/Users/Master/virusgpt-mac/.env"),
+            Path.cwd() / ".env",
+        ]
+        for lvl in range(1, 6):
+            candidates.append(Path(__file__).resolve().parent.parents[lvl] / ".env")
+        for c in candidates:
+            if c.exists():
+                env_path = c
+                break
     if not env_path.exists():
         return
     try:
@@ -87,7 +103,10 @@ def _load_dotenv_local() -> None:
                 continue
             k, v = line.split("=", 1)
             k, v = k.strip(), v.strip().strip('"').strip("'")
-            if k and k not in os.environ:
+            # .env is the authoritative source for local VG_* secrets — always
+            # override any inherited value so a polluted parent env (e.g. a
+            # test shell that wrote a bad VG_N8N_TOKEN) can't shadow it.
+            if k:
                 os.environ[k] = v
     except Exception:
         pass
