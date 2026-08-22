@@ -33,18 +33,18 @@
         <option value="ice">Ice Neon</option>
         <option value="nova">Nova Flux</option>
       </select>
-      <button id="btn-settings" class="accent" title="Settings"><span class="vg-ico" data-ico="gear"></span> Settings</button>
-      <button id="btn-tts-toggle" class="icon-btn" title="Toggle TTS"><span class="vg-ico" data-ico="speaker_on"></span></button>
-      <span class="win-ctl" title="Minimize" onclick="window.pywebview.api.minimize()"><span class="vg-ico" data-ico="window"></span></span>
-      <span class="win-ctl" title="Maximize" onclick="window.pywebview.api.toggle_maximize()"><span class="vg-ico" data-ico="window"></span></span>
-      <span class="win-ctl win-ctl-close" title="Close" onclick="window.pywebview.api.close()"><span class="vg-ico" data-ico="close"></span></span>
+      <button id="btn-settings" class="accent" title="Settings">⚙ Settings</button>
+      <button id="btn-tts-toggle" class="icon-btn" title="Toggle TTS">🔊</button>
+      <span class="win-ctl" title="Minimize" onclick="window.pywebview.api.minimize()">–</span>
+      <span class="win-ctl" title="Maximize" onclick="window.pywebview.api.toggle_maximize()">▢</span>
+      <span class="win-ctl win-ctl-close" title="Close" onclick="window.pywebview.api.close()">✕</span>
     </div>
   </header>
 
   <div id="tabs">
-    <div class="tab active" data-tab="chat"><span class="vg-ico" data-ico="chat"></span> Chat</div>
-    <div class="tab" data-tab="personas"><span class="vg-ico" data-ico="dna"></span> Personas</div>
-    <div class="tab" data-tab="memory"><span class="vg-ico" data-ico="graph"></span> Memory Graph</div>
+    <div class="tab active" data-tab="chat">Chat</div>
+    <div class="tab" data-tab="personas">Personas</div>
+    <div class="tab" data-tab="memory">Memory Graph</div>
   </div>
 
   <!-- CHAT -->
@@ -157,12 +157,12 @@
   <!-- Settings Modal -->
   <div id="settings-overlay" class="modal-overlay hidden">
     <div class="modal-box modal-box-settings">
-      <div class="modal-header"><h2>Settings</h2><button id="st-btn-close" class="btn-icon-close"><span class="vg-ico" data-ico="close"></span></button></div>
+      <div class="modal-header"><h2>Settings</h2><button id="st-btn-close" class="btn-icon-close">✕</button></div>
       <div class="st-cols">
         <!-- Column 1: original settings -->
         <div class="st-col st-col-basic">
           <div class="st-col-title">General</div>
-          <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px"><span class="vg-ico" data-ico="refresh"></span></button></div>
+          <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px">⟳</button></div>
           <div class="form-row"><label>Default TTS Voice</label><select id="st-voice"></select></div>
           <div class="form-row"><label>Backend URL</label><input id="st-url" value=""></div>
           <div class="form-rows"><label>Think timeout (ms)</label><input id="st-timeout" type="number" value="60000"></div>

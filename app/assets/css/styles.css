@@ -135,41 +135,22 @@
   .modal-overlay{position:fixed;inset:0;z-index:20;background:rgba(2,5,8,0.78);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
   .modal-box{background:var(--panel);border:1px solid var(--neon2);border-radius:12px;width:min(620px,92vw);max-height:88vh;overflow-y:auto;box-shadow:0 0 40px rgba(35,224,255,0.2)}
 
-  /* ── Settings modal: holographic glass, 3 columns ── */
+  /* ── Settings modal: same plain panel as main's modals, 3 columns ── */
   .modal-box-settings{
     width:min(1120px,96vw);height:min(78vh,760px);max-height:92vh;
     display:flex;flex-direction:column;overflow:hidden;
-    background:linear-gradient(135deg,rgba(10,22,32,0.72),rgba(8,14,24,0.82));
-    border:1px solid rgba(35,224,255,0.45);
-    border-radius:16px;
-    backdrop-filter:blur(18px) saturate(140%);
-    -webkit-backdrop-filter:blur(18px) saturate(140%);
-    box-shadow:0 0 40px rgba(35,224,255,0.25),inset 0 0 60px rgba(35,224,255,0.05);
   }
-  /* faint moving scanline for the hologram feel */
-  .modal-box-settings::before{
-    content:"";position:absolute;inset:0;pointer-events:none;border-radius:16px;
-    background:repeating-linear-gradient(0deg,rgba(35,224,255,0.035) 0 1px,transparent 1px 3px);
-    mix-blend-mode:screen;opacity:.5;
-  }
-  .modal-box-settings .modal-header{
-    position:relative;z-index:1;border-bottom:1px solid rgba(35,224,255,0.25);
-    background:linear-gradient(90deg,rgba(35,224,255,0.10),transparent);
-  }
-  .modal-box-settings .modal-header h2{color:#bff7ff;text-shadow:0 0 12px rgba(35,224,255,0.6);letter-spacing:2px}
-
   .st-cols{
     position:relative;z-index:1;flex:1;display:grid;
     grid-template-columns:1fr 1fr 1.2fr;gap:0;min-height:0;
   }
   .st-col{padding:14px 16px;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:10px}
-  .st-col + .st-col{border-left:1px solid rgba(35,224,255,0.18)}
+  .st-col + .st-col{border-left:1px solid var(--border)}
   .st-col-title{
     position:sticky;top:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;
     color:var(--neon2);padding-bottom:8px;margin-bottom:4px;
-    border-bottom:1px solid rgba(255,255,255,0.06);
+    border-bottom:1px solid var(--border);
     display:flex;align-items:center;gap:8px;
-    background:linear-gradient(180deg,rgba(8,14,24,0.9),transparent);backdrop-filter:blur(6px);
   }
   .st-col-action{margin-left:auto;padding:3px 10px;font-size:12px;border-radius:7px;cursor:pointer}
 
