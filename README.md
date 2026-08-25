@@ -78,6 +78,24 @@ automatically. No config change or restart needed.
   phone to silence it permanently).
 - **API keys / tokens** are supplied via the local `.env` file (never committed)
   and surfaced in **Settings**; they are not stored in `config.json`.
+
+### Keys, tokens & commit signing
+
+Three credentials back this repo. None are stored in the tree.
+
+| Credential | Purpose | Setup |
+|------------|---------|-------|
+| **SSH key `GitGMP`** (`~/.ssh/id_ed25519_gitgmp`) | Git push/pull auth to `git@github.com:TheGMPTeam/VirusGPT.git` | `ssh-keygen -t ed25519 -C "GitGMP@mac"`; add pub key as an **Authentication** SSH key on GitHub; `~/.ssh/config` maps `github.com` → this key (`IdentitiesOnly yes`). Verify: `ssh -T git@github.com` → `Hi TheGMPTeam!` |
+| **GPG key** (ed25519, uid `James Lawrence <thegmpteam@users.noreply.github.com>`) | Signs commits/tags so GitHub shows the **Verified** badge | `brew install gnupg`; `gpg --batch --gen-key`; add the **public** block (NOT the secret) as a **Signing** GPG key on GitHub. git is configured: `user.signingkey`, `gpg.format=openpgp`, `commit.gpgsign=true`, `gpg.program=/opt/homebrew/bin/gpg`. |
+| **GitHub fine-grained PAT** (`github_pat_…`) | REST API ops the SSH key can't do — e.g. opening Issues | GitHub → Settings → Developer settings → **Fine-grained tokens**: Repository access = `TheGMPTeam/VirusGPT`, Permission **Issues = Read and write**. Classic `ghp_…` PAT with `repo` scope also works. |
+
+Commit workflow:
+```bash
+git status && git add -A
+git commit -S -m "feat: ..."      # -S = GPG-sign (Verified badge)
+git push origin beta               # never commit directly to main
+```
+`beta` is the working branch; `main` is updated only after review + explicit approval.
 - **Firewall:** only the LAN can reach it (bound to `0.0.0.0:8500`). Keep the
   machine on a trusted network.
 
