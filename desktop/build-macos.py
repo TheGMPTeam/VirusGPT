@@ -144,6 +144,9 @@ def build():
     placed = _install_to_applications(built, APP_NAME)
     DEST_APP = placed
     print(f"[build] installed bundle -> {DEST_APP}")
+    # Declare mic/camera usage in the frozen Info.plist so macOS grants TCC
+    # access (without it, in-app voice input is silently blocked).
+    _patch_info_plist(DEST_APP)
     # Inject the version global into the frozen index.html so the bottom bar shows
     # it even if version.json fetch is blocked (file:// / offline WebView).
     channel = "beta"
@@ -243,6 +246,39 @@ def _enable_https_in_bundle(dest_app: Path) -> None:
         print(f"[build] HTTPS enabled in {patched} bundled config(s)")
     except Exception as exc:
         print(f"[build] (warn) HTTPS setup skipped: {exc}")
+
+
+def _patch_info_plist(dest_app: Path) -> None:
+    """Ensure the frozen .app declares mic/camera usage so macOS TCC grants
+    hardware access. Without NSMicrophoneUsageDescription, getUserMedia is
+    silently denied on macOS and the in-app voice input never works."""
+    import plistlib
+    info = dest_app / "Contents" / "Info.plist"
+    if not info.exists():
+        return
+    try:
+        with open(info, "rb") as f:
+            data = plistlib.load(f)
+    except Exception:
+        return
+    changed = False
+    if "NSMicrophoneUsageDescription" not in data:
+        data["NSMicrophoneUsageDescription"] = (
+            "VirusGPT uses the microphone for voice-to-text (Whisper STT)."
+        )
+        changed = True
+    if "NSCameraUsageDescription" not in data:
+        data["NSCameraUsageDescription"] = (
+            "VirusGPT uses the camera for image capture (ComfyUI image gen)."
+        )
+        changed = True
+    if changed:
+        try:
+            with open(info, "wb") as f:
+                plistlib.dump(data, f)
+            print("[build] patched Info.plist with mic/camera usage keys")
+        except Exception as e:
+            print(f"[build] (warn) could not patch Info.plist: {e}")
 
 
 def _install_to_applications(built, app_name):
