@@ -172,12 +172,19 @@ function mgShowDetail(id){
   $('#mg-relink').onclick=async ()=>{
     const links=$('#mg-links').value.split(',').map(s=>s.trim()).filter(Boolean);
     await fetch(API.base+'/api/memory/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.name,links})});
-    location.reload();
+    // Refresh the graph IN PLACE (reloading would bounce the user back to the
+    // Chat tab — same as the dream handler below). Re-open this node's detail.
+    const nm=n.name;
+    try{ await loadMemoryGraph(); }catch(e){}
+    const idx=__mgNodes.findIndex(x=>x.name===nm);
+    if(idx>=0) mgShowDetail(idx);
   };
   $('#mg-remove').onclick=async ()=>{
     if(!confirm('Remove "'+n.name+'" and prune its links?')) return;
     await fetch(API.base+'/api/memory/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n.name})});
-    location.reload();
+    // Refresh the graph IN PLACE instead of reloading the whole tabbed SPA.
+    __mgSel=null;
+    try{ await loadMemoryGraph(); }catch(e){}
   };
   $('#mg-dream').onclick=async ()=>{ const r=$('#mg-q-res'); r.textContent='…researching + dreaming';
     try{ 

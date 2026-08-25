@@ -7,24 +7,29 @@
 function showVersion(){
   const el=document.getElementById('version-info');
   if(!el) return;
-  const paint=(v, channel)=>{
+  // Track the live channel separately from the rendered text so we never try to
+  // re-derive it by slicing the string (that previously re-parsed the COMMIT as
+  // the channel and produced a garbled "vX · <commit> · <commit>" label when
+  // version.json was also consulted).
+  let _channel = (window.__VG_CHANNEL) || null;
+  const paint=(v)=>{
     if(!v){ el.textContent='dev'; return; }
-    el.textContent = `v${v.version} · ${v.commit}` + (channel ? ` · ${channel}` : '');
+    el.textContent = `v${v.version} · ${v.commit}` + (_channel ? ` · ${_channel}` : '');
   };
-  if(window.__VG_VERSION && window.__VG_VERSION.version){
-    paint(window.__VG_VERSION, (window.__VG_CHANNEL)||null);
-  }
-  // Always re-resolve the LIVE channel from /api/features so the bottom bar
-  // matches the running channel (not just the baked-in build-time value).
+  const g = window.__VG_VERSION || null;
+  if(g && g.version){ paint(g); }
+  const resolveVersion=()=>{
+    if(g && g.version){ paint(g); return; }
+    fetch('version.json', {cache:'no-store'}).then(r=>r.ok?r.json():null)
+      .then(j=>{ if(j && j.version) paint(j); else if(!el.textContent) el.textContent='dev'; })
+      .catch(()=>{ if(!el.textContent) el.textContent='dev'; });
+  };
+  // Re-resolve the LIVE channel from /api/features so the bar matches the
+  // running channel (not just the baked-in build-time value).
   fetch('api/features', {cache:'no-store'}).then(r=>r.ok?r.json():null).then(f=>{
-    if(f && f.channel){
-      const g = window.__VG_VERSION || null;
-      paint(g, f.channel);
-    }
-  }).catch(()=>{});
-  fetch('version.json', {cache:'no-store'}).then(r=>r.ok?r.json():null)
-    .then(j=>{ if(j && j.version) paint(j, el.textContent.split('· ').pop()); })
-    .catch(()=>{ if(!el.textContent) el.textContent='dev'; });
+    if(f && f.channel){ _channel = f.channel; }
+    resolveVersion();
+  }).catch(()=>{ resolveVersion(); });
 }
 
 function boot(){

@@ -136,29 +136,40 @@ async function startImageMission(userGoal){
     const sd=await start.json();
     if(!start.ok || !sd.ok){ bot.cur.textContent='⚠ '+(sd.error||'mission start failed'); return; }
     const mid=sd.mission_id;
+    const seen={}; let imgPoll=null;
     bot.cur.textContent=`🚀 Mission ${mid} running — rendering assets…`;
-    // Stream the mission SSE and render images as tasks complete.
-    const es=new EventSource(API.base+'/api/autonomous/stream/'+mid);
-    const seen={};
-    es.onmessage=ev=>{
+    // Poll the status endpoint (mobile-proof: EventSource silently fails on
+    // mobile Chrome, so we mirror the mission UI's polling instead of SSE).
+    // Render each completed task's images as they appear; deliver the final
+    // result to chat when the mission ends.
+    const pollImg=async()=>{
+      imgPoll=null;
       try{
-        const st=JSON.parse(ev.data);
-        if(st.event==='end'){ es.close(); if(bot){bot.cur.style.display='none';} return; }
-        (st.tasks||[]).forEach(t=>{
-          if(t.status==='completed' && !seen[t.id]){
-            seen[t.id]=true;
-            let r=t.result; try{ if(typeof r==='string') r=JSON.parse(r); }catch(_){}
-            if(r && Array.isArray(r.generated_images) && r.generated_images.length){
-              pushImageMessage('assistant', r.generated_images, (t.title||'Studio asset'), 'Studio');
+        const st=await (await fetch(API.base+'/api/autonomous/status/'+encodeURIComponent(mid))).json();
+        if(st && Array.isArray(st.tasks)){
+          st.tasks.forEach(t=>{
+            if(t.status==='completed' && !seen[t.id]){
+              seen[t.id]=true;
+              let r=t.result; try{ if(typeof r==='string') r=JSON.parse(r); }catch(_){}
+              if(r && Array.isArray(r.generated_images) && r.generated_images.length){
+                pushImageMessage('assistant', r.generated_images, (t.title||'Studio asset'), 'Studio');
+              }
             }
-          }
-        });
-      }catch(_){}
+          });
+        }
+        if(st && (st.status==='completed'||st.status==='failed'||st.status==='cancelled')){
+          if(bot) bot.cur.style.display='none';
+          if(st.final_result) maybeEmitFinal(st);
+          return;
+        }
+        imgPoll=setTimeout(pollImg, 1500);
+      }catch(e){ imgPoll=setTimeout(pollImg, 1500); }
     };
-    es.onerror=()=>{ try{es.close();}catch(_){} if(bot) bot.cur.style.display='none'; };
+    imgPoll=setTimeout(pollImg, 800);
   }catch(e){
     if(bot) bot.cur.textContent='⚠ '+(e.message||'mission failed');
   }finally{
+    if(imgPoll){ clearTimeout(imgPoll); imgPoll=null; }
     currentBot=null;
     if(btn) btn.disabled=false;
   }
