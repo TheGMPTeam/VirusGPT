@@ -39,6 +39,8 @@ function boot(){
     initImprove();
     initTeam();
     initModals();
+    initDisplaySettings();
+    initVoiceSettings();
     initInput();
     initMobileTabs();
     initMic();

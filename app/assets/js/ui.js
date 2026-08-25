@@ -38,7 +38,57 @@ function initModals(){
     const b=$('#btn-tts-toggle'); if(!b) return;
     b.classList.toggle('speaking', !!(TTS_ON && ttsPlaying));
   }, 250);
-  $('#theme-select').onchange=e=>setTheme(e.target.value);
+  $('#theme-select').onchange=e=>{ setTheme(e.target.value); if(typeof refreshHud==='function') refreshHud(); };
+}
+
+/* ---------- display + voice settings (NEW) ---------- */
+function applyDisplay(){
+  const density = lsGet('vg_density','comfortable');
+  const font = lsGet('vg_font','normal');
+  const accent = lsGet('vg_accent','');
+  const anim = lsGet('vg_anim','on')!=='off';
+  const root = document.documentElement;
+  root.classList.toggle('density-compact', density==='compact');
+  root.setAttribute('data-font', font);
+  if(accent){ root.style.setProperty('--neon', accent); }
+  // matrix rain toggle
+  if(!anim && window.__matrixTimer){ clearInterval(window.__matrixTimer); window.__matrixTimer=null; }
+  else if(anim && !window.__matrixTimer && typeof initMatrix==='function'){ window.__matrixTimer=setInterval(()=>{},60); try{ initMatrix(); }catch(e){} }
+}
+function initDisplaySettings(){
+  // populate from saved prefs
+  const $=(id)=>document.getElementById(id);
+  const setSel=(el,v)=>{ if(el && v) el.value=v; };
+  setSel($('st-density'), lsGet('vg_density','comfortable'));
+  setSel($('st-font'), lsGet('vg_font','normal'));
+  const acc=$('st-accent'); if(acc){ const a=lsGet('vg_accent',''); if(a) acc.value=a; }
+  const hud=$('st-hud-toggle'); if(hud) hud.checked = lsGet('vg_hud','off')==='on';
+  const an=$('st-anim-toggle'); if(an) an.checked = lsGet('vg_anim','on')!=='off';
+  applyDisplay();
+  const saveBtn=$('st-display-save');
+  if(saveBtn) saveBtn.onclick=()=>{
+    lsSet('vg_density', $('st-density').value);
+    lsSet('vg_font', $('st-font').value);
+    lsSet('vg_accent', $('st-accent').value);
+    lsSet('vg_hud', $('st-hud-toggle').checked?'on':'off');
+    lsSet('vg_anim', $('st-anim-toggle').checked?'on':'off');
+    // HUD toggle also drives the mission HUD regardless of theme
+    const hud=$('mission-hud'); if(hud) hud.style.display = ($('st-hud-toggle').checked || document.documentElement.getAttribute('data-theme')==='mission') ? '' : 'none';
+    applyDisplay();
+    if(typeof refreshHud==='function') refreshHud();
+    saveBtn.textContent='✓ applied'; setTimeout(()=>saveBtn.textContent='Apply display',1200);
+  };
+}
+function initVoiceSettings(){
+  const $=(id)=>document.getElementById(id);
+  const ap=$('st-autoplay'); if(ap) ap.checked = lsGet('vg_autoplay','off')==='on';
+  const sp=$('st-sentence'); if(sp) sp.checked = lsGet('vg_sentence','on')==='on';
+  const jv=$('st-jarvis'); if(jv) jv.checked = lsGet('vg_jarvis','off')==='on';
+  if(ap) ap.onchange=()=>{ lsSet('vg_autoplay', ap.checked?'on':'off'); if(typeof sessionAutoPlay!=='undefined') sessionAutoPlay=ap.checked; };
+  if(sp) sp.onchange=()=>{ lsSet('vg_sentence', sp.checked?'on':'off'); };
+  if(jv) jv.onchange=()=>{ lsSet('vg_jarvis', jv.checked?'on':'off'); if(jv.checked && typeof HEALTH!=='undefined'){ HEALTH.default_voice='jarvis'; const sv=$('st-voice'); if(sv) sv.value='jarvis'; } };
+  const test=$('st-voice-test');
+  if(test) test.onclick=()=>{ if(typeof playTTS==='function'){ const v=(typeof HEALTH!=='undefined'&&HEALTH.default_voice)||'alba'; playTTS('Systems nominal. JARVIS voice online and ready, sir.', {voice:v}).catch(()=>{}); } };
 }
 
 /* ---------- input ---------- */

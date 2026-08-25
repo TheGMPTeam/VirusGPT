@@ -524,3 +524,143 @@
     .form-row input,.form-row select{font-size:15px;padding:11px}
     .form-row #st-refresh-models{margin-left:0;align-self:flex-start}
   }
+
+  /* ===================================================================
+     MISSION theme — "Mission Control" command-center (additive, NEW).
+     Dark HUD: cyan/teal telemetry + amber KPI accents, glass telemetry
+     panels, faint scan grid, glow on active elements. No other theme
+     touched.
+     =================================================================== */
+  [data-theme="mission"]{
+    --radius:8px;
+  }
+  [data-theme="mission"] #topbar{
+    background:linear-gradient(180deg,rgba(10,18,27,0.96),rgba(7,13,20,0.96));
+    border-bottom:1px solid rgba(52,231,228,0.45);
+    box-shadow:0 0 26px rgba(52,231,228,0.16);
+  }
+  [data-theme="mission"] #topbar h1{
+    color:var(--neon);
+    text-shadow:0 0 10px rgba(52,231,228,0.7);
+    letter-spacing:1px;
+  }
+  [data-theme="mission"] .pulse{background:var(--neon);box-shadow:0 0 8px var(--neon)}
+  [data-theme="mission"] #tabs{
+    background:linear-gradient(180deg,var(--panel),rgba(7,13,20,0.6));
+    border-bottom:1px solid rgba(52,231,228,0.4);
+  }
+  [data-theme="mission"] .tab.active{
+    color:var(--neon);
+    border-bottom-color:var(--neon);
+    text-shadow:0 0 8px rgba(52,231,228,0.6);
+  }
+  [data-theme="mission"] .accent{
+    border-color:var(--neon2);color:var(--neon2);
+    background:rgba(58,160,255,0.08);
+  }
+  [data-theme="mission"] .accent:hover{background:rgba(58,160,255,0.18)}
+  [data-theme="mission"] #sidebar,
+  [data-theme="mission"] #rightbar{
+    background:linear-gradient(180deg,var(--panel),rgba(4,7,11,0.5));
+    border-color:rgba(52,231,228,0.3);
+  }
+  [data-theme="mission"] #sidebar h3,
+  [data-theme="mission"] #rightbar h3{
+    border-left:3px solid var(--neon2);
+    color:var(--neon2);
+    background:linear-gradient(90deg,rgba(52,231,228,0.12),transparent 70%);
+    padding:6px 10px;border-radius:0 8px 8px 0;
+    letter-spacing:1px;text-transform:uppercase;font-size:11px;
+  }
+  [data-theme="mission"] .msg .bubble{
+    border-radius:10px;
+    background:linear-gradient(160deg,var(--panel2),rgba(52,231,228,0.06));
+    border:1px solid rgba(52,231,228,0.28);
+  }
+  [data-theme="mission"] .msg.bot .bubble{
+    border-left:3px solid var(--neon);
+    box-shadow:0 0 14px rgba(52,231,228,0.16);
+  }
+  [data-theme="mission"] .msg.user .bubble{
+    background:linear-gradient(160deg,rgba(58,160,255,0.16),rgba(255,179,71,0.08));
+    border:1px solid var(--neon2);
+    border-right:3px solid var(--hud);
+  }
+  [data-theme="mission"] #btn-send{
+    background:linear-gradient(135deg,var(--neon),var(--neon2));
+    color:#04161a;font-weight:800;
+    box-shadow:0 0 16px rgba(52,231,228,0.5);
+  }
+  [data-theme="mission"] #btn-send:hover{box-shadow:0 0 24px rgba(52,231,228,0.8)}
+  [data-theme="mission"] .persona-chip{border-radius:10px;border-color:rgba(52,231,228,0.3)}
+  [data-theme="mission"] .pcard{
+    border-radius:10px;
+    border-color:rgba(52,231,228,0.3);
+    background:linear-gradient(160deg,var(--panel),rgba(52,231,228,0.05));
+  }
+  [data-theme="mission"] .session-row,
+  [data-theme="mission"] #mg-detail,
+  [data-theme="mission"] #graph-wrap{border-radius:10px;border-color:rgba(52,231,228,0.3)}
+  [data-theme="mission"] .win-ctl{border-radius:8px;border-color:rgba(52,231,228,0.3)}
+  [data-theme="mission"] .win-ctl:hover{color:var(--neon);border-color:var(--neon)}
+  [data-theme="mission"] .modal-box{
+    border:1px solid rgba(52,231,228,0.4);
+    box-shadow:0 0 30px rgba(52,231,228,0.14);
+  }
+  /* amber KPI accent for key stat chips / badges in the HUD */
+  [data-theme="mission"] .hud-kpi-val{color:var(--hud);text-shadow:0 0 8px rgba(255,179,71,0.5)}
+  [data-theme="mission"] .hud-bar-fill{background:linear-gradient(90deg,var(--hud2),var(--hud))}
+  [data-theme="mission"] #input-bar{
+    background:linear-gradient(180deg,var(--panel),rgba(4,7,11,0.7));
+    border-top:1px solid rgba(52,231,228,0.4);
+  }
+  [data-theme="mission"] button:hover{
+    border-color:var(--neon);
+    box-shadow:0 0 14px rgba(52,231,228,0.35);
+    color:var(--neon);
+  }
+
+  /* ---------- MISSION-CONTROL TELEMETRY HUD (rightbar) ---------- */
+  #mission-hud{
+    border:1px solid rgba(52,231,228,0.25);
+    border-radius:10px;
+    background:linear-gradient(180deg,rgba(13,24,36,0.7),rgba(7,13,20,0.5));
+    padding:10px;margin:10px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    box-shadow:inset 0 0 18px rgba(52,231,228,0.06);
+  }
+  #mission-hud .hud-title{
+    font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--hud2);
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;
+    border-bottom:1px solid rgba(52,231,228,0.18);padding-bottom:6px;
+  }
+  #mission-hud .hud-title .hud-live{color:var(--neon);font-size:9px}
+  #mission-hud .hud-kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+  #mission-hud .hud-kpi{
+    background:rgba(4,7,11,0.6);border:1px solid rgba(52,231,228,0.18);
+    border-radius:6px;padding:6px 8px;
+  }
+  #mission-hud .hud-kpi-label{font-size:9px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.5px}
+  #mission-hud .hud-kpi-val{font-size:16px;font-weight:700;line-height:1.1;color:var(--neon)}
+  #mission-hud .hud-kpi-val.amber{color:var(--hud);text-shadow:0 0 8px rgba(255,179,71,0.5)}
+  #mission-hud .hud-bar-row{margin:6px 0}
+  #mission-hud .hud-bar-label{font-size:9px;color:var(--txt-dim);display:flex;justify-content:space-between}
+  #mission-hud .hud-bar{height:6px;background:rgba(4,7,11,0.8);border-radius:4px;overflow:hidden;margin-top:3px}
+  #mission-hud .hud-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--hud2),var(--neon));transition:width .6s ease}
+  #mission-hud .hud-row{font-size:10px;color:var(--txt-dim);display:flex;justify-content:space-between;margin-top:5px}
+  #mission-hud .hud-row b{color:var(--txt);font-weight:600}
+  [data-theme="mission"] #mission-hud{border-color:rgba(52,231,228,0.4);box-shadow:0 0 18px rgba(52,231,228,0.12)}
+  html:not([data-theme="mission"]) #mission-hud{display:none}
+
+  /* ---------- Display preference hooks (density / font) ---------- */
+  html[data-font="small"]{font-size:13px}
+  html[data-font="normal"]{font-size:15px}
+  html[data-font="large"]{font-size:17px}
+  html.density-compact #messages .msg{padding:4px 6px}
+  html.density-compact .pcard{padding:8px}
+  html.density-compact .session-row{padding:6px 8px}
+  html.density-compact #sidebar h3,html.density-compact #rightbar h3{padding:4px 8px}
+  .st-switch-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .st-switch-row label{width:auto;margin:0}
+  .st-switch-row input{width:18px;height:18px}
+  #st-accent{width:46px;height:30px;padding:0;border:1px solid var(--border);background:var(--panel2);border-radius:6px}

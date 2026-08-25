@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>VirusGPT ~ Offline Agent Chat</title>
 <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg" />
-<link rel="stylesheet" href="/assets/css/styles.css?v=15" />
+<link rel="stylesheet" href="/assets/css/styles.css?v=16" />
 </head>
 
 <body style="background:#05070a;margin:0">
@@ -32,6 +32,7 @@
         <option value="amber">Amber Gears</option>
         <option value="ice">Ice Neon</option>
         <option value="nova">Nova Flux</option>
+        <option value="mission">Mission Control</option>
       </select>
       <button id="btn-settings" class="accent" title="Settings">⚙ Settings</button>
       <button id="btn-tts-toggle" class="icon-btn" title="Toggle TTS">🔊</button>
@@ -85,6 +86,22 @@
         </div>
       </main>
       <aside id="rightbar" class="chat-panel-pane" data-pane="tools">
+        <!-- MISSION CONTROL telemetry HUD (visible only in Mission theme) -->
+        <div id="mission-hud" style="display:none">
+          <div class="hud-title"><span>MISSION CONTROL</span><span class="hud-live">● LIVE</span></div>
+          <div class="hud-kpis">
+            <div class="hud-kpi"><div class="hud-kpi-label">Agents</div><div class="hud-kpi-val" id="hud-agents">—</div></div>
+            <div class="hud-kpi"><div class="hud-kpi-label">Uptime</div><div class="hud-kpi-val amber" id="hud-uptime">—</div></div>
+            <div class="hud-kpi"><div class="hud-kpi-label">Latency</div><div class="hud-kpi-val" id="hud-latency">—</div></div>
+            <div class="hud-kpi"><div class="hud-kpi-label">Models</div><div class="hud-kpi-val" id="hud-models">—</div></div>
+          </div>
+          <div class="hud-bar-row">
+            <div class="hud-bar-label"><span>Backend</span><span id="hud-backend-pct">0%</span></div>
+            <div class="hud-bar"><div class="hud-bar-fill" id="hud-backend-bar"></div></div>
+          </div>
+          <div class="hud-row"><span>Active voice</span><b id="hud-voice">—</b></div>
+          <div class="hud-row"><span>TTS / STT</span><b id="hud-io">—</b></div>
+        </div>
         <div style="padding-top:0">
           <h3><span class="vg-ico" data-ico="robot"></span> Team Workflow</h3>
           <div class="rightbar-hint" style="margin-top:8px">
@@ -168,6 +185,38 @@
           <div class="form-rows"><label>Think timeout (ms)</label><input id="st-timeout" type="number" value="60000"></div>
           <div class="form-actions"><button id="st-save" class="btn-accent">Save</button></div>
         </div>
+        <!-- Column 1.5: DISPLAY options (NEW) -->
+        <div class="st-col st-col-display">
+          <div class="st-col-title">Display</div>
+          <div class="form-row"><label>Density</label>
+            <select id="st-density">
+              <option value="comfortable">Comfortable</option>
+              <option value="compact">Compact</option>
+            </select>
+          </div>
+          <div class="form-row"><label>Accent color</label><input id="st-accent" type="color" value="#00ff9c"></div>
+          <div class="form-row st-switch-row"><label for="st-hud-toggle">Telemetry HUD (Mission)</label><input id="st-hud-toggle" type="checkbox"></div>
+          <div class="form-row st-switch-row"><label for="st-anim-toggle">Animations (matrix rain)</label><input id="st-anim-toggle" type="checkbox"></div>
+          <div class="form-row"><label>Font size</label>
+            <select id="st-font">
+              <option value="small">Small</option>
+              <option value="normal">Normal</option>
+              <option value="large">Large</option>
+            </select>
+          </div>
+          <div class="form-actions"><button id="st-display-save" class="btn-accent">Apply display</button></div>
+        </div>
+        <!-- Column 1.7: VOICE options (NEW) -->
+        <div class="st-col st-col-voice">
+          <div class="st-col-title">Voice</div>
+          <div class="form-row"><label>Test voice</label>
+            <button id="st-voice-test" class="btn-accent">▶ Play sample</button>
+          </div>
+          <div class="form-row st-switch-row"><label for="st-autoplay">Auto-play replies</label><input id="st-autoplay" type="checkbox"></div>
+          <div class="form-row st-switch-row"><label for="st-sentence">Per-sentence playback</label><input id="st-sentence" type="checkbox"></div>
+          <div class="form-row st-switch-row"><label for="st-jarvis">Default to JARVIS clone</label><input id="st-jarvis" type="checkbox"></div>
+          <div class="rightbar-hint" style="font-size:11px;color:var(--txt-dim)">JARVIS = Iron Man voice clone (local PocketTTS).</div>
+        </div>
         <!-- Column 2: connected services (name list) -->
         <div class="st-col st-col-services">
           <div class="st-col-title">Connected Services</div>
@@ -208,8 +257,8 @@
 
 
   <script src="/assets/js/icons.js?v=1"></script>
-  <script src="/assets/js/config.js?v=15"></script>
-  <script src="/assets/js/utils.js?v=15"></script>
+  <script src="/assets/js/config.js?v=16"></script>
+  <script src="/assets/js/utils.js?v=16"></script>
   <script src="/assets/js/tts.js?v=14"></script>
   <script src="/assets/js/messages.js?v=15"></script>
   <script src="/assets/js/personas.js?v=15"></script>
@@ -218,9 +267,9 @@
   <script src="/assets/js/autocomplete.js?v=14"></script>
   <script src="/assets/js/team.js?v=14"></script>
   <script src="/assets/js/memory.js?v=14"></script>
-  <script src="/assets/js/ui.js?v=15"></script>
+  <script src="/assets/js/ui.js?v=16"></script>
   <script src="/assets/js/services_ui.js?v=14"></script>
   <script src="/assets/js/updates.js?v=14"></script>
-  <script src="/assets/js/main.js?v=15"></script>
+  <script src="/assets/js/main.js?v=16"></script>
 </body>
 </html>
