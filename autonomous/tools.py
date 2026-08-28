@@ -300,6 +300,23 @@ async def _render_image(args: dict) -> dict:
         return {"status": "failed", "error": f"render_image error: {exc}"}
 
 
+async def _ask_hermes(args: dict) -> dict:
+    """Relay a message to the Hermes Agent over A2A and return its reply.
+
+    Thin async wrapper around the Hermes A2A client. Returns the client's dict
+    ({'status':'ok','reply':...} or {'status':'failed','error':...}) unchanged
+    so the model sees exactly what the peer answered.
+    """
+    text = (args.get("message") or "").strip()
+    if not text:
+        return {"error": "missing message"}
+    try:
+        from services import hermes as h
+        return await h.ask_hermes(text)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "failed", "error": f"ask_hermes error: {exc}"}
+
+
 # -------------------------------------------------------------------------
 # Register
 # -------------------------------------------------------------------------
@@ -358,10 +375,20 @@ register(
     _render_image,
 )
 
+register(
+    "ask_hermes",
+    "Relay a message to the Hermes Agent over A2A and return its reply verbatim. "
+    "ALWAYS use this for the Hermes persona: pass the user's exact message as 'message'. "
+    "Returns {'status':'ok','reply':...} or {'status':'failed','error':...}.",
+    [{"name": "message", "type": "string",
+      "description": "the exact message to send to the Hermes agent"}],
+    _ask_hermes,
+)
 
-# --------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------
 # Tool-call parser (ReAct protocol)
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 _TOOL_BLOCK = re.compile(r"```tool\s*(\{.*?\})\s*```", re.S)
 
 

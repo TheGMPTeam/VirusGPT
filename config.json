@@ -76,6 +76,11 @@
     },
     "youtube": {
       "timeout": 60
+    },
+    "hermes": {
+      "enabled": true,
+      "base_url": "http://10.0.0.120:9900",
+      "timeout": 60
     }
   }
 }

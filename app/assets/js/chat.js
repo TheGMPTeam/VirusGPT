@@ -235,7 +235,7 @@ async function send(text){
   ttsBuf=''; ttsDone=0;
   $('#btn-send').disabled=true;
   try{
-    const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:msgs}),signal:currentAbort.signal});
+    const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:msgs,persona:persona?.name||null,tools:persona?.tools||[]}),signal:currentAbort.signal});
     if(!resp.ok) throw new Error('server '+resp.status);
     const reader=resp.body.getReader(); const dec=new TextDecoder(); let buf='';
     let pending=''; let rafPending=false;

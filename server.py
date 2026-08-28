@@ -83,6 +83,8 @@ async def health():
     # Modular LAN services (graceful: report reachability, never fail the health check)
     from services import comfyui as _comfy
     cf = await _comfy.comfyui_health() if cfg.CONFIG["services"]["comfyui"]["enabled"] else False
+    from services import hermes as _hermes
+    hf = await _hermes.hermes_status()
     models = await llm.list_models(cfg.CONFIG["ollama"]["base_url"]) if oll else []
     voices = await tts.list_voices(cfg.CONFIG["tts"]["base_url"]) if tt else []
     return JSONResponse({
@@ -90,6 +92,7 @@ async def health():
         "tts": tt,
         "whisper": st,
         "comfyui": cf,
+        "hermes": hf,
         "models": models or [cfg.CONFIG["ollama"]["default_model"]],
         "default_model": cfg.CONFIG["ollama"]["default_model"],
         "voices": voices or ["alba", "azelma", "cosette", "eponine", "fantine", "javert", "jean", "marius"],
@@ -174,6 +177,10 @@ def trim_history(messages, max_hist: int = 24, max_chars: int = 2800):
     return kept
 
 
+# Max tool-call / observation cycles for a single /api/chat turn that uses tools.
+_CHAT_TOOL_ROUNDS = 4
+
+
 @app.post("/api/chat")
 async def chat(req: Request):
     body = await req.json()
@@ -197,6 +204,31 @@ async def chat(req: Request):
             frontend_system = (m.get("content") or "").strip()
         else:
             non_system.append(m)
+
+    # --- Resolve persona + allowed tools (relay/agent personas can call tools) ---
+    # The frontend sends `tools` (a list of tool names) for the chosen persona;
+    # if it only sends a persona name we look the tool allow-list up locally.
+    persona_name = (body.get("persona") or "").strip()
+    allowed = body.get("tools")
+    if (not allowed) and persona_name:
+        _p = next((x for x in _load_personas() if x.get("name") == persona_name), None)
+        if _p:
+            allowed = _p.get("tools")
+    ollama_tools = None
+    if allowed:
+        from autonomous import tools as agent_tools
+        if isinstance(allowed, list) and allowed and isinstance(allowed[0], str):
+            _names = set(allowed)
+            ollama_tools = [t for t in agent_tools.tools_for_ollama()
+                            if t["function"]["name"] in _names]
+        else:
+            ollama_tools = allowed  # already an Ollama tool schema
+    # Relay personas with a single tool: force that tool so the message is
+    # ALWAYS relayed (e.g. Hermes -> ask_hermes), never answered locally.
+    tool_choice = None
+    if ollama_tools and len(ollama_tools) == 1:
+        tool_choice = {"type": "function",
+                       "function": {"name": ollama_tools[0]["function"]["name"]}}
 
     # --- Small-context history window (trim to last N messages / char cap) ---
     max_hist = int(chat_cfg.get("max_history", 24))
@@ -230,10 +262,62 @@ async def chat(req: Request):
     messages = [{"role": "system", "content": system}] + kept
 
     base = cfg.CONFIG["ollama"]["base_url"]
+    chat_timeout = float(cfg.CONFIG.get("chat_timeout", 60))
 
     async def gen():
-        async for chunk in llm.stream_chat(model, messages, base, timeout=float(cfg.CONFIG.get("chat_timeout", 60))):
-            yield f"data: {json.dumps(chunk)}\n\n"
+        # No tools -> plain streaming chat (original behavior, untouched).
+        if not ollama_tools:
+            async for chunk in llm.stream_chat(model, messages, base, timeout=chat_timeout):
+                yield f"data: {json.dumps(chunk)}\n\n"
+            return
+        # ReAct loop: stream the model, execute any tool_calls, then loop until
+        # the model answers with no further tool calls.
+        from autonomous import tools as agent_tools
+        _tc = tool_choice
+        for _ in range(_CHAT_TOOL_ROUNDS):
+            assistant_msg = {"role": "assistant", "content": ""}
+            tool_calls = []
+            async for chunk in llm.stream_chat(model, messages, base,
+                                               timeout=chat_timeout,
+                                               tools=ollama_tools,
+                                               tool_choice=_tc):
+                if chunk.get("content"):
+                    assistant_msg["content"] += chunk["content"]
+                    yield f"data: {json.dumps({'content': chunk['content']})}\n\n"
+                if chunk.get("tool_calls"):
+                    tool_calls.extend(chunk["tool_calls"])
+                if chunk.get("error"):
+                    yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
+                    return
+                if chunk.get("done"):
+                    break
+            if not tool_calls:
+                # Final answer (already streamed) — nothing more to do.
+                break
+            # Record the assistant turn (with its tool_calls) for context.
+            assistant_msg["tool_calls"] = tool_calls
+            messages.append(assistant_msg)
+            # Execute every requested tool and feed the result back.
+            for call in tool_calls:
+                fn = (call.get("function") or {})
+                name = fn.get("name", "")
+                try:
+                    args = fn.get("arguments", {}) or {}
+                    if isinstance(args, str):
+                        args = json.loads(args or "{}")
+                except Exception:
+                    args = {}
+                result = await agent_tools.run_tool(name, args)
+                messages.append({
+                    "role": "tool",
+                    "content": json.dumps(result, ensure_ascii=False)[:4000],
+                    "name": name,
+                })
+            # Only force the relay tool on the first round; afterwards let the
+            # model answer normally with the tool result in context.
+            _tc = None
+        yield f"data: {json.dumps({'done': True})}\n\n"
+
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 

@@ -60,6 +60,12 @@ _DEFAULTS: dict[str, Any] = {
         "blender": {"enabled": False, "base_url": "http://10.0.0.120:8008", "timeout": 300},
         "ffmpeg":  {"enabled": False, "base_url": "http://10.0.0.120:8009", "timeout": 300},
         "marton":  {"enabled": True,  "base_url": "https://api.maton.ai", "api_key": "", "connection_id": "", "timeout": 60},
+        # Hermes A2A relay: forwards the "Hermes" persona's messages to the
+        # Hermes Agent peer (hermes-VirusPC @ 10.0.0.120:9900) over A2A JSON-RPC.
+        # Disabled by default; enable + supply a token to activate. The send
+        # token is read at runtime (VG_HERMES_TOKEN or the local peer-token
+        # env file) and must NEVER be committed into this tracked config.
+        "hermes":  {"enabled": False, "base_url": "http://10.0.0.120:9900", "token": "", "timeout": 60.0},
     },
     # Chat behavior: small-context by default (good for qwen2.5:3b), inject the
     # knowledge graph as DEFAULT context, and constrain history to a window.
@@ -180,6 +186,12 @@ def load_config() -> dict:
         cfg["services"]["n8n"]["api_key"] = os.environ["VG_N8N_TOKEN"]
     if os.environ.get("VG_MARTON_KEY") and isinstance(cfg.get("services"), dict) and "marton" in cfg["services"]:
         cfg["services"]["marton"]["api_key"] = os.environ["VG_MARTON_KEY"]
+    # Hermes A2A relay: VG_HERMES_URL overrides the peer base URL, VG_HERMES_TOKEN
+    # supplies the send-token (preferred over anything in config.json).
+    if os.environ.get("VG_HERMES_URL") and isinstance(cfg.get("services"), dict) and "hermes" in cfg["services"]:
+        cfg["services"]["hermes"]["base_url"] = os.environ["VG_HERMES_URL"]
+    if os.environ.get("VG_HERMES_TOKEN") and isinstance(cfg.get("services"), dict) and "hermes" in cfg["services"]:
+        cfg["services"]["hermes"]["token"] = os.environ["VG_HERMES_TOKEN"]
     return cfg
 
 

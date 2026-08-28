@@ -23,6 +23,7 @@ async def stream_chat(
     base_url: str,
     timeout: float = 120.0,
     tools: Optional[list] = None,
+    tool_choice: Optional[object] = None,
 ) -> AsyncGenerator[dict, None]:
     """Yield dicts: {"content": str} | {"tool_calls": [...]} | {"done": True} | {"error": str}."""
     url = f"{base_url.rstrip('/')}/api/chat"
@@ -33,7 +34,8 @@ async def stream_chat(
     }
     if tools:
         payload["tools"] = tools
-        payload["tool_choice"] = "auto"
+        # tool_choice: "auto" (default), "none", or a forced function dict.
+        payload["tool_choice"] = tool_choice if tool_choice is not None else "auto"
     try:
         async with get_client().stream(
             "POST", url, json=payload, timeout=timeout
