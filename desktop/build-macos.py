@@ -127,6 +127,7 @@ def build():
         "--add-data", f"config.json{os_sep()}.",
         "--add-data", f"server.py{os_sep()}.",
         "--add-data", f"desktop{os_sep()}desktop",
+        "--add-data", f"data{os_sep()}data",
         "desktop/run.py",
     ]
     # PyInstaller one-folder build
