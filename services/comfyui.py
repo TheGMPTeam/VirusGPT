@@ -258,13 +258,13 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
                            denoise: float = 1.0) -> Dict[str, Any]:
     """API-format graph for Z-Image Turbo (Lumina2 flow model).
 
-    Matches the user's ComfyUI template: split MultiGPU loaders,
+    Matches the user's ComfyUI comparison template: split MultiGPU loaders,
     ModelSamplingAuraFlow (shift + sampling 'flow'), ConditioningZeroOut
     negatives, and an easy ifElse node that switches the KSampler latent
     between txt2img (EmptyLatentImage) and img2img refine
-    (LoadImageOutput -> ImageResizeKJv2 -> VAEEncode). Optional transparency
-    uses the CPU-friendly Rembg node (u2net + alpha matting) instead of
-    Inspyrenet, which OOMs. SaveImageAdvanced (node 9) is always the output.
+    (LoadImageOutput -> ImageResizeKJv2 -> VAEEncode). RMBG-2.0 removes the
+    background, rgthree compares the cutout against the decoded original, and
+    ImageBatchMulti feeds both images to SaveImageAdvanced node 90.
     """
     dev_u = devices.get("unet_device", "cpu")
     dev_c = devices.get("clip_device", "cpu")
@@ -319,7 +319,11 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
         }
         wf["77"] = {
             "class_type": "easy ifElse",
-            "inputs": {"boolean": False, "on_true": ["76", 0], "on_false": ["76", 0]},
+            "inputs": {"boolean": False, "on_true": ["78", 0], "on_false": ["76", 0]},
+        }
+        wf["78"] = {
+            "class_type": "EmptyLatentImage",
+            "inputs": {"width": ["75", 1], "height": ["75", 2], "batch_size": 1},
         }
     else:
         wf["78"] = {
@@ -349,34 +353,37 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
         "class_type": "VAEDecode",
         "inputs": {"samples": ["3", 0], "vae": ["63", 0]},
     }
-    final_src = "8"
-    if transparent:
-        if rembg_engine == "alpha":
-            # Pure tensor op, no model, no VRAM. Good on clean backgrounds.
-            wf["80"] = {
-                "class_type": "Image Remove Background (Alpha)",
-                "inputs": {"images": ["8", 0], "mode": "background",
-                           "threshold": 127, "threshold_tolerance": 2},
-            }
-        else:
-            # Rembg u2net on CPU with alpha matting (the template's settings).
-            wf["80"] = {
-                "class_type": "Image Rembg (Remove Background)",
-                "inputs": {"images": ["8", 0], "transparency": True,
-                           "model": str(prof.get("rembg_model", "u2net")),
-                           "post_processing": True, "only_mask": False,
-                           "alpha_matting": True,
-                           "alpha_matting_foreground_threshold": int(prof.get("rembg_fg_threshold", 240)),
-                           "alpha_matting_background_threshold": int(prof.get("rembg_bg_threshold", 10)),
-                           "alpha_matting_erode_size": int(prof.get("rembg_erode", 10)),
-                           "background_color": "none"},
-            }
-        final_src = "80"
-    wf["9"] = {
+    # Comparison branch: save both RMBG cutout (first) and decoded original.
+    # The rgthree node powers ComfyUI's interactive A/B comparer; ImageBatchMulti
+    # makes both variants durable API outputs from node 90.
+    if rembg_engine == "alpha":
+        wf["98"] = {
+            "class_type": "Image Remove Background (Alpha)",
+            "inputs": {"images": ["8", 0], "mode": "background",
+                       "threshold": 127, "threshold_tolerance": 2},
+        }
+    else:
+        wf["98"] = {
+            "class_type": "RMBG",
+            "inputs": {"model": "RMBG-2.0", "sensitivity": 1.0,
+                       "process_res": 1024, "mask_blur": 0, "mask_offset": 0,
+                       "invert_output": False, "refine_foreground": True,
+                       "background": "Alpha", "background_color": "#222222",
+                       "image": ["8", 0]},
+        }
+    wf["82"] = {
+        "class_type": "Image Comparer (rgthree)",
+        "inputs": {"image_a": ["98", 0], "image_b": ["8", 0]},
+    }
+    wf["91"] = {
+        "class_type": "ImageBatchMulti",
+        "inputs": {"inputcount": 2, "image_1": ["98", 0], "image_2": ["8", 0]},
+    }
+    wf["90"] = {
         "class_type": "SaveImageAdvanced",
         "inputs": {"filename_prefix": "virusgpt", "format": "png",
-                   "format.bit_depth": "8-bit", "format.input_color_space": "sRGB",
-                   "images": [final_src, 0]},
+                   "format.bit_depth": "16-bit", "format.input_color_space": "sRGB",
+                   "images": ["91", 0]},
     }
     return wf
 
@@ -396,7 +403,7 @@ async def render_image(
     scheduler: Optional[str] = None,
     transparent: bool = False,
     refine_of: Optional[str] = None,
-    denoise: float = 0.5,
+    denoise: float = 1.0,
 ) -> Dict[str, Any]:
     """Generate one image from `prompt`. Returns a result dict.
 
@@ -448,8 +455,8 @@ async def render_image(
             steps = 8
         if cfg_scale == 7.0:
             cfg_scale = 1.0
-        sampler_name = sampler_name or prof.get("refine_sampler", "dpm_adaptive")
-        scheduler = scheduler or prof.get("refine_scheduler", "exponential")
+        sampler_name = sampler_name or prof.get("refine_sampler", "euler_ancestral")
+        scheduler = scheduler or prof.get("refine_scheduler", "sgm_uniform")
         workflow = _build_zimage_workflow(
             prompt, prof, seed, steps, cfg_scale, width, height, dev_map,
             sampler_name, scheduler, transparent=transparent,
@@ -458,13 +465,13 @@ async def render_image(
     elif _is_zimage(chosen):
         prof = _zimage_profile()
         # Z-Image Turbo winning settings: 8 steps, cfg 1.0,
-        # dpm_adaptive + exponential scheduler (template default).
+        # euler_ancestral + sgm_uniform scheduler (comparison template default).
         if steps == 25:
             steps = int(prof.get("steps", 8))
         if cfg_scale == 7.0:
             cfg_scale = float(prof.get("cfg", 1.0))
-        sampler_name = sampler_name or prof.get("sampler", "dpm_adaptive")
-        scheduler = scheduler or prof.get("scheduler", "exponential")
+        sampler_name = sampler_name or prof.get("sampler", "euler_ancestral")
+        scheduler = scheduler or prof.get("scheduler", "sgm_uniform")
         workflow = _build_zimage_workflow(
             prompt, prof, seed, steps, cfg_scale, width, height,
             dev_map,
@@ -510,12 +517,12 @@ async def render_image(
             return {"status": "failed", "error": "timed out waiting for ComfyUI to finish"}
 
         if final.get("status", {}).get("status_str") == "error":
-            # Rembg/Inspyrenet ONNX nodes hard-pin to container GPU 0 and can
-            # fail with CUBLAS resource errors. Fall back once to the pure
-            # tensor alpha-threshold cutout for transparent jobs.
+            # Background-removal model nodes can hard-pin to container GPU 0.
+            # Fall back once to the pure tensor alpha-threshold cutout while
+            # preserving the comparison/batched-save graph.
             err_blob = str(final.get("status", {}).get("messages", ""))
-            if (transparent and _is_zimage(chosen)
-                    and "Remove Background" in err_blob and not refine_of):
+            if (_is_zimage(chosen)
+                    and ("RMBG" in err_blob or "Remove Background" in err_blob)):
                 prof = _zimage_profile()
                 workflow = _build_zimage_workflow(
                     prompt, prof, seed, steps, cfg_scale, width, height, dev_map,
@@ -545,34 +552,46 @@ async def render_image(
             err = str(msgs[-1]) if msgs else "unknown ComfyUI error"
             return {"status": "failed", "error": f"ComfyUI execution error: {err[:300]}"}
 
-        # 3. extract output image from node 9 (SaveImage)
+        # 3. extract both comparison images from node 90 (SaveImageAdvanced).
         outputs = final.get("outputs", {})
-        node_out = outputs.get("9") or next(iter(outputs.values()), {})
+        node_out = outputs.get("90") or outputs.get("9") or next(iter(outputs.values()), {})
         images = node_out.get("images") or []
         if not images:
             return {"status": "failed", "error": "ComfyUI finished but produced no image"}
-        img = images[0]
-        fname = img.get("filename")
-        subfolder = img.get("subfolder", "")
-        itype = img.get("type", "output")
 
-        # 4. download + persist
-        dl = await get_client().get(
-            f"{base}/view",
-            params={"filename": fname, "subfolder": subfolder, "type": itype},
-            headers=_auth_headers(),
-            timeout=30.0,
-        )
-        if dl.status_code != 200:
-            return {"status": "failed", "error": f"failed to download image: {dl.status_code}"}
-        safe = f"{uuid.uuid4().hex}_{fname}"
-        out_path = GEN_DIR / safe
-        out_path.write_bytes(dl.content)
+        # 4. download + persist every comparison image. ImageBatchMulti orders
+        # them as cutout first, decoded original second.
+        saved: list[Dict[str, str]] = []
+        for img in images:
+            fname = img.get("filename")
+            if not fname:
+                continue
+            subfolder = img.get("subfolder", "")
+            itype = img.get("type", "output")
+            dl = await get_client().get(
+                f"{base}/view",
+                params={"filename": fname, "subfolder": subfolder, "type": itype},
+                headers=_auth_headers(),
+                timeout=30.0,
+            )
+            if dl.status_code != 200:
+                return {"status": "failed", "error": f"failed to download image: {dl.status_code}"}
+            safe = f"{uuid.uuid4().hex}_{fname}"
+            (GEN_DIR / safe).write_bytes(dl.content)
+            saved.append({"file": safe, "comfyui_file": fname,
+                          "url": f"/api/generated/{safe}"})
+        if not saved:
+            return {"status": "failed", "error": "ComfyUI outputs had no downloadable images"}
+        primary = saved[0]
         return {
             "status": "completed",
-            "file": safe,
-            "comfyui_file": fname,
-            "url": f"/api/generated/{safe}",
+            "file": primary["file"],
+            "comfyui_file": primary["comfyui_file"],
+            "url": primary["url"],
+            "files": [item["file"] for item in saved],
+            "comfyui_files": [item["comfyui_file"] for item in saved],
+            "urls": [item["url"] for item in saved],
+            "compare_labels": ["Background removed", "Original"][:len(saved)],
             "prompt_id": prompt_id,
             "model": chosen,
             "seed": seed,

@@ -77,7 +77,11 @@ async function installApiMocks(){
       event.respondWith(new Response(atob(wav),{status:200,headers:{'content-type':'audio/wav'}})); return;
     }
     if(p === '/api/generate' && method==='POST'){
-      event.respondWith(new Response(JSON.stringify({status:'completed', url:'/api/generated/test.png', file:'test.png'}),
+      event.respondWith(new Response(JSON.stringify({status:'completed',
+        url:'/api/generated/cutout.png', file:'cutout.png',
+        urls:['/api/generated/cutout.png','/api/generated/original.png'],
+        comfyui_files:['cutout.png','original.png'],
+        compare_labels:['Background removed','Original']}),
         {status:200, headers:{'content-type':'application/json'}})); return;
     }
     if(p.startsWith('/api/generated/')){
@@ -163,8 +167,12 @@ def _new_page(browser, viewport=None):
         if p.endswith("/api/generate") and method == "POST":
             return route.fulfill(status=200, content_type="application/json",
                                   body=json.dumps({"status": "completed",
-                                                   "url": "/api/generated/test.png",
-                                                   "file": "test.png"}))
+                                                   "url": "/api/generated/cutout.png",
+                                                   "file": "cutout.png",
+                                                   "urls": ["/api/generated/cutout.png",
+                                                            "/api/generated/original.png"],
+                                                   "comfyui_files": ["cutout.png", "original.png"],
+                                                   "compare_labels": ["Background removed", "Original"]}))
         if "/api/generated/" in p:
             png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
             return route.fulfill(status=200, content_type="image/png",
@@ -643,9 +651,16 @@ def test_image_gen_button(browser):
     ctx, page = _new_page(browser)
     page.fill("#message-input", "a neon cat")
     page.click("#btn-gen-image")
-    page.wait_for_selector(".gen-image", timeout=4000)
-    src = page.get_attribute(".gen-image", "src")
-    assert src and src.endswith(".png")
+    page.wait_for_selector(".image-compare-grid .gen-image", timeout=4000)
+    images = page.locator(".image-compare-grid .gen-image")
+    assert images.count() == 2
+    assert images.nth(0).get_attribute("src").endswith("cutout.png")
+    assert images.nth(1).get_attribute("src").endswith("original.png")
+    assert page.locator(".image-compare-label").all_text_contents() == ["Background removed", "Original"]
+    assert page.locator(".image-compare-grid button", has_text="Update this image").count() == 2
+    # Each comparison card must refine its own ComfyUI output, not a shared file.
+    page.locator(".image-compare-grid button", has_text="Update this image").nth(1).click()
+    assert page.evaluate("window.__vgRefineTarget") == "original.png"
     ctx.close()
 
 

@@ -222,40 +222,51 @@ function addMsgEl(role, text, persona){
 /* Render a message whose body is one or more generated images (e.g. a mission
    task that called the render_image tool). Each image links to the served
    /api/generated/... URL so the user can open it full-size. */
-function pushImageMessage(role, urls, caption, personaName, comfyuiFile){
+function pushImageMessage(role, urls, caption, personaName, comfyuiFile, labels){
   const wrap=document.createElement('div'); wrap.className='msg '+(role==='user'?'user':'bot');
   const av=document.createElement('div'); av.className='persona-avatar';
-  if(role==='user'){av.style.background='var(--neon2)';av.textContent='🧑';}
-  else{const p=personaByName(personaName)||selectedPersonaObj()||personas[0];av.style.background=p.color;av.textContent=p.emoji||'🤖';}
+  if(role==='user'){av.style.background='var(--neon2)';av.textContent='\uD83E\uDDD1';}
+  else{const p=personaByName(personaName)||selectedPersonaObj()||personas[0];av.style.background=p.color;av.textContent=p.emoji||'\uD83E\uDD16';}
   const col=document.createElement('div');col.style.minWidth='0';
   const who=document.createElement('div');who.className='who';who.textContent=role==='user'?'YOU':((personaByName(personaName)||selectedPersonaObj())?.name||'VirusGPT');
   col.appendChild(who);
   if(caption){
     const cap=document.createElement('div');cap.className='bubble';cap.textContent=caption;col.appendChild(cap);
   }
-  (urls||[]).forEach(u=>{
+  const list=urls||[];
+  const files=Array.isArray(comfyuiFile)?comfyuiFile:list.map(()=>comfyuiFile);
+  const grid=document.createElement('div');
+  if(list.length>1) grid.className='image-compare-grid';
+  list.forEach((u,idx)=>{
+    const card=document.createElement('div'); card.className='image-compare-card';
+    if(labels && labels[idx]){
+      const lab=document.createElement('div'); lab.className='image-compare-label'; lab.textContent=labels[idx]; card.appendChild(lab);
+    }
     const img=document.createElement('img');
     img.className='gen-image';
     // Make relative /api/generated/... URLs absolute against the API base so they
     // resolve in the WebView (and over a remote backend) instead of file://.
     img.src = (typeof u==='string' && u.startsWith('/')) ? (API.base.replace(/\/$/,'')+u) : u;
-    img.alt='generated image'; img.loading='lazy';
+    img.alt=(labels&&labels[idx])||'generated image'; img.loading='lazy';
     img.onerror=()=>{ img.style.display='none'; };
     img.onclick=()=>window.open(img.src,'_blank');
     img.title='Open image';
-    col.appendChild(img);
-    if(comfyuiFile){
+    card.appendChild(img);
+    const sourceFile=files[idx];
+    if(sourceFile){
       const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;margin-top:4px';
       const upd=document.createElement('button'); upd.className='btn ghost'; upd.textContent='Update this image';
       upd.title='img2img refine: keeps the composition, re-renders the subject with your new prompt';
       upd.onclick=()=>{
-        window.__vgRefineTarget=comfyuiFile;
+        window.__vgRefineTarget=sourceFile;
         const box=$('#message-input');
-        if(box){ box.placeholder='Describe the update (e.g. add a red scarf)… then click Image'; box.focus(); }
+        if(box){ box.placeholder='Describe the update (e.g. add a red scarf)... then click Image'; box.focus(); }
       };
-      bar.appendChild(upd); col.appendChild(bar);
+      bar.appendChild(upd); card.appendChild(bar);
     }
+    grid.appendChild(card);
   });
+  col.appendChild(grid);
   wrap.appendChild(av);wrap.appendChild(col);
   $('#messages').appendChild(wrap);$('#messages').scrollTop=$('#messages').scrollHeight;return wrap;
 }

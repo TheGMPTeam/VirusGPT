@@ -301,14 +301,14 @@ def test_zimage_template_graph_shape():
             "vae": "ae.safetensors", "shift": 3.0}
     dev = {"unet_device": "cuda:1", "clip_device": "cuda:1", "vae_device": "cuda:1"}
     wf = _build_zimage_workflow("mascot", prof, 61615390298286, 8, 1.0, 512, 512,
-                                dev, "dpm_adaptive", "exponential")
+                                dev, "euler_ancestral", "sgm_uniform")
     assert wf["11"]["class_type"] == "ModelSamplingAuraFlow"
     assert wf["11"]["inputs"]["sampling"] == "flow"
     assert wf["11"]["inputs"]["shift"] == 3.0
     assert wf["3"]["inputs"]["latent_image"] == ["77", 0]
     assert wf["3"]["inputs"]["negative"] == ["33", 0]
-    assert wf["3"]["inputs"]["sampler_name"] == "dpm_adaptive"
-    assert wf["3"]["inputs"]["scheduler"] == "exponential"
+    assert wf["3"]["inputs"]["sampler_name"] == "euler_ancestral"
+    assert wf["3"]["inputs"]["scheduler"] == "sgm_uniform"
     assert wf["70"]["inputs"]["device"] == "cuda:1"
     assert wf["64"]["inputs"]["device"] == "cuda:1"
     assert wf["63"]["inputs"]["device"] == "cuda:1"
@@ -317,22 +317,32 @@ def test_zimage_template_graph_shape():
     assert wf["77"]["class_type"] == "easy ifElse"
     assert wf["77"]["inputs"]["boolean"] is True
     assert wf["78"]["class_type"] == "EmptyLatentImage"
-    assert wf["9"]["class_type"] == "SaveImageAdvanced"
+    assert wf["90"]["class_type"] == "SaveImageAdvanced"
+    assert wf["90"]["inputs"]["format.bit_depth"] == "16-bit"
+    assert wf["98"]["class_type"] == "RMBG"
+    assert wf["98"]["inputs"]["model"] == "RMBG-2.0"
+    assert wf["82"]["class_type"] == "Image Comparer (rgthree)"
+    assert wf["82"]["inputs"] == {"image_a": ["98", 0], "image_b": ["8", 0]}
+    assert wf["91"]["class_type"] == "ImageBatchMulti"
+    assert wf["91"]["inputs"]["image_1"] == ["98", 0]
+    assert wf["91"]["inputs"]["image_2"] == ["8", 0]
     # refine: ifElse false -> VAEEncode of resized output image
     wf2 = _build_zimage_workflow("refine", prof, 7, 8, 1.0, 512, 512, dev,
-                                 "dpm_adaptive", "exponential",
-                                 refine_of="ComfyUI_00004.png", denoise=0.5)
+                                 "euler_ancestral", "sgm_uniform",
+                                 refine_of="ComfyUI_00004.png", denoise=0.6)
     assert wf2["74"]["class_type"] == "LoadImageOutput"
     assert wf2["75"]["class_type"] == "ImageResizeKJv2"
     assert wf2["76"]["class_type"] == "VAEEncode"
     assert wf2["77"]["inputs"]["boolean"] is False
-    assert wf2["3"]["inputs"]["denoise"] == 0.5
-    # transparent: Rembg branch feeds SaveImageAdvanced
+    assert wf2["77"]["inputs"]["on_true"] == ["78", 0]
+    assert wf2["77"]["inputs"]["on_false"] == ["76", 0]
+    assert wf2["3"]["inputs"]["denoise"] == 0.6
+    # Alpha fallback preserves compare and batched advanced save.
     wf3 = _build_zimage_workflow("cutout", prof, 1, 8, 1.0, 512, 512, dev,
-                                 "dpm_adaptive", "exponential", transparent=True)
-    assert wf3["80"]["class_type"] == "Image Rembg (Remove Background)"
-    assert wf3["80"]["inputs"]["model"] == "u2net"
-    assert wf3["9"]["inputs"]["images"] == ["80", 0]
+                                 "euler_ancestral", "sgm_uniform",
+                                 transparent=True, rembg_engine="alpha")
+    assert wf3["98"]["class_type"] == "Image Remove Background (Alpha)"
+    assert wf3["90"]["inputs"]["images"] == ["91", 0]
 
 
 def test_generated_image_served_from_frameworks_dir(client, tmp_path, monkeypatch):

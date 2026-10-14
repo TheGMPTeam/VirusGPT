@@ -90,6 +90,11 @@
   .msg .who{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-dim);margin-bottom:3px}
   /* Generated images (e.g. render_image tool output) shown inline in chat. */
   .msg .gen-image{display:block;max-width:100%;max-height:360px;border-radius:12px;margin-top:6px;border:1px solid var(--border);cursor:pointer;object-fit:contain;background:var(--panel2)}
+  .image-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:6px;max-width:min(820px,100%)}
+  .image-compare-card{min-width:0}
+  .image-compare-card .gen-image{width:100%;height:auto;aspect-ratio:1/1}
+  .image-compare-label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--neon2);margin:2px 0 0 2px}
+  @media(max-width:700px){.image-compare-grid{grid-template-columns:1fr}}
   .msg .play{margin-top:6px;font-size:11px;background:none;border:1px solid var(--border);color:var(--neon2);text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* per-sentence play buttons: a compact row of ▶ icons (one per sentence),
      all on the same line. Icon-only, no text/blank lines; each plays its own

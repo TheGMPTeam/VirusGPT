@@ -59,6 +59,7 @@
       "base_url": "http://10.0.0.157:8188",
       "timeout": 180,
       "default_model": "z_image_turbo_bf16.safetensors",
+      "rembg_engine": "rmbg2",
       "zimage": {
         "name": "z-image-turbo",
         "unet": "z_image_turbo_bf16.safetensors",
@@ -69,10 +70,11 @@
         "shift": 3.0,
         "steps": 8,
         "cfg": 1.0,
-        "sampler": "dpm_adaptive",
-        "scheduler": "exponential",
-        "refine_sampler": "dpm_adaptive",
-        "refine_scheduler": "exponential",
+        "sampler": "euler_ancestral",
+        "scheduler": "sgm_uniform",
+        "refine_sampler": "euler_ancestral",
+        "refine_scheduler": "sgm_uniform",
+        "refine_denoise": 0.6,
         "refine_size": 512
       }
     },

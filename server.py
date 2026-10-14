@@ -1209,6 +1209,8 @@ async def generate_image(req: Request):
     if not (body.get("prompt") or "").strip():
         return JSONResponse({"status": "failed", "error": "missing prompt"}, status_code=400)
     from services import comfyui as _comfy
+    refine_of = body.get("refine_of") or None
+    denoise_default = 0.6 if refine_of else 1.0
     res = await _comfy.render_image(
         body["prompt"],
         model=body.get("model") or None,
@@ -1221,8 +1223,8 @@ async def generate_image(req: Request):
         sampler_name=body.get("sampler_name") or None,
         scheduler=body.get("scheduler") or None,
         transparent=bool(body.get("transparent")),
-        refine_of=body.get("refine_of") or None,
-        denoise=float(body.get("denoise") or 0.5),
+        refine_of=refine_of,
+        denoise=float(body.get("denoise") if body.get("denoise") is not None else denoise_default),
     )
     if res.get("status") == "completed":
         return JSONResponse(res)
