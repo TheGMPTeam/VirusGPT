@@ -60,6 +60,7 @@ async function runTeamRound(task){
   const turns=parseTurns(plan, lineup);
   kbReset(); kbAdd('backlog','Task', task, 'progress');
   // 2) Each agent takes its turn IN CHAT (with TTS).
+  const turnLog=[];
   for(let i=0;i<turns.length;i++){
     if(!__teamActive){ updatePlanPanel('stopped'); break; }
     const t=turns[i];
@@ -71,15 +72,22 @@ async function runTeamRound(task){
     const r = await teamTurn(persona, directive,
       { systemExtra:`You are ${persona.name}. It is your turn. State your contribution directly and concisely, as ${persona.name}. Do not ask questions or narrate — just say your part.`,
         connector:`🔁 ${planner.name} → ${persona.name}`, connectorWho:'System' });
+    turnLog.push({who:persona.name, task:t.task, output:r||''});
     if(card){ kbMove(card,'done'); }
     await new Promise(r=>setTimeout(r, 300));
   }
   if(!__teamActive){ $('#message-input').disabled=false; $('#btn-send').disabled=false; return; }
   // 3) Planner synthesizes a final wrap-up in chat.
+  // The server trims history to a small char budget, so "the turns above" are
+  // invisible to the model on long rounds. Pass the transcript EXPLICITLY in
+  // the synthesis message (per-turn and total caps keep it inside the window).
   updatePlanPanel('✓ synthesizing');
+  const capTurn = (s,n)=> s.length>n ? s.slice(0,n)+' [truncated]' : s;
+  let transcript = turnLog.map(t=>`--- ${t.who} (task: ${capTurn(t.task,160)}) ---\n${capTurn(t.output,1400)}`).join('\n\n');
+  if(transcript.length>6500) transcript = transcript.slice(-6500);
   await teamTurn(planner,
-    `Original goal: ${task}\n\nThe team has taken their turns above. Give a short final synthesis as ${planner.name}.`,
-    { systemExtra:`You are ${planner.name}, the team lead. Summarize the team's work concisely, speaking as ${planner.name}.`,
+    `Original goal: ${task}\n\nTHE TEAM'S ACTUAL OUTPUTS, in order (use these, do not claim you lack the record):\n\n${transcript}\n\nGive a short final synthesis as ${planner.name} that builds directly on the outputs above.`,
+    { systemExtra:`You are ${planner.name}, the team lead. Summarize the team's work concisely, speaking as ${planner.name}. Base the summary ONLY on the transcript provided in this message.`,
       connector:`🧠 ${planner.name} is synthesizing…`, connectorWho:'System' });
   updatePlanPanel('✓ done');
   __teamActive=false;
