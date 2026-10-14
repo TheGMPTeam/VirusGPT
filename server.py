@@ -11,7 +11,9 @@ import asyncio
 import os
 import sys
 import time
+import urllib.parse
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
@@ -408,11 +410,66 @@ async def suggest(req: Request):
 # --------------------------------------------------------------------------
 # TTS — proxy to PocketTTS
 # --------------------------------------------------------------------------
+_TTS_REWRITE_CACHE: dict = {}
+_TTS_REWRITE_SYS = (
+    "You rewrite ONE sentence so a text-to-speech voice reads it naturally and "
+    "conversationally. Rules: keep the exact same meaning and facts; expand "
+    "symbols, abbreviations, URLs, file paths, and math into spoken words "
+    "(for example 'n8n' -> 'n eight n', '~/.hermes' -> 'dot hermes in the home "
+    "folder'); remove markdown, code fences, asterisks, hashes, and emoji; "
+    "split run-on fragments into short spoken clauses; never add commentary, "
+    "greetings, or quotes. Output ONLY the rewritten sentence and nothing else."
+)
+
+
+async def _rewrite_for_tts(text: str, tts_cfg: dict) -> Optional[str]:
+    """Return a speakability-rewritten copy of `text`, or None to pass through.
+
+    Guards: cached per sentence; skipped for very short/numeric text; the
+    rewrite is rejected if the model rambles (>3x length) or fails, in which
+    case the original sentence is spoken unchanged.
+    """
+    t = (text or "").strip()
+    if len(t) < 12 or not any(c.isalpha() for c in t):
+        return None
+    hit = _TTS_REWRITE_CACHE.get(t)
+    if hit is not None:
+        return hit
+    from services import llm
+    model = (tts_cfg.get("rewrite_model")
+             or cfg.CONFIG["ollama"].get("default_model", "gemma4:e4b"))
+    base = cfg.CONFIG["ollama"].get("base_url", "http://127.0.0.1:11434")
+    out = await llm.complete(
+        model,
+        [{"role": "system", "content": _TTS_REWRITE_SYS},
+         {"role": "user", "content": t}],
+        base,
+        timeout=float(tts_cfg.get("rewrite_timeout", 12)),
+        options={"temperature": 0.2, "num_predict": 256},
+        think=False,
+    )
+    out = (out or "").strip()
+    if not out or len(out) > max(3 * len(t), len(t) + 300) or "\n\n" in out:
+        return None  # rambling / failed: speak the original
+    if len(_TTS_REWRITE_CACHE) > 512:
+        _TTS_REWRITE_CACHE.clear()
+    _TTS_REWRITE_CACHE[t] = out
+    return out
+
+
 @app.get("/api/tts")
 async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
     if not text:
         return JSONResponse({"error": "missing text"}, status_code=400)
     v = voice or cfg.CONFIG["tts"].get("default_voice", "nova")
+    # --- Speakability rewrite: rephrase the sentence for natural TTS delivery
+    # (expand symbols/abbreviations, kill markdown remnants, keep meaning).
+    # Runs per sentence; results are cached so replay/▶ buttons are instant.
+    tts_cfg = cfg.CONFIG.get("tts", {})
+    if tts_cfg.get("rewrite", True):
+        spoken = await _rewrite_for_tts(text, tts_cfg)
+        if spoken:
+            text = spoken
     # Resolve a locally-cloned voice handle to its stored WAV path.
     # SECURITY: only allow files inside DATA/voices — guard against traversal.
     if v.startswith("local:"):
@@ -429,7 +486,10 @@ async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
     if audio is None:
         return JSONResponse({"error": "TTS unavailable"}, status_code=502)
     mt = "audio/mpeg" if format == "mp3" else "audio/wav"
-    return StreamingResponse(iter([audio]), media_type=mt)
+    resp = StreamingResponse(iter([audio]), media_type=mt)
+    # Debug/inspection: what the voice actually reads (after rewrite).
+    resp.headers["X-TTS-Spoken"] = urllib.parse.quote(text)[:800]
+    return resp
 
 
 @app.get("/api/tts/voices")

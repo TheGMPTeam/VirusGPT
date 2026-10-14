@@ -23,7 +23,10 @@
     "enabled": true,
     "base_url": "http://10.0.0.157:49112",
     "default_voice": "alba",
-    "timeout": 120
+    "timeout": 120,
+    "rewrite": true,
+    "rewrite_model": "ornith-1.5:9b",
+    "rewrite_timeout": 12
   },
   "stt": {
     "enabled": true,

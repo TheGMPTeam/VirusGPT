@@ -69,6 +69,35 @@ async def stream_chat(
         yield {"error": str(exc) or f"Ollama error: {type(exc).__name__}"}
 
 
+async def complete(
+    model: str,
+    messages: list[dict],
+    base_url: str,
+    timeout: float = 20.0,
+    options: Optional[dict] = None,
+    think: Optional[bool] = None,
+) -> Optional[str]:
+    """Non-streaming chat completion. Returns the message content, or None.
+
+    `think=False` disables reasoning tokens on thinking models (gemma4,
+    ornith) — otherwise the num_predict budget is consumed by invisible
+    chain-of-thought and `content` comes back empty.
+    """
+    url = f"{base_url.rstrip('/')}/api/chat"
+    payload = {"model": model, "messages": messages, "stream": False}
+    if think is not None:
+        payload["think"] = bool(think)
+    if options:
+        payload["options"] = options
+    try:
+        r = await get_client().request("POST", url, json=payload, timeout=timeout)
+        if r.status_code == 200:
+            return ((r.json().get("message") or {}).get("content") or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("llm complete failed: %s", exc)
+    return None
+
+
 async def list_models(base_url: str) -> list[str]:
     try:
         r = await get_client().get(f"{base_url.rstrip('/')}/api/tags", timeout=8.0)
