@@ -368,7 +368,7 @@ function renderMissionBoard(st, goal){
 /* When a task completes, post its result as a clear chat message (one per task).
    Skips if already posted, and skips tasks with no useful result. If the result
    is JSON, prefer a 'summary'/'result'/'output' field over the raw blob. */
-function maybeEmitTaskResult(t){
+function maybeEmitTaskResult(t, missionId){
   if(t.status!=='completed') return;
   if(__emittedTaskResults[t.id]) return;
   __emittedTaskResults[t.id] = true;
@@ -389,6 +389,11 @@ function maybeEmitTaskResult(t){
     }catch(e){ /* keep raw */ }
   }
   pushMessage('assistant', body, who);
+  // Collect for the end-of-mission project download (full output, no caps).
+  if(missionId){
+    if(!__missionTurns[missionId]) __missionTurns[missionId] = [];
+    __missionTurns[missionId].push({who, role:'worker', task:t.title||'', output:body});
+  }
 }
 
 /* When an artifact is recorded, post a chat message with a link to open it. */
@@ -412,6 +417,7 @@ function maybeEmitArtifact(a, st){
    emitters above never touch it — so without this the final answer is computed
    and persisted but never shown. Guarded by __emittedFinal so it posts once. */
 let __emittedFinal = {};
+let __missionTurns = {};   // missionId -> [{who, role, task, output}] full outputs for the download
 function maybeEmitFinal(st){
   if(!st || !st.final_result || !st.final_result.trim()) return;
   if(__emittedFinal[st.id]) return;
@@ -419,6 +425,14 @@ function maybeEmitFinal(st){
   __emittedFinal[st.id] = true;
   const who = st.planner || 'Mission';
   pushMessage('assistant', st.final_result.trim(), who);
+  // Offer the full project package for this mission too (same ZIP format as
+  // team rounds: transcript + PROJECT.json + context.md + code files).
+  if(st.status==='completed'){
+    const turns = __missionTurns[st.id] || [];
+    const plan = (st.tasks||[]).map(t=>`@${t.agent}: ${t.title}`).join('\n');
+    pushProjectDownload(st.goal||'Mission', plan, turns, st.final_result.trim());
+  }
+  delete __missionTurns[st.id];
 }
 async function startMission(goalOverride){
   // The button is wired as `onclick = startMission`, so a click passes a DOM
@@ -439,6 +453,7 @@ async function startMission(goalOverride){
   $('#mission-state').innerHTML = 'Starting mission…';
   kbReset();
   __missionTaskCards = {}; __emittedTaskResults = {}; __emittedArtifacts = {}; __emittedFinal = {};
+  __missionTurns = {};
   __missionCard = kbAdd('progress','Mission (Planner)', goal, 'progress thinking');
   // Stop any prior poll/stream.
   if(__missionStream){ try{__missionStream.close();}catch(e){} __missionStream=null; }
@@ -474,7 +489,7 @@ async function startMission(goalOverride){
             kbMove(__missionCard,'done'); __missionCard.classList.remove('thinking','progress'); __missionCard.classList.add('done');
           } else { kbMove(__missionCard,'progress'); }
         }
-        if(Array.isArray(st.tasks)) st.tasks.forEach(t=>maybeEmitTaskResult(t));
+        if(Array.isArray(st.tasks)) st.tasks.forEach(t=>maybeEmitTaskResult(t, st.id));
         if(Array.isArray(st.artifacts)) st.artifacts.forEach(a=>maybeEmitArtifact(a, st));
         maybeEmitFinal(st);
       }catch(e){}
