@@ -21,6 +21,9 @@ COPY server.py .
 COPY config.json .
 COPY services/ ./services/
 COPY autonomous/ ./autonomous/
+COPY memory/ ./memory/
+COPY gateway/ ./gateway/
+COPY tools/ ./tools/
 COPY app/ ./app/
 COPY vgctl.py .
 

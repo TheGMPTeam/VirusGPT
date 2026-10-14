@@ -8,8 +8,8 @@
     "backend_url": ""
   },
   "ollama": {
-    "base_url": "http://10.0.0.120:11434",
-    "default_model": "qwen2.5:3b"
+    "base_url": "http://10.0.0.157:11434",
+    "default_model": "qwen3.6:27b-einstein"
   },
   "chat_timeout": 60,
   "chat": {
@@ -21,7 +21,7 @@
   },
   "tts": {
     "enabled": true,
-    "base_url": "http://localhost:49152",
+    "base_url": "http://10.0.0.157:49112",
     "default_voice": "alba",
     "timeout": 120
   },
@@ -48,12 +48,12 @@
   "services": {
     "n8n": {
       "enabled": true,
-      "base_url": "http://10.0.0.120:5678",
+      "base_url": "http://10.0.0.157:5678",
       "timeout": 30
     },
     "comfyui": {
       "enabled": true,
-      "base_url": "http://10.0.0.120:8188",
+      "base_url": "http://10.0.0.157:8188",
       "timeout": 180,
       "default_model": ""
     },
