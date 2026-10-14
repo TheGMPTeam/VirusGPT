@@ -318,7 +318,7 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
         wf["10"] = {
             "class_type": "easy imageRemBg",
             "inputs": {"images": ["8", 0], "rem_mode": "Inspyrenet",
-                       "image_output": "Hide", "save_prefix": "ComfyUI",
+                       "image_output": "Preview", "save_prefix": "ComfyUI",
                        "torchscript_jit": True, "add_background": "none",
                        "refine_foreground": False},
         }
