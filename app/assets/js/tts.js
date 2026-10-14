@@ -19,13 +19,28 @@ function resolveTTSHighlight(text, preferred, messageEl){
   const want=cleanMd(text||'');
   return [...root.querySelectorAll('.speakable-sentence')].find(el=>el.dataset.spoken===want) || null;
 }
+function scrollSpokenIntoView(el){
+  if(!el || !el.isConnected) return;
+  const box=document.querySelector('#messages');
+  if(!box) return;
+  const er=el.getBoundingClientRect(), br=box.getBoundingClientRect();
+  const pad=48;
+  let delta=0;
+  if(er.bottom>br.bottom-pad) delta=er.bottom-(br.bottom-pad);
+  else if(er.top<br.top+pad) delta=er.top-(br.top+pad);
+  if(delta){
+    // Move the chat panel itself. Native scrollIntoView can select the page or
+    // an outer layout ancestor and was observed to follow upward but not down.
+    box.scrollTo({top:box.scrollTop+delta, behavior:'smooth'});
+  }
+}
 function setTTSHighlight(text, preferred, messageEl){
   clearTTSHighlight();
   const el=resolveTTSHighlight(text, preferred, messageEl);
   if(el){
     ttsActiveHighlight=el;
     el.classList.add('tts-speaking');
-    try{ el.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(e){}
+    scrollSpokenIntoView(el);
   }
   return el;
 }

@@ -359,6 +359,39 @@ def test_spoken_sentence_highlight_targets_exact_prose_and_skips_code(browser):
     ctx.close()
 
 
+def test_spoken_highlight_scrolls_chat_down_and_up(browser):
+    """Regression: follow the spoken sentence in both directions inside #messages."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""async () => {
+      const box=document.querySelector('#messages');
+      box.innerHTML=''; box.style.height='180px'; box.style.flex='none';
+      box.style.overflowY='auto';
+      const spans=[];
+      for(let i=0;i<24;i++){
+        const msg=document.createElement('div'); msg.className='msg bot';
+        msg.style.minHeight='70px';
+        const bubble=document.createElement('div'); bubble.className='bubble';
+        renderRich(bubble, `Scrollable sentence number ${i}.`);
+        msg.appendChild(bubble); box.appendChild(msg);
+        spans.push(bubble.querySelector('.speakable-sentence'));
+      }
+      box.scrollTop=0;
+      scrollSpokenIntoView(spans.at(-1));
+      await new Promise(r=>setTimeout(r,500));
+      const down=box.scrollTop;
+      box.scrollTop=box.scrollHeight;
+      const bottom=box.scrollTop;
+      scrollSpokenIntoView(spans[0]);
+      await new Promise(r=>setTimeout(r,500));
+      const up=box.scrollTop;
+      return {down,bottom,up,max:box.scrollHeight-box.clientHeight};
+    }""")
+    assert result["down"] > 0, result
+    assert result["bottom"] > 0, result
+    assert result["up"] < result["bottom"], result
+    ctx.close()
+
+
 def test_sentence_play_buttons_match_highlight_spans(browser):
     ctx, page = _new_page(browser)
     result = page.evaluate("""async () => {
