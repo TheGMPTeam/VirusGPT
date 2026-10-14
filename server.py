@@ -181,22 +181,29 @@ def split_code_spans(text):
 
 
 def extract_code_blocks(text):
-    """Return the contents of every fenced/inline code span in `text`."""
+    """Return [(language, content)] for every fenced/inline code span.
+
+    `language` is the fence tag ('powershell', 'py', ...) or '' when absent.
+    """
     out = []
     for kind, chunk in split_code_spans(text):
         if kind != "code":
             continue
         body = chunk.strip()
+        lang = ""
         for fence in ("```", "~~~"):
             if body.startswith(fence) and body.endswith(fence) and len(body) >= 6:
-                body = body[3:-3]
-                nl = body.find("\n")
-                if 0 <= nl <= 20:  # drop the language tag line
-                    body = body[nl + 1:]
+                inner = body[3:-3]
+                nl = inner.find("\n")
+                if 0 <= nl <= 20 and re.fullmatch(r"[a-zA-Z0-9+_-]{1,12}", inner[:nl].strip()):
+                    lang = inner[:nl].strip()
+                    inner = inner[nl + 1:]
                 break
-        body = body.strip()
-        if body:
-            out.append(body)
+        else:
+            inner = body.strip("`")
+        inner = inner.strip()
+        if inner:
+            out.append((lang, inner))
     return out
 
 
@@ -464,14 +471,12 @@ async def export_project(req: Request):
         manifest = []
         for t in turns + ([{"who": "synthesis", "output": synthesis}] if synthesis else []):
             who = re.sub(r"[^a-z0-9]+", "-", (t.get("who") or "agent").lower()).strip("-")
-            for block in extract_code_blocks(t.get("output") or ""):
+            for lang, block in extract_code_blocks(t.get("output") or ""):
                 key = block.strip()
                 if key in seen:
                     continue
-                # Guess an extension from a fenced language tag or content.
+                # Extension from the fence language tag, else content heuristics.
                 ext = ".txt"
-                head = block.strip().splitlines()[0] if block.strip() else ""
-                lang = re.match(r"^```([a-zA-Z0-9+_-]{1,12})\s*$", head)
                 extmap = {"py": ".py", "python": ".py", "bash": ".sh", "sh": ".sh",
                           "shell": ".sh", "ps1": ".ps1", "powershell": ".ps1",
                           "js": ".js", "javascript": ".js", "json": ".json",
@@ -479,12 +484,12 @@ async def export_project(req: Request):
                           "css": ".css", "md": ".md", "dockerfile": ".dockerfile",
                           "sql": ".sql", "toml": ".toml", "ts": ".ts"}
                 if lang:
-                    ext = extmap.get(lang.group(1).lower(), ".txt")
+                    ext = extmap.get(lang.lower(), ".txt")
                 elif re.match(r"^\s*(def |import |from \w+ import )", block):
                     ext = ".py"
                 elif re.match(r"^\s*(Write-|Get-|Set-|\$)", block):
                     ext = ".ps1"
-                elif re.match(r"^\s*(#!/|sudo |apt |curl |docker )", block):
+                elif re.match(r"^\s*(#!/|sudo |apt |curl |docker |winget )", block):
                     ext = ".sh"
                 n = seen.get(ext, 0) + 1
                 seen[ext] = n
@@ -493,7 +498,7 @@ async def export_project(req: Request):
                 manifest.append({"file": fname, "by": t.get("who", "agent")})
                 project["code_files"].append(
                     {"path": fname, "author": t.get("who", "agent"),
-                     "language": ext.lstrip("."), "content": block.strip()})
+                     "language": lang or ext.lstrip("."), "content": block.strip()})
         z.writestr("code/manifest.json", json.dumps(manifest, indent=2))
         z.writestr("PROJECT.json", json.dumps(project, indent=2))
 
