@@ -114,18 +114,81 @@ def _default_model() -> str:
     return cfg.service_cfg("comfyui").get("default_model") or ""
 
 
+async def _multigpu_devices() -> Optional[Dict[str, str]]:
+    """Device placement for the ComfyUI-MultiGPU loader node, or None.
+
+    Returns None when the ComfyUI-MultiGPU custom node pack is absent, so the
+    caller falls back to plain CheckpointLoaderSimple. Placement sources, in
+    order: VG_COMFY_UNET_DEVICE / VG_COMFY_CLIP_DEVICE / VG_COMFY_VAE_DEVICE
+    env vars, else the CUDA device with the most free VRAM (auto-balance
+    across cards). 'cpu' is always a valid placement.
+    """
+    try:
+        r = await get_client().get(
+            f"{_base()}/object_info/CheckpointLoaderAdvancedMultiGPU",
+            headers=_auth_headers(), timeout=10.0)
+        if r.status_code != 200:
+            return None
+        req = (r.json().get("CheckpointLoaderAdvancedMultiGPU", {})
+               .get("input", {}).get("required", {}))
+        devices = req.get("unet_device", [[]])[0]
+        if not devices:
+            return None
+        devices = [str(d) for d in devices]
+    except Exception:
+        return None
+
+    import os
+    fallback = devices[0] if devices else "cpu"
+
+    def _pick(name: str) -> str:
+        v = os.environ.get(name, "").strip()
+        return v if v in devices else ""
+
+    unet, clip, vae = _pick("VG_COMFY_UNET_DEVICE"), _pick("VG_COMFY_CLIP_DEVICE"), _pick("VG_COMFY_VAE_DEVICE")
+    if not (unet and clip and vae):
+        # Auto: greedily place on the CUDA device with the most free VRAM.
+        best = fallback
+        try:
+            sr = await get_client().get(f"{_base()}/system_stats", headers=_auth_headers(), timeout=6.0)
+            if sr.status_code == 200:
+                devs = [(d.get("vram_free", 0), d.get("name", "").split(":")[0] + ":" + str(d.get("index", 0)))
+                        for d in sr.json().get("devices", []) if d.get("type") == "cuda"]
+                devs = [(free, n) for free, n in devs if n in devices]
+                if devs:
+                    best = max(devs)[1]
+        except Exception:
+            pass
+        unet = unet or best
+        clip = clip or best
+        vae = vae or best
+    return {"unet_device": unet, "clip_device": clip, "vae_device": vae}
+
+
 def _build_workflow(prompt: str, model: str, seed: int,
                     steps: int, cfg_scale: float, width: int, height: int,
-                    negative: str) -> Dict[str, Any]:
+                    negative: str,
+                    multigpu: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """API-format txt2img graph (class_type per node).
 
     Node ids are stable so the output node (9) is always the SaveImage.
+    When `multigpu` is provided (ComfyUI-MultiGPU pack detected), node 3
+    becomes CheckpointLoaderAdvancedMultiGPU with explicit per-component
+    device placement, spreading UNet/CLIP/VAE across cards and freeing the
+    compute GPU for sampling.
     """
-    return {
-        "3": {
+    if multigpu:
+        loader = {
+            "class_type": "CheckpointLoaderAdvancedMultiGPU",
+            "inputs": {"ckpt_name": model, **multigpu},
+        }
+    else:
+        loader = {
             "class_type": "CheckpointLoaderSimple",
             "inputs": {"ckpt_name": model},
-        },
+        }
+    return {
+        "3": loader,
         "6": {
             "class_type": "CLIPTextEncode",
             "inputs": {"text": prompt, "clip": ["3", 1]},
@@ -208,7 +271,8 @@ async def render_image(
         seed = random.randint(0, 2**31 - 1)
 
     workflow = _build_workflow(prompt, chosen, seed, steps, cfg_scale,
-                               width, height, negative_prompt)
+                               width, height, negative_prompt,
+                               multigpu=await _multigpu_devices())
 
     try:
         # 1. submit
