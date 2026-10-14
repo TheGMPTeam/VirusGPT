@@ -290,6 +290,51 @@ def test_generated_image_served(client):
     assert r.status_code == 200
 
 
+def test_zimage_template_graph_shape():
+    # REGRESSION: graph must match the user's ComfyUI template — split
+    # MultiGPU loaders on the configured device, AuraFlow shift+flow,
+    # ConditioningZeroOut negative, easy ifElse latent switch, Rembg
+    # transparent branch, SaveImageAdvanced output.
+    from services.comfyui import _build_zimage_workflow
+    prof = {"unet": "z_image_turbo_bf16.safetensors",
+            "clip": "qwen_3_4b.safetensors", "clip_type": "lumina2",
+            "vae": "ae.safetensors", "shift": 3.0}
+    dev = {"unet_device": "cuda:1", "clip_device": "cuda:1", "vae_device": "cuda:1"}
+    wf = _build_zimage_workflow("mascot", prof, 61615390298286, 8, 1.0, 512, 512,
+                                dev, "dpm_adaptive", "exponential")
+    assert wf["11"]["class_type"] == "ModelSamplingAuraFlow"
+    assert wf["11"]["inputs"]["sampling"] == "flow"
+    assert wf["11"]["inputs"]["shift"] == 3.0
+    assert wf["3"]["inputs"]["latent_image"] == ["77", 0]
+    assert wf["3"]["inputs"]["negative"] == ["33", 0]
+    assert wf["3"]["inputs"]["sampler_name"] == "dpm_adaptive"
+    assert wf["3"]["inputs"]["scheduler"] == "exponential"
+    assert wf["70"]["inputs"]["device"] == "cuda:1"
+    assert wf["64"]["inputs"]["device"] == "cuda:1"
+    assert wf["63"]["inputs"]["device"] == "cuda:1"
+    assert wf["33"]["class_type"] == "ConditioningZeroOut"
+    # txt2img: ifElse true -> EmptyLatentImage
+    assert wf["77"]["class_type"] == "easy ifElse"
+    assert wf["77"]["inputs"]["boolean"] is True
+    assert wf["78"]["class_type"] == "EmptyLatentImage"
+    assert wf["9"]["class_type"] == "SaveImageAdvanced"
+    # refine: ifElse false -> VAEEncode of resized output image
+    wf2 = _build_zimage_workflow("refine", prof, 7, 8, 1.0, 512, 512, dev,
+                                 "dpm_adaptive", "exponential",
+                                 refine_of="ComfyUI_00004.png", denoise=0.5)
+    assert wf2["74"]["class_type"] == "LoadImageOutput"
+    assert wf2["75"]["class_type"] == "ImageResizeKJv2"
+    assert wf2["76"]["class_type"] == "VAEEncode"
+    assert wf2["77"]["inputs"]["boolean"] is False
+    assert wf2["3"]["inputs"]["denoise"] == 0.5
+    # transparent: Rembg branch feeds SaveImageAdvanced
+    wf3 = _build_zimage_workflow("cutout", prof, 1, 8, 1.0, 512, 512, dev,
+                                 "dpm_adaptive", "exponential", transparent=True)
+    assert wf3["80"]["class_type"] == "Image Rembg (Remove Background)"
+    assert wf3["80"]["inputs"]["model"] == "u2net"
+    assert wf3["9"]["inputs"]["images"] == ["80", 0]
+
+
 def test_generated_image_served_from_frameworks_dir(client, tmp_path, monkeypatch):
     # REGRESSION: in a frozen .app the data tree lands under Contents/Frameworks
     # but ROOT points at Contents/Resources. /api/generated must still serve a

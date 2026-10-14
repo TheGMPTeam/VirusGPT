@@ -253,134 +253,25 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
                            devices: Dict[str, str],
                            sampler_name: str, scheduler: str,
                            transparent: bool = False,
-                           rembg_engine: str = "inspyrenet") -> Dict[str, Any]:
+                           rembg_engine: str = "u2net",
+                           refine_of: Optional[str] = None,
+                           denoise: float = 1.0) -> Dict[str, Any]:
     """API-format graph for Z-Image Turbo (Lumina2 flow model).
 
-    Split loaders (UNET/CLIP/VAE) with MultiGPU device placement,
-    ModelSamplingAuraFlow shift, SD3 latent, zeroed negative conditioning
-    (cfg 1.0 flow model), and optional Inspyrenet alpha cutout before save.
-    Node id 9 is always SaveImage.
+    Matches the user's ComfyUI template: split MultiGPU loaders,
+    ModelSamplingAuraFlow (shift + sampling 'flow'), ConditioningZeroOut
+    negatives, and an easy ifElse node that switches the KSampler latent
+    between txt2img (EmptyLatentImage) and img2img refine
+    (LoadImageOutput -> ImageResizeKJv2 -> VAEEncode). Optional transparency
+    uses the CPU-friendly Rembg node (u2net + alpha matting) instead of
+    Inspyrenet, which OOMs. SaveImageAdvanced (node 9) is always the output.
     """
     dev_u = devices.get("unet_device", "cpu")
     dev_c = devices.get("clip_device", "cpu")
     dev_v = devices.get("vae_device", "cpu")
+    size = int(prof.get("refine_size", 512)) if refine_of else width
+    hsize = int(prof.get("refine_size", 512)) if refine_of else height
     wf: Dict[str, Any] = {
-        "3": {
-            "class_type": "UNETLoaderMultiGPU",
-            "inputs": {"unet_name": prof["unet"], "weight_dtype": prof.get("weight_dtype", "default"),
-                       "device": dev_u},
-        },
-        "11": {
-            "class_type": "ModelSamplingAuraFlow",
-            "inputs": {"shift": float(prof.get("shift", 3.0)), "model": ["3", 0]},
-        },
-        "2": {
-            "class_type": "CLIPLoaderMultiGPU",
-            "inputs": {"clip_name": prof["clip"], "type": prof.get("clip_type", "lumina2"),
-                       "device": dev_c},
-        },
-        "6": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {"text": prompt, "clip": ["2", 0]},
-        },
-        "7": {
-            "class_type": "ConditioningZeroOut",
-            "inputs": {"conditioning": ["6", 0]},
-        },
-        "5": {
-            "class_type": "EmptySD3LatentImage",
-            "inputs": {"width": width, "height": height, "batch_size": 1},
-        },
-        "4": {
-            "class_type": "KSampler",
-            "inputs": {
-                "seed": seed,
-                "steps": steps,
-                "cfg": cfg_scale,
-                "sampler_name": sampler_name,
-                "scheduler": scheduler,
-                "denoise": 1.0,
-                "model": ["11", 0],
-                "positive": ["6", 0],
-                "negative": ["7", 0],
-                "latent_image": ["5", 0],
-            },
-        },
-        "1": {
-            "class_type": "VAELoaderMultiGPU",
-            "inputs": {"vae_name": prof["vae"], "device": dev_v},
-        },
-        "8": {
-            "class_type": "VAEDecode",
-            "inputs": {"samples": ["4", 0], "vae": ["1", 0]},
-        },
-    }
-    if transparent:
-        if rembg_engine == "alpha":
-            # Pure tensor op, no model, no VRAM. Good on clean backgrounds.
-            wf["10"] = {
-                "class_type": "Image Remove Background (Alpha)",
-                "inputs": {"images": ["8", 0], "mode": "background",
-                           "threshold": 127, "threshold_tolerance": 2},
-            }
-        else:
-            wf["10"] = {
-                "class_type": "easy imageRemBg",
-                "inputs": {"images": ["8", 0], "rem_mode": "Inspyrenet",
-                           "image_output": "Preview", "save_prefix": "ComfyUI",
-                           "torchscript_jit": True, "add_background": "none",
-                           "refine_foreground": False},
-            }
-        wf["9"] = {
-            "class_type": "SaveImage",
-            "inputs": {"images": ["10", 0], "filename_prefix": "virusgpt"},
-        }
-    else:
-        wf["9"] = {
-            "class_type": "SaveImage",
-            "inputs": {"images": ["8", 0], "filename_prefix": "virusgpt"},
-        }
-    return wf
-
-
-def _build_refine_workflow(image: str, prompt: str, prof: Dict[str, str],
-                           seed: int, steps: int, cfg_scale: float,
-                           devices: Dict[str, str],
-                           sampler_name: str, scheduler: str,
-                           denoise: float = 0.5,
-                           size: int = 512) -> Dict[str, Any]:
-    """API-format img2img refine graph: re-detail an existing output image.
-
-    LoadImageOutput -> ImageResizeKJv2 (alpha becomes the inpaint mask) ->
-    VAEEncodeForInpaint -> KSampler at partial denoise. Areas outside the
-    subject are preserved; the subject is re-rendered with the new prompt.
-    Node id 9 is always SaveImage.
-    """
-    dev_u = devices.get("unet_device", "cpu")
-    dev_c = devices.get("clip_device", "cpu")
-    dev_v = devices.get("vae_device", "cpu")
-    combo = image if " [" in image else f"{image} [output]"
-    return {
-        "74": {
-            "class_type": "LoadImageOutput",
-            "inputs": {"image": combo},
-        },
-        "75": {
-            "class_type": "ImageResizeKJv2",
-            "inputs": {"width": size, "height": size, "upscale_method": "lanczos",
-                       "keep_proportion": "resize", "pad_color": "0, 0, 0",
-                       "crop_position": "center", "divisible_by": 2, "device": "cpu",
-                       "image": ["74", 0], "mask": ["74", 1]},
-        },
-        "63": {
-            "class_type": "VAELoaderMultiGPU",
-            "inputs": {"vae_name": prof["vae"], "device": dev_v},
-        },
-        "64": {
-            "class_type": "CLIPLoaderMultiGPU",
-            "inputs": {"clip_name": prof["clip"], "type": prof.get("clip_type", "lumina2"),
-                       "device": dev_c},
-        },
         "70": {
             "class_type": "UNETLoaderMultiGPU",
             "inputs": {"unet_name": prof["unet"], "weight_dtype": prof.get("weight_dtype", "default"),
@@ -388,7 +279,13 @@ def _build_refine_workflow(image: str, prompt: str, prof: Dict[str, str],
         },
         "11": {
             "class_type": "ModelSamplingAuraFlow",
-            "inputs": {"shift": float(prof.get("shift", 3.0)), "model": ["70", 0]},
+            "inputs": {"shift": float(prof.get("shift", 3.0)), "sampling": "flow",
+                       "model": ["70", 0]},
+        },
+        "64": {
+            "class_type": "CLIPLoaderMultiGPU",
+            "inputs": {"clip_name": prof["clip"], "type": prof.get("clip_type", "lumina2"),
+                       "device": dev_c},
         },
         "27": {
             "class_type": "CLIPTextEncode",
@@ -398,35 +295,90 @@ def _build_refine_workflow(image: str, prompt: str, prof: Dict[str, str],
             "class_type": "ConditioningZeroOut",
             "inputs": {"conditioning": ["27", 0]},
         },
-        "73": {
-            "class_type": "VAEEncodeForInpaint",
-            "inputs": {"grow_mask_by": 0, "pixels": ["75", 0], "vae": ["63", 0],
-                       "mask": ["75", 3]},
-        },
-        "3": {
-            "class_type": "KSampler",
-            "inputs": {
-                "seed": seed,
-                "steps": steps,
-                "cfg": cfg_scale,
-                "sampler_name": sampler_name,
-                "scheduler": scheduler,
-                "denoise": denoise,
-                "model": ["11", 0],
-                "positive": ["27", 0],
-                "negative": ["33", 0],
-                "latent_image": ["73", 0],
-            },
-        },
-        "8": {
-            "class_type": "VAEDecode",
-            "inputs": {"samples": ["3", 0], "vae": ["63", 0]},
-        },
-        "9": {
-            "class_type": "SaveImage",
-            "inputs": {"images": ["8", 0], "filename_prefix": "virusgpt"},
+        "63": {
+            "class_type": "VAELoaderMultiGPU",
+            "inputs": {"vae_name": prof["vae"], "device": dev_v},
         },
     }
+    if refine_of:
+        combo = refine_of if " [" in refine_of else f"{refine_of} [output]"
+        wf["74"] = {
+            "class_type": "LoadImageOutput",
+            "inputs": {"image": combo},
+        }
+        wf["75"] = {
+            "class_type": "ImageResizeKJv2",
+            "inputs": {"width": size, "height": hsize, "upscale_method": "lanczos",
+                       "keep_proportion": "resize", "pad_color": "0, 0, 0",
+                       "crop_position": "center", "divisible_by": 2, "device": "cpu",
+                       "image": ["74", 0], "mask": ["74", 1]},
+        }
+        wf["76"] = {
+            "class_type": "VAEEncode",
+            "inputs": {"pixels": ["75", 0], "vae": ["63", 0]},
+        }
+        wf["77"] = {
+            "class_type": "easy ifElse",
+            "inputs": {"boolean": False, "on_true": ["76", 0], "on_false": ["76", 0]},
+        }
+    else:
+        wf["78"] = {
+            "class_type": "EmptyLatentImage",
+            "inputs": {"width": size, "height": hsize, "batch_size": 1},
+        }
+        wf["77"] = {
+            "class_type": "easy ifElse",
+            "inputs": {"boolean": True, "on_true": ["78", 0], "on_false": ["78", 0]},
+        }
+    wf["3"] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg_scale,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+            "denoise": denoise,
+            "model": ["11", 0],
+            "positive": ["27", 0],
+            "negative": ["33", 0],
+            "latent_image": ["77", 0],
+        },
+    }
+    wf["8"] = {
+        "class_type": "VAEDecode",
+        "inputs": {"samples": ["3", 0], "vae": ["63", 0]},
+    }
+    final_src = "8"
+    if transparent:
+        if rembg_engine == "alpha":
+            # Pure tensor op, no model, no VRAM. Good on clean backgrounds.
+            wf["80"] = {
+                "class_type": "Image Remove Background (Alpha)",
+                "inputs": {"images": ["8", 0], "mode": "background",
+                           "threshold": 127, "threshold_tolerance": 2},
+            }
+        else:
+            # Rembg u2net on CPU with alpha matting (the template's settings).
+            wf["80"] = {
+                "class_type": "Image Rembg (Remove Background)",
+                "inputs": {"images": ["8", 0], "transparency": True,
+                           "model": str(prof.get("rembg_model", "u2net")),
+                           "post_processing": True, "only_mask": False,
+                           "alpha_matting": True,
+                           "alpha_matting_foreground_threshold": int(prof.get("rembg_fg_threshold", 240)),
+                           "alpha_matting_background_threshold": int(prof.get("rembg_bg_threshold", 10)),
+                           "alpha_matting_erode_size": int(prof.get("rembg_erode", 10)),
+                           "background_color": "none"},
+            }
+        final_src = "80"
+    wf["9"] = {
+        "class_type": "SaveImageAdvanced",
+        "inputs": {"filename_prefix": "virusgpt", "format": "png",
+                   "format.bit_depth": "8-bit", "format.input_color_space": "sRGB",
+                   "images": [final_src, 0]},
+    }
+    return wf
 
 
 async def render_image(
@@ -497,26 +449,27 @@ async def render_image(
         if cfg_scale == 7.0:
             cfg_scale = 1.0
         sampler_name = sampler_name or prof.get("refine_sampler", "dpm_adaptive")
-        scheduler = scheduler or prof.get("refine_scheduler", "beta")
-        workflow = _build_refine_workflow(
-            refine_of, prompt, prof, seed, steps, cfg_scale, dev_map,
-            sampler_name, scheduler, denoise=denoise,
-            size=int(prof.get("refine_size", 512)))
+        scheduler = scheduler or prof.get("refine_scheduler", "exponential")
+        workflow = _build_zimage_workflow(
+            prompt, prof, seed, steps, cfg_scale, width, height, dev_map,
+            sampler_name, scheduler, transparent=transparent,
+            rembg_engine=str(cfg.service_cfg("comfyui").get("rembg_engine", "u2net")),
+            refine_of=refine_of, denoise=denoise)
     elif _is_zimage(chosen):
         prof = _zimage_profile()
         # Z-Image Turbo winning settings: 8 steps, cfg 1.0,
-        # euler_ancestral_cfg_pp + exponential scheduler.
+        # dpm_adaptive + exponential scheduler (template default).
         if steps == 25:
             steps = int(prof.get("steps", 8))
         if cfg_scale == 7.0:
             cfg_scale = float(prof.get("cfg", 1.0))
-        sampler_name = sampler_name or prof.get("sampler", "euler_ancestral_cfg_pp")
+        sampler_name = sampler_name or prof.get("sampler", "dpm_adaptive")
         scheduler = scheduler or prof.get("scheduler", "exponential")
         workflow = _build_zimage_workflow(
             prompt, prof, seed, steps, cfg_scale, width, height,
             dev_map,
             sampler_name, scheduler, transparent=transparent,
-            rembg_engine=str(cfg.service_cfg("comfyui").get("rembg_engine", "alpha")))
+            rembg_engine=str(cfg.service_cfg("comfyui").get("rembg_engine", "u2net")))
     else:
         sampler_name = sampler_name or "dpmpp_2m"
         scheduler = scheduler or "karras"
@@ -555,6 +508,37 @@ async def render_image(
             await asyncio.sleep(1.5)
         else:
             return {"status": "failed", "error": "timed out waiting for ComfyUI to finish"}
+
+        if final.get("status", {}).get("status_str") == "error":
+            # Rembg/Inspyrenet ONNX nodes hard-pin to container GPU 0 and can
+            # fail with CUBLAS resource errors. Fall back once to the pure
+            # tensor alpha-threshold cutout for transparent jobs.
+            err_blob = str(final.get("status", {}).get("messages", ""))
+            if (transparent and _is_zimage(chosen)
+                    and "Remove Background" in err_blob and not refine_of):
+                prof = _zimage_profile()
+                workflow = _build_zimage_workflow(
+                    prompt, prof, seed, steps, cfg_scale, width, height, dev_map,
+                    sampler_name, scheduler, transparent=True, rembg_engine="alpha",
+                    refine_of=refine_of, denoise=denoise)
+                retry = await get_client().post(
+                    f"{base}/prompt",
+                    json={"prompt": workflow, "client_id": str(uuid.uuid4)},
+                    headers=_auth_headers(), timeout=15.0)
+                if retry.status_code == 200 and retry.json().get("prompt_id"):
+                    prompt_id = retry.json()["prompt_id"]
+                    deadline = asyncio.get_event_loop().time() + to
+                    final = {}
+                    while asyncio.get_event_loop().time() < deadline:
+                        hist = await get_client().get(f"{base}/history/{prompt_id}",
+                                                      headers=_auth_headers(), timeout=10.0)
+                        if hist.status_code == 200:
+                            data = hist.json().get(prompt_id, {})
+                            status = data.get("status", {})
+                            if status.get("status_str") == "error" or status.get("completed") is True:
+                                final = data
+                                break
+                        await asyncio.sleep(1.5)
 
         if final.get("status", {}).get("status_str") == "error":
             msgs = final.get("status", {}).get("messages", [])

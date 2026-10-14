@@ -106,7 +106,7 @@ def stub_comfyui(monkeypatch):
         return ["sd_xl.safetensors"]
 
     async def fake_render(prompt, model=None, negative_prompt="", steps=25,
-                          cfg_scale=7.0, width=1024, height=1024):
+                          cfg_scale=7.0, width=1024, height=1024, **kwargs):
         # Write a tiny PNG so /api/generated/{name} can serve it.
         gen_dir = ROOT / "data" / "generated"
         gen_dir.mkdir(parents=True, exist_ok=True)

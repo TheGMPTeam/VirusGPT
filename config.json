@@ -69,10 +69,10 @@
         "shift": 3.0,
         "steps": 8,
         "cfg": 1.0,
-        "sampler": "euler_ancestral_cfg_pp",
+        "sampler": "dpm_adaptive",
         "scheduler": "exponential",
         "refine_sampler": "dpm_adaptive",
-        "refine_scheduler": "beta",
+        "refine_scheduler": "exponential",
         "refine_size": 512
       }
     },
