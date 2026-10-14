@@ -67,7 +67,10 @@
         "steps": 8,
         "cfg": 1.0,
         "sampler": "euler_ancestral_cfg_pp",
-        "scheduler": "exponential"
+        "scheduler": "exponential",
+        "refine_sampler": "dpm_adaptive",
+        "refine_scheduler": "beta",
+        "refine_size": 512
       }
     },
     "blender": {

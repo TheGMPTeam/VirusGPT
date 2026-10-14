@@ -343,6 +343,92 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
     return wf
 
 
+def _build_refine_workflow(image: str, prompt: str, prof: Dict[str, str],
+                           seed: int, steps: int, cfg_scale: float,
+                           devices: Dict[str, str],
+                           sampler_name: str, scheduler: str,
+                           denoise: float = 0.5,
+                           size: int = 512) -> Dict[str, Any]:
+    """API-format img2img refine graph: re-detail an existing output image.
+
+    LoadImageOutput -> ImageResizeKJv2 (alpha becomes the inpaint mask) ->
+    VAEEncodeForInpaint -> KSampler at partial denoise. Areas outside the
+    subject are preserved; the subject is re-rendered with the new prompt.
+    Node id 9 is always SaveImage.
+    """
+    dev_u = devices.get("unet_device", "cpu")
+    dev_c = devices.get("clip_device", "cpu")
+    dev_v = devices.get("vae_device", "cpu")
+    combo = image if " [" in image else f"{image} [output]"
+    return {
+        "74": {
+            "class_type": "LoadImageOutput",
+            "inputs": {"image": combo},
+        },
+        "75": {
+            "class_type": "ImageResizeKJv2",
+            "inputs": {"width": size, "height": size, "upscale_method": "lanczos",
+                       "keep_proportion": "resize", "pad_color": "0, 0, 0",
+                       "crop_position": "center", "divisible_by": 2, "device": "cpu",
+                       "image": ["74", 0], "mask": ["74", 1]},
+        },
+        "63": {
+            "class_type": "VAELoaderMultiGPU",
+            "inputs": {"vae_name": prof["vae"], "device": dev_v},
+        },
+        "64": {
+            "class_type": "CLIPLoaderMultiGPU",
+            "inputs": {"clip_name": prof["clip"], "type": prof.get("clip_type", "lumina2"),
+                       "device": dev_c},
+        },
+        "70": {
+            "class_type": "UNETLoaderMultiGPU",
+            "inputs": {"unet_name": prof["unet"], "weight_dtype": prof.get("weight_dtype", "default"),
+                       "device": dev_u},
+        },
+        "11": {
+            "class_type": "ModelSamplingAuraFlow",
+            "inputs": {"shift": float(prof.get("shift", 3.0)), "model": ["70", 0]},
+        },
+        "27": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": prompt, "clip": ["64", 0]},
+        },
+        "33": {
+            "class_type": "ConditioningZeroOut",
+            "inputs": {"conditioning": ["27", 0]},
+        },
+        "73": {
+            "class_type": "VAEEncodeForInpaint",
+            "inputs": {"grow_mask_by": 0, "pixels": ["75", 0], "vae": ["63", 0],
+                       "mask": ["75", 3]},
+        },
+        "3": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": seed,
+                "steps": steps,
+                "cfg": cfg_scale,
+                "sampler_name": sampler_name,
+                "scheduler": scheduler,
+                "denoise": denoise,
+                "model": ["11", 0],
+                "positive": ["27", 0],
+                "negative": ["33", 0],
+                "latent_image": ["73", 0],
+            },
+        },
+        "8": {
+            "class_type": "VAEDecode",
+            "inputs": {"samples": ["3", 0], "vae": ["63", 0]},
+        },
+        "9": {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["8", 0], "filename_prefix": "virusgpt"},
+        },
+    }
+
+
 async def render_image(
     prompt: str,
     *,
@@ -357,8 +443,13 @@ async def render_image(
     sampler_name: Optional[str] = None,
     scheduler: Optional[str] = None,
     transparent: bool = False,
+    refine_of: Optional[str] = None,
+    denoise: float = 0.5,
 ) -> Dict[str, Any]:
     """Generate one image from `prompt`. Returns a result dict.
+
+    refine_of: ComfyUI output filename to img2img-refine instead of
+    txt2img (the "update the last image" path).
 
     On success:  {"status": "completed", "file": "...png",
                   "url": "/api/generated/...png", "prompt_id": "..."}
@@ -377,6 +468,12 @@ async def render_image(
 
     # Resolve model: explicit > config default > first available checkpoint.
     chosen = model or _default_model()
+    if refine_of:
+        # refine targets a ComfyUI output image; strip the local uuid prefix
+        # (render_image stores files as "<uuid_hex>_<comfyui_filename>").
+        if "_" in refine_of and refine_of.split("_", 1)[0].isalnum() and len(refine_of.split("_", 1)[0]) >= 16:
+            refine_of = refine_of.split("_", 1)[1]
+        chosen = chosen or _default_model()
     if not chosen:
         models = await comfyui_models()
         if models:
@@ -390,7 +487,22 @@ async def render_image(
         seed = random.randint(0, 2**31 - 1)
 
     devices = await _multigpu_devices()
-    if _is_zimage(chosen):
+    dev_map = devices or {"unet_device": "cpu", "clip_device": "cpu", "vae_device": "cpu"}
+    if refine_of:
+        prof = _zimage_profile()
+        if not prof:
+            return {"status": "failed", "error": "refine requires the zimage profile in config"}
+        if steps == 25:
+            steps = 8
+        if cfg_scale == 7.0:
+            cfg_scale = 1.0
+        sampler_name = sampler_name or prof.get("refine_sampler", "dpm_adaptive")
+        scheduler = scheduler or prof.get("refine_scheduler", "beta")
+        workflow = _build_refine_workflow(
+            refine_of, prompt, prof, seed, steps, cfg_scale, dev_map,
+            sampler_name, scheduler, denoise=denoise,
+            size=int(prof.get("refine_size", 512)))
+    elif _is_zimage(chosen):
         prof = _zimage_profile()
         # Z-Image Turbo winning settings: 8 steps, cfg 1.0,
         # euler_ancestral_cfg_pp + exponential scheduler.
@@ -402,7 +514,7 @@ async def render_image(
         scheduler = scheduler or prof.get("scheduler", "exponential")
         workflow = _build_zimage_workflow(
             prompt, prof, seed, steps, cfg_scale, width, height,
-            devices or {"unet_device": "cpu", "clip_device": "cpu", "vae_device": "cpu"},
+            dev_map,
             sampler_name, scheduler, transparent=transparent,
             rembg_engine=str(cfg.service_cfg("comfyui").get("rembg_engine", "alpha")))
     else:
@@ -475,6 +587,7 @@ async def render_image(
         return {
             "status": "completed",
             "file": safe,
+            "comfyui_file": fname,
             "url": f"/api/generated/{safe}",
             "prompt_id": prompt_id,
             "model": chosen,

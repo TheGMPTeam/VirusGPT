@@ -952,6 +952,8 @@ async def generate_image(req: Request):
         sampler_name=body.get("sampler_name") or None,
         scheduler=body.get("scheduler") or None,
         transparent=bool(body.get("transparent")),
+        refine_of=body.get("refine_of") or None,
+        denoise=float(body.get("denoise") or 0.5),
     )
     if res.get("status") == "completed":
         return JSONResponse(res)

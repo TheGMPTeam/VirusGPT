@@ -127,7 +127,7 @@ function addMsgEl(role, text, persona){
 /* Render a message whose body is one or more generated images (e.g. a mission
    task that called the render_image tool). Each image links to the served
    /api/generated/... URL so the user can open it full-size. */
-function pushImageMessage(role, urls, caption, personaName){
+function pushImageMessage(role, urls, caption, personaName, comfyuiFile){
   const wrap=document.createElement('div'); wrap.className='msg '+(role==='user'?'user':'bot');
   const av=document.createElement('div'); av.className='persona-avatar';
   if(role==='user'){av.style.background='var(--neon2)';av.textContent='🧑';}
@@ -149,6 +149,17 @@ function pushImageMessage(role, urls, caption, personaName){
     img.onclick=()=>window.open(img.src,'_blank');
     img.title='Open image';
     col.appendChild(img);
+    if(comfyuiFile){
+      const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;margin-top:4px';
+      const upd=document.createElement('button'); upd.className='btn ghost'; upd.textContent='Update this image';
+      upd.title='img2img refine: keeps the composition, re-renders the subject with your new prompt';
+      upd.onclick=()=>{
+        window.__vgRefineTarget=comfyuiFile;
+        const box=$('#message-input');
+        if(box){ box.placeholder='Describe the update (e.g. add a red scarf)… then click Image'; box.focus(); }
+      };
+      bar.appendChild(upd); col.appendChild(bar);
+    }
   });
   wrap.appendChild(av);wrap.appendChild(col);
   $('#messages').appendChild(wrap);$('#messages').scrollTop=$('#messages').scrollHeight;return wrap;

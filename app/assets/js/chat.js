@@ -85,8 +85,12 @@ async function generateImageFromInput(promptOverride){
   currentBot=bot; let myToken=++runToken;
   bot.cur.style.display=''; bot.cur.textContent='⏳ rendering in ComfyUI…';
   try{
+    const body={prompt};
+    // "Update the last image" chain: if the user clicked Update on a previous
+    // image, refine that image (img2img) instead of starting a new one.
+    if(window.__vgRefineTarget){ body.refine_of=window.__vgRefineTarget; body.denoise=0.5; window.__vgRefineTarget=null; }
     const resp=await fetch(API.base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt, model:'dreamshaper_8.safetensors', steps:22, cfg_scale:7.5, width:512, height:512})});
+      body:JSON.stringify(body)});
     const data=await resp.json();
     if(!resp.ok || data.status!=='completed'){
       const err=(data && (data.error||data.detail)) || ('HTTP '+resp.status);
@@ -96,7 +100,7 @@ async function generateImageFromInput(promptOverride){
     // Render the image(s) inline.
     bot.cur.style.display='none';
     if(currentBot){ currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; }
-    pushImageMessage('assistant', [data.url], data.prompt||prompt, 'Studio');
+    pushImageMessage('assistant', [data.url], data.prompt||prompt, 'Studio', data.comfyui_file);
     box.value=''; box.style.height='auto';
   }catch(e){
     if(bot) bot.cur.textContent='⚠ '+(e.message||'image generation failed');
