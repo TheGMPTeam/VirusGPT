@@ -252,7 +252,8 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
                            steps: int, cfg_scale: float, width: int, height: int,
                            devices: Dict[str, str],
                            sampler_name: str, scheduler: str,
-                           transparent: bool = False) -> Dict[str, Any]:
+                           transparent: bool = False,
+                           rembg_engine: str = "inspyrenet") -> Dict[str, Any]:
     """API-format graph for Z-Image Turbo (Lumina2 flow model).
 
     Split loaders (UNET/CLIP/VAE) with MultiGPU device placement,
@@ -315,13 +316,21 @@ def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
         },
     }
     if transparent:
-        wf["10"] = {
-            "class_type": "easy imageRemBg",
-            "inputs": {"images": ["8", 0], "rem_mode": "Inspyrenet",
-                       "image_output": "Preview", "save_prefix": "ComfyUI",
-                       "torchscript_jit": True, "add_background": "none",
-                       "refine_foreground": False},
-        }
+        if rembg_engine == "alpha":
+            # Pure tensor op, no model, no VRAM. Good on clean backgrounds.
+            wf["10"] = {
+                "class_type": "Image Remove Background (Alpha)",
+                "inputs": {"images": ["8", 0], "mode": "background",
+                           "threshold": 127, "threshold_tolerance": 2},
+            }
+        else:
+            wf["10"] = {
+                "class_type": "easy imageRemBg",
+                "inputs": {"images": ["8", 0], "rem_mode": "Inspyrenet",
+                           "image_output": "Preview", "save_prefix": "ComfyUI",
+                           "torchscript_jit": True, "add_background": "none",
+                           "refine_foreground": False},
+            }
         wf["9"] = {
             "class_type": "SaveImage",
             "inputs": {"images": ["10", 0], "filename_prefix": "virusgpt"},
@@ -394,7 +403,8 @@ async def render_image(
         workflow = _build_zimage_workflow(
             prompt, prof, seed, steps, cfg_scale, width, height,
             devices or {"unet_device": "cpu", "clip_device": "cpu", "vae_device": "cpu"},
-            sampler_name, scheduler, transparent=transparent)
+            sampler_name, scheduler, transparent=transparent,
+            rembg_engine=str(cfg.service_cfg("comfyui").get("rembg_engine", "alpha")))
     else:
         sampler_name = sampler_name or "dpmpp_2m"
         scheduler = scheduler or "karras"
