@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import asyncio
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -160,6 +161,58 @@ async def api_features():
 # -------------------------------------------------------------------------
 # Chat — proxy to Ollama, stream SSE {content|done|error}
 # -------------------------------------------------------------------------
+def split_code_spans(text):
+    """Split text into [(kind, chunk)] where kind is 'text' or 'code'.
+
+    Fenced blocks (``` / ~~~) and inline `code` spans become 'code'; the rest
+    is 'text'. Used to keep implementation out of TTS and to package project
+    code files.
+    """
+    spans = []
+    pos = 0
+    for m in re.finditer(r"(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)", text or ""):
+        if m.start() > pos:
+            spans.append(("text", text[pos:m.start()]))
+        spans.append(("code", m.group(0)))
+        pos = m.end()
+    if pos < len(text or ""):
+        spans.append(("text", text[pos:]))
+    return spans
+
+
+def extract_code_blocks(text):
+    """Return the contents of every fenced/inline code span in `text`."""
+    out = []
+    for kind, chunk in split_code_spans(text):
+        if kind != "code":
+            continue
+        body = chunk.strip()
+        for fence in ("```", "~~~"):
+            if body.startswith(fence) and body.endswith(fence) and len(body) >= 6:
+                body = body[3:-3]
+                nl = body.find("\n")
+                if 0 <= nl <= 20:  # drop the language tag line
+                    body = body[nl + 1:]
+                break
+        body = body.strip()
+        if body:
+            out.append(body)
+    return out
+
+
+def speech_text(text):
+    """Speech-safe copy: code spans removed, markdown stripped, whitespace
+    collapsed. The rendered bubble keeps the original; only TTS sees this."""
+    parts = [c for kind, c in split_code_spans(text) if kind == "text"]
+    s = "".join(parts)
+    s = re.sub(r"[*_]{1,3}", "", s)
+    s = re.sub(r"^#{1,6}\s*", "", s, flags=re.M)
+    s = re.sub(r"^\s*>\s?", "", s, flags=re.M)
+    s = re.sub(r"^\s*[-*+]\s+", "", s, flags=re.M)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip()
+
+
 def trim_history(messages, max_hist: int = 24, max_chars: int = 2800):
     """Small-context window: keep the last `max_hist` messages, then drop the
     oldest until total content chars <= `max_chars`. Returns the trimmed list.
@@ -233,8 +286,10 @@ async def chat(req: Request):
                        "function": {"name": ollama_tools[0]["function"]["name"]}}
 
     # --- Small-context history window (trim to last N messages / char cap) ---
-    max_hist = int(chat_cfg.get("max_history", 24))
-    max_chars = int(chat_cfg.get("max_history_tokens", 2800))
+    # A caller may raise the window for one request (team synthesis passes the
+    # full turn transcript and must not have it trimmed away mid-request).
+    max_hist = int(body.get("max_history") or chat_cfg.get("max_history", 24))
+    max_chars = int(body.get("max_history_tokens") or chat_cfg.get("max_history_tokens", 2800))
     kept = trim_history(non_system, max_hist, max_chars)
 
     # --- System prompt (default VirusGPT context) + memory graph injection ---
@@ -321,6 +376,134 @@ async def chat(req: Request):
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# --------------------------------------------------------------------------
+# Project export — package a finished team round (plan, transcript, code)
+# --------------------------------------------------------------------------
+@app.post("/api/export/project")
+async def export_project(req: Request):
+    """Build a ZIP of a team project: README with the goal/plan/synthesis,
+    the full transcript, and every code block extracted to its own file.
+
+    Payload: {goal, plan?, turns:[{who, task, output}], synthesis?, name?}
+    """
+    import io
+    import zipfile
+    body = await req.json()
+    goal = (body.get("goal") or "team project").strip()
+    plan = (body.get("plan") or "").strip()
+    turns = body.get("turns") or []
+    synthesis = (body.get("synthesis") or "").strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", goal.lower()).strip("-")[:40] or "team-project"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        # 1) README: goal, plan, synthesis, index of contributions and code.
+        readme = [f"# {goal}", "", f"_Exported {stamp} from VirusGPT team round._", ""]
+        if plan:
+            readme += ["## Plan", "", plan, ""]
+        readme += ["## Contributions", ""]
+        for i, t in enumerate(turns, 1):
+            readme.append(f"{i}. **{t.get('who','agent')}** - {t.get('task','')}")
+        readme.append("")
+        if synthesis:
+            readme += ["## Final synthesis", "", synthesis, ""]
+        z.writestr("README.md", "\n".join(readme))
+
+        # 2) Full transcript (untrimmed, exactly as the team produced it).
+        tr = [f"GOAL: {goal}", ""]
+        for i, t in enumerate(turns, 1):
+            tr.append(f"--- [{i}] {t.get('who','agent')} | task: {t.get('task','')} ---")
+            tr.append((t.get("output") or "").strip())
+            tr.append("")
+        if synthesis:
+            tr.append("--- FINAL SYNTHESIS ---")
+            tr.append(synthesis)
+        z.writestr("transcript.md", "\n".join(tr))
+
+        # 2b) PROJECT.json — machine-readable bundle for a larger model to
+        # resume the project: full untruncated outputs, roles, tasks, code.
+        project = {
+            "schema": "virusgpt.team-project.v1",
+            "exported": stamp,
+            "goal": goal,
+            "plan": plan or None,
+            "team": [{"name": t.get("who", "agent"), "role": t.get("role"),
+                      "task": t.get("task", "")} for t in turns],
+            "turns": [{"index": i, "who": t.get("who", "agent"),
+                       "task": t.get("task", ""),
+                       "output": t.get("output") or ""}
+                      for i, t in enumerate(turns, 1)],
+            "synthesis": synthesis or None,
+            "code_files": [],  # filled in step 3 below
+        }
+
+        # 2c) context.md — a single model-ready document: goal, plan, every
+        # turn with code inline, synthesis, and a resume instruction. A larger
+        # model can be handed this file verbatim to continue the work.
+        ctx = [f"# Project context: {goal}", "",
+               "This document is a complete handoff of a VirusGPT team round.",
+               "Use it to continue, review, or extend the project. All code",
+               "blocks are reproduced inline and also exist as files under code/.",
+               ""]
+        if plan:
+            ctx += ["## Plan", "", plan, ""]
+        ctx += ["## Team contributions", ""]
+        for i, t in enumerate(turns, 1):
+            ctx += [f"### {i}. {t.get('who','agent')}",
+                    f"Task: {t.get('task','')}", "",
+                    (t.get("output") or "").strip(), ""]
+        if synthesis:
+            ctx += ["## Final synthesis", "", synthesis, ""]
+        z.writestr("context.md", "\n".join(ctx))
+
+        # 3) Every fenced code block -> its own file under code/, deduped.
+        seen = {}
+        manifest = []
+        for t in turns + ([{"who": "synthesis", "output": synthesis}] if synthesis else []):
+            who = re.sub(r"[^a-z0-9]+", "-", (t.get("who") or "agent").lower()).strip("-")
+            for block in extract_code_blocks(t.get("output") or ""):
+                key = block.strip()
+                if key in seen:
+                    continue
+                # Guess an extension from a fenced language tag or content.
+                ext = ".txt"
+                head = block.strip().splitlines()[0] if block.strip() else ""
+                lang = re.match(r"^```([a-zA-Z0-9+_-]{1,12})\s*$", head)
+                extmap = {"py": ".py", "python": ".py", "bash": ".sh", "sh": ".sh",
+                          "shell": ".sh", "ps1": ".ps1", "powershell": ".ps1",
+                          "js": ".js", "javascript": ".js", "json": ".json",
+                          "yaml": ".yaml", "yml": ".yaml", "html": ".html",
+                          "css": ".css", "md": ".md", "dockerfile": ".dockerfile",
+                          "sql": ".sql", "toml": ".toml", "ts": ".ts"}
+                if lang:
+                    ext = extmap.get(lang.group(1).lower(), ".txt")
+                elif re.match(r"^\s*(def |import |from \w+ import )", block):
+                    ext = ".py"
+                elif re.match(r"^\s*(Write-|Get-|Set-|\$)", block):
+                    ext = ".ps1"
+                elif re.match(r"^\s*(#!/|sudo |apt |curl |docker )", block):
+                    ext = ".sh"
+                n = seen.get(ext, 0) + 1
+                seen[ext] = n
+                fname = f"code/{who}-{stamp}-{n:02d}{ext}"
+                z.writestr(fname, block.strip() + "\n")
+                manifest.append({"file": fname, "by": t.get("who", "agent")})
+                project["code_files"].append(
+                    {"path": fname, "author": t.get("who", "agent"),
+                     "language": ext.lstrip("."), "content": block.strip()})
+        z.writestr("code/manifest.json", json.dumps(manifest, indent=2))
+        z.writestr("PROJECT.json", json.dumps(project, indent=2))
+
+    data = buf.getvalue()
+    from fastapi.responses import Response
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition":
+                 f'attachment; filename="virusgpt-{slug}-{stamp}.zip"'},
+    )
 
 
 # --------------------------------------------------------------------------

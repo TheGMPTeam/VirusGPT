@@ -40,13 +40,38 @@ setInterval(pruneOrphanedAudio, 15000);
 let sessionAutoPlay = false;
 // Hard-stop any in-flight playback and clear the queue. Used before a fresh
 // replay / test so sentences from different sources can never overlap.
-function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} ttsQueue=[]; ttsPlaying=false; ttsBuf=''; ttsDone=0; }
+function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} ttsQueue=[]; ttsPlaying=false; ttsBuf=''; ttsDone=0; ttsInFence=false; ttsPend=''; }
 // Unlock audio on the first user gesture so post-async play() is allowed (autoplay policy).
 function unlockAudio(){ if(audioUnlocked) return; audioUnlocked=true;
   try{ const u=new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAD//wEA'); u.muted=true; u.play().catch(()=>{}); }catch(e){} }
 ['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, unlockAudio));
-function feedTTS(t, persona){ ttsBuf+=t; drainSentences(false, persona); }
-function flushTTS(persona){ drainSentences(true, persona); }
+let ttsInFence=false;     // true while inside a ``` fence (code is never spoken)
+let ttsPend='';           // up to 2 trailing backticks that may complete a fence next chunk
+function feedTTS(t, persona){
+  // Drop fenced code from the speech buffer: toggle on each ``` marker and
+  // skip everything between fences. Code stays in the bubble for reading;
+  // it must never reach the TTS queue or sentence-play buttons. Streaming
+  // can split the fence marker itself across chunks, so a trailing '`'/'``'
+  // is held back until the next chunk resolves it.
+  let out='', rest=ttsPend+(t||''); ttsPend='';
+  while(rest){
+    const i=rest.indexOf('```');
+    if(i<0){
+      if(!ttsInFence){
+        let hold=0;
+        if(rest.endsWith('``')) hold=2; else if(rest.endsWith('`')) hold=1;
+        if(hold){ ttsPend=rest.slice(-hold); rest=rest.slice(0,-hold); }
+        out+=rest;
+      }
+      break;
+    }
+    if(!ttsInFence) out+=rest.slice(0,i);
+    ttsInFence=!ttsInFence;
+    rest=rest.slice(i+3);
+  }
+  ttsBuf+=out; drainSentences(false, persona);
+}
+function flushTTS(persona){ ttsPend=""; drainSentences(true, persona); }
 function autoPlaySentence(text, persona){
   // AUTO-PLAY only — gated by the speaker button (TTS_ON) AND the per-session
   // auto-play flag (turned off by /clear and /new so a fresh session is quiet

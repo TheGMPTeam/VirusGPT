@@ -85,14 +85,56 @@ async function runTeamRound(task){
   const capTurn = (s,n)=> s.length>n ? s.slice(0,n)+' [truncated]' : s;
   let transcript = turnLog.map(t=>`--- ${t.who} (task: ${capTurn(t.task,160)}) ---\n${capTurn(t.output,1400)}`).join('\n\n');
   if(transcript.length>6500) transcript = transcript.slice(-6500);
-  await teamTurn(planner,
+  const synthesis = await teamTurn(planner,
     `Original goal: ${task}\n\nTHE TEAM'S ACTUAL OUTPUTS, in order (use these, do not claim you lack the record):\n\n${transcript}\n\nGive a short final synthesis as ${planner.name} that builds directly on the outputs above.`,
     { systemExtra:`You are ${planner.name}, the team lead. Summarize the team's work concisely, speaking as ${planner.name}. Base the summary ONLY on the transcript provided in this message.`,
-      connector:`🧠 ${planner.name} is synthesizing…`, connectorWho:'System' });
+      connector:`🧠 ${planner.name} is synthesizing…`, connectorWho:'System',
+      // The transcript rides inside this one message — raise the server's
+      // rolling-history window for this call so nothing gets trimmed away.
+      maxHistory:60, maxHistoryTokens:24000 });
   updatePlanPanel('✓ done');
+  // Offer the full project package (plan + transcript + code + AI handoff).
+  pushProjectDownload(task, plan, turnLog, synthesis);
   __teamActive=false;
   $('#message-input').disabled=false;
   $('#btn-send').disabled=false;
+}
+
+/* After a team round, post a card with a Download button that packages the
+   ENTIRE project server-side: README, full transcript, context.md (single
+   model-ready handoff doc), PROJECT.json (machine-readable for a larger
+   model), and every code block as its own file under code/. */
+function pushProjectDownload(goal, plan, turnLog, synthesis){
+  const wrap=document.createElement('div'); wrap.className='msg bot';
+  const av=document.createElement('div'); av.className='persona-avatar';
+  av.style.background='var(--neon)'; av.textContent='📦';
+  const col=document.createElement('div'); col.style.minWidth='0';
+  const who=document.createElement('div'); who.className='who'; who.textContent='System';
+  const bubble=document.createElement('div'); bubble.className='bubble';
+  const codeCount=(turnLog||[]).reduce((n,t)=>n+((t.output||'').match(/```/g)||[]).length/2,0);
+  bubble.textContent=`Team project complete. Download the full package: plan, complete transcript, all code (${Math.round(codeCount)} blocks), plus PROJECT.json + context.md formatted for a larger model to continue the work.`;
+  const btn=document.createElement('button'); btn.className='play';
+  btn.style.marginTop='6px'; btn.textContent='⬇ Download project (.zip)';
+  btn.onclick=async()=>{
+    btn.disabled=true; btn.textContent='Packaging…';
+    try{
+      const r=await fetch(API.base+'/api/export/project',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({goal, plan:plan||'', turns:turnLog, synthesis:synthesis||''})});
+      if(!r.ok) throw new Error('server '+r.status);
+      const blob=await r.blob();
+      const cd=r.headers.get('Content-Disposition')||'';
+      const m=cd.match(/filename="?([^"]+)"?/);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=m?m[1]:'virusgpt-project.zip'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
+      btn.textContent='⬇ Download again';
+    }catch(e){ btn.textContent='⬇ Retry download'; alert('Export failed: '+(e.message||e)); }
+    btn.disabled=false;
+  };
+  col.appendChild(who); col.appendChild(bubble); col.appendChild(btn);
+  wrap.appendChild(av); wrap.appendChild(col);
+  $('#messages').appendChild(wrap); $('#messages').scrollTop=$('#messages').scrollHeight;
 }
 
 /* Update the Kanban team board (right sidebar). status shown in the header;
@@ -175,7 +217,10 @@ async function teamTurn(persona, userText, opts){
     const rm=activeRoom();
     const hist=(rm.messages||[]).slice(-24).map(m=>({role: m.role==='user'?'user':'assistant', content:m.content}));
     const msgs=[{role:'system',content:sys}, ...hist, {role:'user',content:userText}];
-    const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:msgs})});
+    const body={model:currentModel,messages:msgs};
+    if(opts.maxHistory) body.max_history=opts.maxHistory;
+    if(opts.maxHistoryTokens) body.max_history_tokens=opts.maxHistoryTokens;
+    const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!resp.ok) throw new Error('server '+resp.status);
     const reader=resp.body.getReader(); const dec=new TextDecoder(); let buf='';
     let pending=''; let rafPending=false;
@@ -195,7 +240,7 @@ async function teamTurn(persona, userText, opts){
       savePersonas();
       const rm2=activeRoom(); rm2.messages=rm2.messages||[]; rm2.messages.push({role:'assistant',content:acc,persona:persona?.name}); saveJSON('vg_rooms',rooms);
     }
-    if(currentBot){ currentBot.acc=acc; currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; currentBot.bubble.textContent=acc; currentBot.plays.appendChild(makeReplayAll(acc, currentBot.persona)); }
+    if(currentBot){ currentBot.acc=acc; currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; renderRich(currentBot.bubble, acc); currentBot.plays.appendChild(makeReplayAll(acc, currentBot.persona)); }
   }catch(e){ if(currentBot) currentBot.cur.textContent='⚠ '+(e.message||'error'); }
   finally{ currentBot=null; }
   await drainTTSQueue();

@@ -13,6 +13,40 @@ function cleanMd(s){
     .replace(/\s{2,}/g,' ')                  // collapse whitespace
     .trim();
 }
+/* Render a message body into a bubble: prose as text, fenced/inline code as
+   real <pre> blocks (monospace, scrollable, never spoken). Original text is
+   preserved exactly; only the presentation changes. */
+function renderRich(bubble, text){
+  bubble.innerHTML='';
+  const spans = (typeof splitCodeSpans==='function') ? splitCodeSpans(text)
+              : [['text', text||'']];
+  for(const [kind, chunk] of spans){
+    if(kind==='code'){
+      let body=chunk;
+      const m=body.match(/^(```|~~~)([a-zA-Z0-9+_-]*)\n?([\s\S]*?)\1$/);
+      let code=body, lang='';
+      if(m){ code=m[3]; lang=m[2]; }
+      else code=body.replace(/^`|`$/g,'');
+      const pre=document.createElement('pre'); pre.className='codeblock';
+      if(lang){ const tag=document.createElement('span'); tag.className='code-lang'; tag.textContent=lang; pre.appendChild(tag); }
+      const c=document.createElement('code'); c.textContent=code.replace(/\n+$/,'');
+      pre.appendChild(c); bubble.appendChild(pre);
+    }else if(chunk){
+      bubble.appendChild(document.createTextNode(chunk));
+    }
+  }
+}
+/* Split text into [(kind, chunk)] with kind 'text'|'code' (fences + inline). */
+function splitCodeSpans(text){
+  const spans=[]; let pos=0;
+  const re=/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)/g; let m;
+  while((m=re.exec(text||''))){
+    if(m.index>pos) spans.push(['text', text.slice(pos,m.index)]);
+    spans.push(['code', m[0]]); pos=m.index+m[0].length;
+  }
+  if(pos<(text||'').length) spans.push(['text', text.slice(pos)]);
+  return spans;
+}
 /* A real, playable sentence contains spoken words (letters), is not just a
    markdown header/label, and isn't a short trailing ":" caption. This keeps
    every ▶ button bound to ONE clean, spoken sentence. */
@@ -34,11 +68,17 @@ function isPlayableSentence(s){
 function splitSentences(t){
   const text=(t||'').trim();
   if(!text) return [];
+  // Drop fenced/inline code BEFORE sentence splitting so a ▶ button can never
+  // bind to code (code is for reading, not speaking).
+  const prose = (typeof splitCodeSpans==='function')
+    ? splitCodeSpans(text).filter(s=>s[0]==='text').map(s=>s[1]).join('\n')
+    : text;
+  if(!prose.trim()) return [];
   // Split into sentence-ish pieces on . ! ? (keep the terminator). The previous
   // regex accidentally matched the WHOLE reply as one span (so every ▶ button
   // bound to the entire text and clicking any sentence played everything) — this
   // one matches each terminal-bounded sentence strictly.
-  const parts = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  const parts = prose.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [prose];
   const out=[];
   for(const raw of parts){
     const s=cleanMd(raw.trim());
@@ -116,7 +156,7 @@ function addMsgEl(role, text, persona){
     col.appendChild(bub);
   }else{
     // assistant: ONE bubble with a per-sentence play button for each sentence
-    const bubble=document.createElement('div');bubble.className='bubble';bubble.textContent=text||'';
+    const bubble=document.createElement('div');bubble.className='bubble';renderRich(bubble,text||'');
     const plays=document.createElement('div');plays.className='sentence-plays';
     buildSentencePlays(plays, text, persona);
     col.appendChild(bubble); col.appendChild(plays);

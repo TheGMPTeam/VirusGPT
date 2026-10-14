@@ -82,6 +82,11 @@
   .msg .bubble{padding:10px 13px;border-radius:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
   .msg.bot .bubble{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--neon)}
   .msg.user .bubble{background:rgba(35,224,255,0.12);border:1px solid var(--neon2);border-right:3px solid var(--neon2)}
+  /* Code blocks inside chat bubbles: monospace, dark panel, scrollable,
+     never spoken by TTS. Kept in the bubble for reading/copying. */
+  .msg .bubble pre.codeblock{position:relative;margin:8px 0;padding:9px 11px;border-radius:8px;background:rgba(0,0,0,0.45);border:1px solid var(--border);overflow-x:auto;white-space:pre;word-break:normal;font-size:12px;line-height:1.45}
+  .msg .bubble pre.codeblock code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--txt);display:block}
+  .msg .bubble pre.codeblock .code-lang{position:absolute;top:4px;right:8px;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-dim)}
   .msg .who{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-dim);margin-bottom:3px}
   /* Generated images (e.g. render_image tool output) shown inline in chat. */
   .msg .gen-image{display:block;max-width:100%;max-height:360px;border-radius:12px;margin-top:6px;border:1px solid var(--border);cursor:pointer;object-fit:contain;background:var(--panel2)}
