@@ -27,7 +27,7 @@
   },
   "stt": {
     "enabled": true,
-    "base_url": "http://localhost:8181",
+    "base_url": "http://10.0.0.157:8181",
     "timeout": 30
   },
   "memory": {
