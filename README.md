@@ -175,7 +175,22 @@ Then open `http://localhost:8500`.
 
 <img src="app/assets/images/sec_images.png" width="100%" alt="">
 
-## Docker (optional)
+## Docker
+
+Prebuilt image on Docker Hub (recommended):
+
+```bash
+docker pull thegmpteam/virusgpt:latest   # or :beta
+docker run -d --name virusgpt -p 8500:8500 \
+  -v $(pwd)/data:/app/data \
+  -e VG_OLLAMA_URL=http://YOUR_HOST:11434 \
+  -e VG_TTS_URL=http://YOUR_HOST:49112 \
+  thegmpteam/virusgpt:latest
+```
+
+Web UI at `https://localhost:8500` (self-signed cert generated on first boot).
+
+Full-stack compose (bundles its own Ollama / PocketTTS / Whisper):
 
 ```bash
 docker compose up -d --build
