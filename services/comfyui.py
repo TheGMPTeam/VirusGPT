@@ -105,13 +105,32 @@ async def comfyui_models() -> List[str]:
         cks = (info.get("CheckpointLoaderSimple", {})
                .get("input", {}).get("required", {})
                .get("ckpt_name", [[]])[0])
-        return [str(c) for c in cks] if isinstance(cks, list) else []
+        models = [str(c) for c in cks] if isinstance(cks, list) else []
+        prof = _zimage_profile()
+        if prof.get("unet") and prof.get("unet") not in models:
+            models.append(prof["unet"])
+        return models
     except Exception:
         return []
 
 
 def _default_model() -> str:
     return cfg.service_cfg("comfyui").get("default_model") or ""
+
+
+def _zimage_profile() -> Dict[str, str]:
+    """Z-Image Turbo component profile from config (unet/clip/vae names)."""
+    return cfg.service_cfg("comfyui").get("zimage") or {}
+
+
+def _is_zimage(model: str) -> bool:
+    prof = _zimage_profile()
+    if not prof:
+        return False
+    m = (model or "").lower()
+    return (m in ("z-image-turbo", "z_image", str(prof.get("name", "")).lower())
+            or m == str(prof.get("unet", "")).lower()
+            or "z_image" in m or "z-image" in m)
 
 
 async def _multigpu_devices() -> Optional[Dict[str, str]]:
@@ -169,7 +188,8 @@ def _build_workflow(prompt: str, model: str, seed: int,
                     steps: int, cfg_scale: float, width: int, height: int,
                     negative: str,
                     multigpu: Optional[Dict[str, str]] = None,
-                    sampler_name: str = "dpmpp_2m", scheduler: str = "karras") -> Dict[str, Any]:
+                    sampler_name: str = "dpmpp_2m", scheduler: str = "karras",
+                    transparent: bool = False) -> Dict[str, Any]:
     """API-format txt2img graph (class_type per node).
 
     Node ids are stable so the output node (9) is always the SaveImage.
@@ -228,6 +248,92 @@ def _build_workflow(prompt: str, model: str, seed: int,
     }
 
 
+def _build_zimage_workflow(prompt: str, prof: Dict[str, str], seed: int,
+                           steps: int, cfg_scale: float, width: int, height: int,
+                           devices: Dict[str, str],
+                           sampler_name: str, scheduler: str,
+                           transparent: bool = False) -> Dict[str, Any]:
+    """API-format graph for Z-Image Turbo (Lumina2 flow model).
+
+    Split loaders (UNET/CLIP/VAE) with MultiGPU device placement,
+    ModelSamplingAuraFlow shift, SD3 latent, zeroed negative conditioning
+    (cfg 1.0 flow model), and optional Inspyrenet alpha cutout before save.
+    Node id 9 is always SaveImage.
+    """
+    dev_u = devices.get("unet_device", "cpu")
+    dev_c = devices.get("clip_device", "cpu")
+    dev_v = devices.get("vae_device", "cpu")
+    wf: Dict[str, Any] = {
+        "3": {
+            "class_type": "UNETLoaderMultiGPU",
+            "inputs": {"unet_name": prof["unet"], "weight_dtype": prof.get("weight_dtype", "default"),
+                       "device": dev_u},
+        },
+        "11": {
+            "class_type": "ModelSamplingAuraFlow",
+            "inputs": {"shift": float(prof.get("shift", 3.0)), "model": ["3", 0]},
+        },
+        "2": {
+            "class_type": "CLIPLoaderMultiGPU",
+            "inputs": {"clip_name": prof["clip"], "type": prof.get("clip_type", "lumina2"),
+                       "device": dev_c},
+        },
+        "6": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": prompt, "clip": ["2", 0]},
+        },
+        "7": {
+            "class_type": "ConditioningZeroOut",
+            "inputs": {"conditioning": ["6", 0]},
+        },
+        "5": {
+            "class_type": "EmptySD3LatentImage",
+            "inputs": {"width": width, "height": height, "batch_size": 1},
+        },
+        "4": {
+            "class_type": "KSampler",
+            "inputs": {
+                "seed": seed,
+                "steps": steps,
+                "cfg": cfg_scale,
+                "sampler_name": sampler_name,
+                "scheduler": scheduler,
+                "denoise": 1.0,
+                "model": ["11", 0],
+                "positive": ["6", 0],
+                "negative": ["7", 0],
+                "latent_image": ["5", 0],
+            },
+        },
+        "1": {
+            "class_type": "VAELoaderMultiGPU",
+            "inputs": {"vae_name": prof["vae"], "device": dev_v},
+        },
+        "8": {
+            "class_type": "VAEDecode",
+            "inputs": {"samples": ["4", 0], "vae": ["1", 0]},
+        },
+    }
+    if transparent:
+        wf["10"] = {
+            "class_type": "easy imageRemBg",
+            "inputs": {"images": ["8", 0], "rem_mode": "Inspyrenet",
+                       "image_output": "Hide", "save_prefix": "ComfyUI",
+                       "torchscript_jit": True, "add_background": "none",
+                       "refine_foreground": False},
+        }
+        wf["9"] = {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["10", 0], "filename_prefix": "virusgpt"},
+        }
+    else:
+        wf["9"] = {
+            "class_type": "SaveImage",
+            "inputs": {"images": ["8", 0], "filename_prefix": "virusgpt"},
+        }
+    return wf
+
+
 async def render_image(
     prompt: str,
     *,
@@ -239,8 +345,9 @@ async def render_image(
     width: int = 1024,
     height: int = 1024,
     timeout: Optional[float] = None,
-    sampler_name: str = "dpmpp_2m",
-    scheduler: str = "karras",
+    sampler_name: Optional[str] = None,
+    scheduler: Optional[str] = None,
+    transparent: bool = False,
 ) -> Dict[str, Any]:
     """Generate one image from `prompt`. Returns a result dict.
 
@@ -273,10 +380,28 @@ async def render_image(
     if seed is None or seed == -1:
         seed = random.randint(0, 2**31 - 1)
 
-    workflow = _build_workflow(prompt, chosen, seed, steps, cfg_scale,
-                               width, height, negative_prompt,
-                               multigpu=await _multigpu_devices(),
-                               sampler_name=sampler_name, scheduler=scheduler)
+    devices = await _multigpu_devices()
+    if _is_zimage(chosen):
+        prof = _zimage_profile()
+        # Z-Image Turbo winning settings: 8 steps, cfg 1.0,
+        # euler_ancestral_cfg_pp + exponential scheduler.
+        if steps == 25:
+            steps = int(prof.get("steps", 8))
+        if cfg_scale == 7.0:
+            cfg_scale = float(prof.get("cfg", 1.0))
+        sampler_name = sampler_name or prof.get("sampler", "euler_ancestral_cfg_pp")
+        scheduler = scheduler or prof.get("scheduler", "exponential")
+        workflow = _build_zimage_workflow(
+            prompt, prof, seed, steps, cfg_scale, width, height,
+            devices or {"unet_device": "cpu", "clip_device": "cpu", "vae_device": "cpu"},
+            sampler_name, scheduler, transparent=transparent)
+    else:
+        sampler_name = sampler_name or "dpmpp_2m"
+        scheduler = scheduler or "karras"
+        workflow = _build_workflow(prompt, chosen, seed, steps, cfg_scale,
+                                   width, height, negative_prompt,
+                                   multigpu=devices,
+                                   sampler_name=sampler_name, scheduler=scheduler)
 
     try:
         # 1. submit

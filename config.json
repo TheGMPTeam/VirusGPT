@@ -55,7 +55,20 @@
       "enabled": true,
       "base_url": "http://10.0.0.157:8188",
       "timeout": 180,
-      "default_model": "SDXL/sd_xl_base_1.0_0.9vae.safetensors"
+      "default_model": "z_image_turbo_bf16.safetensors",
+      "zimage": {
+        "name": "z-image-turbo",
+        "unet": "z_image_turbo_bf16.safetensors",
+        "clip": "qwen_3_4b.safetensors",
+        "clip_type": "lumina2",
+        "vae": "ae.safetensors",
+        "weight_dtype": "default",
+        "shift": 3.0,
+        "steps": 8,
+        "cfg": 1.0,
+        "sampler": "euler_ancestral_cfg_pp",
+        "scheduler": "exponential"
+      }
     },
     "blender": {
       "enabled": false,

@@ -949,8 +949,9 @@ async def generate_image(req: Request):
         width=int(body.get("width") or 1024),
         height=int(body.get("height") or 1024),
         seed=int(body.get("seed") or -1),
-        sampler_name=body.get("sampler_name") or "dpmpp_2m",
-        scheduler=body.get("scheduler") or "karras",
+        sampler_name=body.get("sampler_name") or None,
+        scheduler=body.get("scheduler") or None,
+        transparent=bool(body.get("transparent")),
     )
     if res.get("status") == "completed":
         return JSONResponse(res)
