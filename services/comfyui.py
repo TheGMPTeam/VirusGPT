@@ -168,7 +168,8 @@ async def _multigpu_devices() -> Optional[Dict[str, str]]:
 def _build_workflow(prompt: str, model: str, seed: int,
                     steps: int, cfg_scale: float, width: int, height: int,
                     negative: str,
-                    multigpu: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                    multigpu: Optional[Dict[str, str]] = None,
+                    sampler_name: str = "dpmpp_2m", scheduler: str = "karras") -> Dict[str, Any]:
     """API-format txt2img graph (class_type per node).
 
     Node ids are stable so the output node (9) is always the SaveImage.
@@ -207,8 +208,8 @@ def _build_workflow(prompt: str, model: str, seed: int,
                 "seed": seed,
                 "steps": steps,
                 "cfg": cfg_scale,
-                "sampler_name": "euler",
-                "scheduler": "normal",
+                "sampler_name": sampler_name,
+                "scheduler": scheduler,
                 "denoise": 1.0,
                 "model": ["3", 0],
                 "positive": ["6", 0],
@@ -238,6 +239,8 @@ async def render_image(
     width: int = 1024,
     height: int = 1024,
     timeout: Optional[float] = None,
+    sampler_name: str = "dpmpp_2m",
+    scheduler: str = "karras",
 ) -> Dict[str, Any]:
     """Generate one image from `prompt`. Returns a result dict.
 
@@ -272,7 +275,8 @@ async def render_image(
 
     workflow = _build_workflow(prompt, chosen, seed, steps, cfg_scale,
                                width, height, negative_prompt,
-                               multigpu=await _multigpu_devices())
+                               multigpu=await _multigpu_devices(),
+                               sampler_name=sampler_name, scheduler=scheduler)
 
     try:
         # 1. submit

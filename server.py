@@ -931,7 +931,8 @@ async def mcp_status():
 async def generate_image(req: Request):
     """Generate an image via ComfyUI and return a local URL.
 
-    Body: {prompt, negative_prompt?, model?, steps?, cfg_scale?, width?, height?}
+    Body: {prompt, negative_prompt?, model?, steps?, cfg_scale?, width?,
+           height?, seed?, sampler_name?, scheduler?}
     """
     if not cfg.CONFIG["services"]["comfyui"]["enabled"]:
         return JSONResponse({"status": "failed", "error": "ComfyUI service disabled"}, status_code=503)
@@ -947,6 +948,9 @@ async def generate_image(req: Request):
         cfg_scale=float(body.get("cfg_scale") or 7.0),
         width=int(body.get("width") or 1024),
         height=int(body.get("height") or 1024),
+        seed=int(body.get("seed") or -1),
+        sampler_name=body.get("sampler_name") or "dpmpp_2m",
+        scheduler=body.get("scheduler") or "karras",
     )
     if res.get("status") == "completed":
         return JSONResponse(res)

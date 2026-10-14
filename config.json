@@ -55,7 +55,7 @@
       "enabled": true,
       "base_url": "http://10.0.0.157:8188",
       "timeout": 180,
-      "default_model": ""
+      "default_model": "SDXL/sd_xl_base_1.0_0.9vae.safetensors"
     },
     "blender": {
       "enabled": false,
