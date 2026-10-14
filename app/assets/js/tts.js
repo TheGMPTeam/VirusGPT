@@ -31,7 +31,10 @@ function scrollSpokenIntoView(el){
   if(delta){
     // Move the chat panel itself. Native scrollIntoView can select the page or
     // an outer layout ancestor and was observed to follow upward but not down.
-    box.scrollTo({top:box.scrollTop+delta, behavior:'smooth'});
+    // Position immediately. Long smooth scrolls are interrupted by the next
+    // sentence/highlight update, which made downward following appear stuck.
+    box.scrollTop=Math.max(0, Math.min(box.scrollHeight-box.clientHeight,
+                                      box.scrollTop+delta));
   }
 }
 function setTTSHighlight(text, preferred, messageEl){
