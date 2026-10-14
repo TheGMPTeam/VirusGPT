@@ -51,6 +51,23 @@ function renderRich(bubble, text){
       }
     }
   }
+  // Inline code can divide one spoken sentence into multiple visible prose
+  // fragments. Bind every fragment to the complete speech sentence by content,
+  // rather than assuming DOM-fragment index equals playback index.
+  const targets=splitSentences(text||'');
+  const nodes=[...bubble.querySelectorAll('.speakable-sentence')];
+  const norm=s=>cleanMd(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+  let nodeIndex=0;
+  targets.forEach((target,speechIndex)=>{
+    const wanted=norm(target); let collected='';
+    while(nodeIndex<nodes.length){
+      const node=nodes[nodeIndex++];
+      collected=norm((collected?collected+' ':'')+(node.dataset.spoken||node.textContent||''));
+      node.dataset.speechIndex=String(speechIndex);
+      node.dataset.spoken=target;
+      if(collected===wanted || !wanted.startsWith(collected)) break;
+    }
+  });
 }
 /* Split text into [(kind, chunk)] with kind 'text'|'code' (fences + inline). */
 function splitCodeSpans(text){
@@ -140,21 +157,29 @@ function makePlayAll(sentences, persona, highlightEls){
 /* Build a message's sentence-play row: ONE ▶ button per clean sentence, plus a
    click-only "Play all" at the end. Used for both the live finalize and for
    history messages so every assistant bubble is consistent. */
+function speechHighlightTargets(messageEl, sentences){
+  if(!messageEl) return (sentences||[]).map(()=>null);
+  const spans=[...messageEl.querySelectorAll('.bubble .speakable-sentence')];
+  return (sentences||[]).map((sentence,i)=>
+    spans.find(el=>el.dataset.speechIndex===String(i)) ||
+    spans.find(el=>el.dataset.spoken===cleanMd(sentence)) || null);
+}
 function buildSentencePlays(container, text, persona){
   if(!container) return;
   container.innerHTML='';
   const sents=splitSentences(text||'');
   const msg=container.closest('.msg');
-  const spans=msg ? [...msg.querySelectorAll('.bubble .speakable-sentence')] : [];
-  sents.forEach((s,i)=>container.appendChild(makeSentencePlay(s, persona, spans[i]||null)));
-  if(sents.length) container.appendChild(makePlayAll(sents, persona, spans));
+  const targets=speechHighlightTargets(msg, sents);
+  sents.forEach((s,i)=>container.appendChild(makeSentencePlay(s, persona, targets[i])));
+  if(sents.length) container.appendChild(makePlayAll(sents, persona, targets));
 }
 
 /* Re-stream a full response: split into sentences, queue them serially. */
 function replayMessage(text, persona, messageEl){
   stopTTS();
-  const spans=messageEl ? [...messageEl.querySelectorAll('.bubble .speakable-sentence')] : [];
-  splitSentences(text||'').forEach((s,i)=>playSentenceNow(s, persona, spans[i]||null, messageEl));
+  const sentences=splitSentences(text||'');
+  const targets=speechHighlightTargets(messageEl, sentences);
+  sentences.forEach((s,i)=>playSentenceNow(s, persona, targets[i], messageEl));
 }
 
 let currentBot=null;

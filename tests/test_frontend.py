@@ -359,6 +359,38 @@ def test_spoken_sentence_highlight_targets_exact_prose_and_skips_code(browser):
     ctx.close()
 
 
+def test_inline_code_does_not_shift_spoken_highlight(browser):
+    """Inline code may split one sentence into DOM fragments; all matching prose
+    fragments highlight together and the following sentence must not be selected."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      const wrap=document.createElement('div'); wrap.className='msg bot';
+      const bubble=document.createElement('div'); bubble.className='bubble';
+      wrap.appendChild(bubble); document.body.appendChild(wrap);
+      const text='First sentence. The inline `ProgressBar.Value` source stays aligned. Final sentence.';
+      renderRich(bubble,text);
+      const sentences=splitSentences(text);
+      const targets=speechHighlightTargets(wrap,sentences);
+      const active=setTTSHighlight(sentences[1],targets[1],wrap);
+      const spans=[...bubble.querySelectorAll('.speakable-sentence')];
+      const highlighted=spans.filter(s=>s.classList.contains('tts-speaking'))
+        .map(s=>({text:s.textContent.trim(),spoken:s.dataset.spoken,index:s.dataset.speechIndex}));
+      const codeHighlighted=!!bubble.querySelector('pre.codeblock .tts-speaking');
+      const finalHighlighted=spans.some(s=>s.textContent.includes('Final sentence') && s.classList.contains('tts-speaking'));
+      clearTTSHighlight(active); wrap.remove();
+      return {sentences, highlighted, codeHighlighted, finalHighlighted};
+    }""")
+    assert result["sentences"] == ["First sentence.",
+                                    "The inline source stays aligned.",
+                                    "Final sentence."]
+    assert [x["text"] for x in result["highlighted"]] == ["The inline", "source stays aligned."]
+    assert all(x["spoken"] == "The inline source stays aligned." for x in result["highlighted"])
+    assert all(x["index"] == "1" for x in result["highlighted"])
+    assert result["codeHighlighted"] is False
+    assert result["finalHighlighted"] is False
+    ctx.close()
+
+
 def test_spoken_highlight_scrolls_chat_down_and_up(browser):
     """Regression: follow the spoken sentence in both directions inside #messages."""
     ctx, page = _new_page(browser)
@@ -587,16 +619,20 @@ def test_speaker_toggle_re_enables_autoplay(browser):
 # ---------------------------------------------------------------------------
 # /team Agent-to-Agent round (multi-agent chat)
 # ---------------------------------------------------------------------------
-def test_team_round_runs(browser):
+def test_team_round_runs_and_autoplays_every_agent_turn(browser):
     ctx, page = _new_page(browser)
-    # ensure at least 2 personas exist in room (VirusGPT + Cipher already in default)
-    page.evaluate("window.__ttsCalls=[]; sessionAutoPlay=false;")
-    page.fill("#message-input", "/team explain cryptography briefly")
+    # Team speech is intentional even when ordinary session streaming autoplay
+    # was reset by /new or /clear. The speaker toggle remains the master mute.
+    tts_requests = []
+    page.on("request", lambda req: tts_requests.append(req.url) if "/api/tts?" in req.url else None)
+    page.evaluate("TTS_ON=true; sessionAutoPlay=false;")
+    page.fill("#message-input", "@Team explain cryptography briefly")
     page.click("#btn-send")
-    page.wait_for_timeout(1500)
-    # team round should have produced multiple bot bubbles (one per agent turn)
+    page.wait_for_function("typeof __teamActive !== 'undefined' && __teamActive === false", timeout=15_000)
     bots = page.query_selector_all(".msg.bot")
     assert len(bots) >= 2, f"team round should produce >=2 agent bubbles, got {len(bots)}"
+    assert len(tts_requests) >= 2, f"each completed team turn should autoplay, requests={tts_requests}"
+    assert page.evaluate("sessionAutoPlay") is False, "team playback must not alter normal session autoplay"
     ctx.close()
 
 

@@ -6,18 +6,33 @@ let ttsDone=0;             // read offset into ttsBuf (sentence-linking cursor)
 let ttsQueue=[];           // [{text, persona}] played strictly in order, one at a time
 let ttsPlaying=false;
 let ttsCurrentAudio=null;  // the single Audio element currently sounding (so we never overlap)
-let ttsActiveHighlight=null;
+let ttsActiveHighlight=null; // array of prose fragments for the spoken sentence
 function clearTTSHighlight(expected=null){
   if(expected && ttsActiveHighlight!==expected) return;
-  if(ttsActiveHighlight){ try{ ttsActiveHighlight.classList.remove('tts-speaking'); }catch(e){} }
+  for(const el of (ttsActiveHighlight||[])){
+    try{ el.classList.remove('tts-speaking'); }catch(e){}
+  }
   ttsActiveHighlight=null;
 }
-function resolveTTSHighlight(text, preferred, messageEl){
-  if(preferred && preferred.isConnected) return preferred;
-  const root=(messageEl && messageEl.isConnected) ? messageEl : null;
-  if(!root) return null;
+function resolveTTSHighlightGroup(text, preferred, messageEl){
+  const root=(messageEl && messageEl.isConnected) ? messageEl
+             : (preferred && preferred.isConnected ? preferred.closest('.msg') : null);
+  if(!root) return (preferred && preferred.isConnected) ? [preferred] : [];
   const want=cleanMd(text||'');
-  return [...root.querySelectorAll('.speakable-sentence')].find(el=>el.dataset.spoken===want) || null;
+  const speechIndex=(preferred && preferred.isConnected) ? preferred.dataset.speechIndex : null;
+  let matches=[];
+  if(speechIndex!==null && speechIndex!==undefined){
+    matches=[...root.querySelectorAll('.speakable-sentence')]
+      .filter(el=>el.dataset.speechIndex===speechIndex);
+  }
+  if(!matches.length){
+    matches=[...root.querySelectorAll('.speakable-sentence')]
+      .filter(el=>el.dataset.spoken===want);
+  }
+  return matches;
+}
+function resolveTTSHighlight(text, preferred, messageEl){
+  return resolveTTSHighlightGroup(text, preferred, messageEl)[0] || null;
 }
 function scrollSpokenIntoView(el){
   if(!el || !el.isConnected) return;
@@ -39,13 +54,15 @@ function scrollSpokenIntoView(el){
 }
 function setTTSHighlight(text, preferred, messageEl){
   clearTTSHighlight();
-  const el=resolveTTSHighlight(text, preferred, messageEl);
-  if(el){
-    ttsActiveHighlight=el;
-    el.classList.add('tts-speaking');
-    scrollSpokenIntoView(el);
+  const group=resolveTTSHighlightGroup(text, preferred, messageEl);
+  if(group.length){
+    ttsActiveHighlight=group;
+    group.forEach(el=>el.classList.add('tts-speaking'));
+    // Follow the final prose fragment, which keeps the viewport aligned when
+    // inline code divides one spoken sentence into multiple DOM spans.
+    scrollSpokenIntoView(group[group.length-1]);
   }
-  return el;
+  return group.length ? group : null;
 }
 let audioUnlocked=false;
 // Per-session audio registry: roomName -> [{el, url}] so object URLs can be

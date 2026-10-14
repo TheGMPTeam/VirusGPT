@@ -71,7 +71,10 @@ async function runTeamRound(task){
     const directive = `Your turn in the team round. Output ONLY your contribution — no preamble, no commentary, no quotes. ${t.task}`;
     const r = await teamTurn(persona, directive,
       { systemExtra:`You are ${persona.name}. It is your turn. State your contribution directly and concisely, as ${persona.name}. Do not ask questions or narrate — just say your part.`,
-        connector:`🔁 ${planner.name} → ${persona.name}`, connectorWho:'System' });
+        connector:`🔁 ${planner.name} → ${persona.name}`, connectorWho:'System',
+        // Team chat speaks the completed contribution, then waits for audio before
+        // advancing to the next agent. This does not depend on sessionAutoPlay.
+        speakAfterTurn:true });
     turnLog.push({who:persona.name, task:t.task, output:r||''});
     if(card){ kbMove(card,'done'); }
     await new Promise(r=>setTimeout(r, 300));
@@ -89,6 +92,7 @@ async function runTeamRound(task){
     `Original goal: ${task}\n\nTHE TEAM'S ACTUAL OUTPUTS, in order (use these, do not claim you lack the record):\n\n${transcript}\n\nGive a short final synthesis as ${planner.name} that builds directly on the outputs above.`,
     { systemExtra:`You are ${planner.name}, the team lead. Summarize the team's work concisely, speaking as ${planner.name}. Base the summary ONLY on the transcript provided in this message.`,
       connector:`🧠 ${planner.name} is synthesizing…`, connectorWho:'System',
+      speakAfterTurn:true,
       // The transcript rides inside this one message — raise the server's
       // rolling-history window for this call so nothing gets trimmed away.
       maxHistory:60, maxHistoryTokens:24000 });
@@ -228,8 +232,15 @@ async function teamTurn(persona, userText, opts){
     while(true){const {value,done}=await reader.read(); if(done)break; buf+=dec.decode(value,{stream:true});
       let i; while((i=buf.indexOf('\n\n'))>=0){const chunk=buf.slice(0,i);buf=buf.slice(i+2);
         if(chunk.startsWith('data: ')){const obj=JSON.parse(chunk.slice(6));
-          if(obj.content){acc+=obj.content; pending=acc; if(!rafPending){ rafPending=true; requestAnimationFrame(flushDOM); } feedTTS(obj.content, persona);}
-          if(obj.done) flushTTS(persona);
+          if(obj.content){
+            acc+=obj.content; pending=acc;
+            if(!rafPending){ rafPending=true; requestAnimationFrame(flushDOM); }
+            // Ordinary chat may speak complete sentences while streaming. Team
+            // chat deliberately waits until this agent's contribution is fully
+            // rendered, then speaks it as one ordered turn.
+            if(!opts.speakAfterTurn) feedTTS(obj.content, persona);
+          }
+          if(obj.done && !opts.speakAfterTurn) flushTTS(persona);
           if(obj.error){if(currentBot) currentBot.cur.textContent='⚠ '+obj.error;}}}}
     flushDOM();
     if(acc&&myToken===runToken){
@@ -240,9 +251,22 @@ async function teamTurn(persona, userText, opts){
       savePersonas();
       const rm2=activeRoom(); rm2.messages=rm2.messages||[]; rm2.messages.push({role:'assistant',content:acc,persona:persona?.name}); saveJSON('vg_rooms',rooms);
     }
-    if(currentBot){ currentBot.acc=acc; currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; renderRich(currentBot.bubble, acc); currentBot.plays.appendChild(makeReplayAll(acc, currentBot.persona)); }
+    if(bot){
+      bot.acc=acc;
+      bot.cur.style.display='none';
+      bot.bubble.style.display='';
+      renderRich(bot.bubble, acc);
+      buildSentencePlays(bot.plays, acc, bot.persona);
+      if(opts.speakAfterTurn && TTS_ON && acc.trim() && myToken===runToken && __teamActive){
+        const sentences=splitSentences(acc);
+        const targets=speechHighlightTargets(bot.el, sentences);
+        sentences.forEach((sentence,i)=>playSentenceNow(sentence, persona, targets[i], bot.el));
+      }
+    }
   }catch(e){ if(currentBot) currentBot.cur.textContent='⚠ '+(e.message||'error'); }
-  finally{ currentBot=null; }
+  finally{ if(currentBot===bot) currentBot=null; }
+  // For @Team, this is the turn boundary: its entire spoken contribution must
+  // finish before the next agent begins. The speaker toggle remains master mute.
   await drainTTSQueue();
   return acc;
 }
