@@ -77,24 +77,24 @@ function extractTeamGoal(text){
 async function generateImageFromInput(promptOverride){
   const box=$('#message-input');
   const prompt=(promptOverride && promptOverride.trim()) || (box.value||'').trim();
-  if(!prompt){ alert('Type an image description first, then click 🎨 Image.'); return; }
+  const refineTarget=window.__vgRefineTarget||null;
+  if(!prompt){ alert(refineTarget?'Describe what to change, then click Image.':'Type an image description first, then click Image.'); return; }
   const btn=$('#btn-gen-image'); if(btn){ const ic=btn.querySelector('.vg-ico'); if(ic){ setIcon(ic,'brush',true); } btn.disabled=true; }
-  if(!promptOverride) pushMessage('user', '🎨 '+prompt, 'YOU');
+  if(!promptOverride) pushMessage('user', (refineTarget?'Image update: ':'Image: ')+prompt, 'YOU');
   // A minimal bot placeholder so the user sees activity.
   const bot=addBotMsg(personaByName('Studio')||selectedPersonaObj()||personas[0]);
   currentBot=bot; let myToken=++runToken;
-  bot.cur.style.display=''; bot.cur.textContent='⏳ rendering in ComfyUI…';
+  bot.cur.style.display=''; bot.cur.textContent=refineTarget?'Updating the selected image in ComfyUI...':'Rendering in ComfyUI...';
   try{
     const body={prompt};
-    // "Update the last image" chain: if the user clicked Update on a previous
-    // image, refine that image (img2img) instead of starting a new one.
-    if(window.__vgRefineTarget){ body.refine_of=window.__vgRefineTarget; body.denoise=0.6; window.__vgRefineTarget=null; }
+    // If the user selected a previous image, run img2img instead of txt2img.
+    if(refineTarget){ body.refine_of=refineTarget; body.denoise=0.6; }
     const resp=await fetch(API.base+'/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body)});
     const data=await resp.json();
     if(!resp.ok || data.status!=='completed'){
       const err=(data && (data.error||data.detail)) || ('HTTP '+resp.status);
-      bot.cur.textContent='⚠ '+err;
+      bot.cur.textContent='Error: '+err;
       return;
     }
     // Render the image(s) inline.
@@ -102,9 +102,10 @@ async function generateImageFromInput(promptOverride){
     if(currentBot){ currentBot.cur.style.display='none'; currentBot.bubble.style.display=''; }
     pushImageMessage('assistant', data.urls||[data.url], data.prompt||prompt, 'Studio',
                      data.comfyui_files||data.comfyui_file, data.compare_labels||null);
+    if(refineTarget && typeof clearImageRefineTarget==='function') clearImageRefineTarget();
     box.value=''; box.style.height='auto';
   }catch(e){
-    if(bot) bot.cur.textContent='⚠ '+(e.message||'image generation failed');
+    if(bot) bot.cur.textContent='Error: '+(e.message||'image generation failed');
   }finally{
     currentBot=null;
     if(btn){ const ic=btn.querySelector('.vg-ico'); if(ic){ setIcon(ic,'brush',false); } btn.disabled=false; }

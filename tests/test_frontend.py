@@ -658,9 +658,44 @@ def test_image_gen_button(browser):
     assert images.nth(1).get_attribute("src").endswith("original.png")
     assert page.locator(".image-compare-label").all_text_contents() == ["Background removed", "Original"]
     assert page.locator(".image-compare-grid button", has_text="Update this image").count() == 2
-    # Each comparison card must refine its own ComfyUI output, not a shared file.
-    page.locator(".image-compare-grid button", has_text="Update this image").nth(1).click()
+
+    # Selecting an update source must provide obvious instructions and selection
+    # feedback instead of silently setting a hidden JavaScript variable.
+    original_card = page.locator(".image-compare-card").nth(1)
+    original_card.locator("button", has_text="Update this image").click()
     assert page.evaluate("window.__vgRefineTarget") == "original.png"
+    assert original_card.evaluate("el => el.classList.contains('refine-selected')")
+    assert original_card.locator("button").inner_text() == "Selected for update"
+    assert page.locator("#refine-mode").is_visible()
+    assert "Update mode: Original" in page.locator("#refine-mode-title").inner_text()
+    assert "Describe the changes" in page.locator("#refine-mode-help").inner_text()
+    assert "Describe what to change" in page.locator("#message-input").get_attribute("placeholder")
+    assert page.evaluate("document.activeElement === document.querySelector('#message-input')")
+    assert page.locator("#btn-gen-image").evaluate("el => el.classList.contains('refine-active')")
+
+    # Clicking Image now performs the second, img2img run and exits update mode.
+    page.fill("#message-input", "add a red scarf")
+    page.click("#btn-gen-image")
+    page.wait_for_function("document.querySelectorAll('.image-compare-grid').length === 2", timeout=4000)
+    assert page.evaluate("window.__vgRefineTarget") is None
+    assert not page.locator("#refine-mode").is_visible()
+    ctx.close()
+
+
+def test_prompt_suggestions_sit_above_input_below_chat(browser):
+    ctx, page = _new_page(browser)
+    page.fill("#message-input", "make this prompt cinematic")
+    page.wait_for_selector("#cmd-popup.show", timeout=2000)
+    layout = page.evaluate("""(() => {
+      const messages=document.querySelector('#messages').getBoundingClientRect();
+      const popup=document.querySelector('#cmd-popup').getBoundingClientRect();
+      const input=document.querySelector('#input-bar').getBoundingClientRect();
+      return {position:getComputedStyle(document.querySelector('#cmd-popup')).position,
+              messagesBottom:messages.bottom,popupTop:popup.top,popupBottom:popup.bottom,inputTop:input.top};
+    })()""")
+    assert layout["position"] == "relative"
+    assert layout["popupTop"] >= layout["messagesBottom"] - 1
+    assert layout["popupBottom"] <= layout["inputTop"] + 1
     ctx.close()
 
 

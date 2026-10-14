@@ -91,10 +91,20 @@
   /* Generated images (e.g. render_image tool output) shown inline in chat. */
   .msg .gen-image{display:block;max-width:100%;max-height:360px;border-radius:12px;margin-top:6px;border:1px solid var(--border);cursor:pointer;object-fit:contain;background:var(--panel2)}
   .image-compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:6px;max-width:min(820px,100%)}
-  .image-compare-card{min-width:0}
+  .image-compare-card{min-width:0;padding:6px;border:1px solid transparent;border-radius:10px;transition:border-color .15s,box-shadow .15s,background .15s}
+  .image-compare-card.refine-selected{border-color:var(--neon);background:rgba(0,255,156,.08);box-shadow:0 0 16px rgba(0,255,156,.2)}
+  .image-compare-card.refine-selected .image-compare-label{color:var(--neon)}
   .image-compare-card .gen-image{width:100%;height:auto;aspect-ratio:1/1}
   .image-compare-label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--neon2);margin:2px 0 0 2px}
   @media(max-width:700px){.image-compare-grid{grid-template-columns:1fr}}
+  #refine-mode{display:none;align-items:center;gap:14px;padding:9px 16px;border-top:1px solid var(--neon);background:rgba(0,255,156,.1);color:var(--txt);box-shadow:0 -4px 18px rgba(0,255,156,.08)}
+  #refine-mode.active{display:flex}
+  #refine-mode>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+  #refine-mode-title{color:var(--neon);font-size:12px;letter-spacing:.5px}
+  #refine-mode-help{font-size:12px;color:var(--txt-dim)}
+  #refine-mode-cancel{margin-left:auto;white-space:nowrap}
+  #btn-gen-image.refine-active{border-color:var(--neon);color:var(--neon);box-shadow:0 0 12px rgba(0,255,156,.25)}
+  @media(max-width:700px){#refine-mode{align-items:flex-start;padding:8px 12px}#refine-mode-cancel{font-size:11px;padding:6px 8px}}
   .msg .play{margin-top:6px;font-size:11px;background:none;border:1px solid var(--border);color:var(--neon2);text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* per-sentence play buttons: a compact row of ▶ icons (one per sentence),
      all on the same line. Icon-only, no text/blank lines; each plays its own
@@ -252,8 +262,9 @@
   .list-row .grow{flex:1}.list-row small{color:var(--txt-dim)}
   .pe-form-error{color:var(--warn);padding:0 18px 8px;font-size:12px}
   .hidden{display:none!important}
-  /* slash/mention/keyword autocomplete popup (anchored above the input bar) */
-  #cmd-popup{position:absolute;left:16px;right:16px;bottom:calc(100% + 6px);max-height:230px;overflow-y:auto;background:var(--panel);border:1px solid var(--neon2);border-radius:10px;box-shadow:0 0 26px rgba(35,224,255,0.22);padding:6px;z-index:30;display:none}
+  /* Slash/persona and AI prompt suggestions sit directly below chat history and
+     immediately above image-update guidance and the text composer. */
+  #cmd-popup{position:relative;flex:0 0 auto;margin:0 16px 8px;max-height:230px;overflow-y:auto;background:var(--panel);border:1px solid var(--neon2);border-radius:10px;box-shadow:0 0 26px rgba(35,224,255,0.22);padding:6px;z-index:30;display:none}
   #cmd-popup.show{display:block}
   .cp-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px}
   .cp-item .cp-key{font-weight:700;color:var(--neon);min-width:64px}

@@ -219,6 +219,48 @@ function addMsgEl(role, text, persona){
   wrap.appendChild(av);wrap.appendChild(col);
   $('#messages').appendChild(wrap);$('#messages').scrollTop=$('#messages').scrollHeight;return wrap;
 }
+/* Clear image-update mode and restore the normal composer. */
+function clearImageRefineTarget(){
+  window.__vgRefineTarget=null;
+  document.querySelectorAll('.image-compare-card.refine-selected').forEach(el=>el.classList.remove('refine-selected'));
+  document.querySelectorAll('.image-compare-card .refine-select-btn').forEach(btn=>{
+    btn.classList.remove('selected');
+    btn.textContent='Update this image';
+  });
+  const mode=$('#refine-mode'); if(mode) mode.classList.remove('active');
+  const box=$('#message-input');
+  if(box){ box.placeholder=box.dataset.defaultPlaceholder||'Transmit a message to VirusGPT...'; }
+  const imageBtn=$('#btn-gen-image');
+  if(imageBtn){ imageBtn.classList.remove('refine-active'); imageBtn.title='Generate an image from the typed prompt via ComfyUI (Studio)'; }
+}
+
+/* Select a specific generated image as the source for the next Image action. */
+function selectImageRefineTarget(sourceFile, card, label){
+  clearImageRefineTarget();
+  window.__vgRefineTarget=sourceFile;
+  if(card){
+    card.classList.add('refine-selected');
+    const selectedBtn=card.querySelector('.refine-select-btn');
+    if(selectedBtn){ selectedBtn.classList.add('selected'); selectedBtn.textContent='Selected for update'; }
+  }
+  const mode=$('#refine-mode');
+  const title=$('#refine-mode-title');
+  const help=$('#refine-mode-help');
+  if(title) title.textContent='Update mode: '+(label||'selected image');
+  if(help) help.textContent='Describe the changes below, then click Image. The selected image will be used as the starting point.';
+  if(mode) mode.classList.add('active');
+  const cancel=$('#refine-mode-cancel'); if(cancel) cancel.onclick=clearImageRefineTarget;
+  const imageBtn=$('#btn-gen-image');
+  if(imageBtn){ imageBtn.classList.add('refine-active'); imageBtn.title='Update the selected image using the typed instructions'; }
+  const box=$('#message-input');
+  if(box){
+    if(!box.dataset.defaultPlaceholder) box.dataset.defaultPlaceholder=box.placeholder;
+    box.placeholder='Describe what to change, then click Image...';
+    box.focus();
+    box.scrollIntoView({block:'end',behavior:'smooth'});
+  }
+}
+
 /* Render a message whose body is one or more generated images (e.g. a mission
    task that called the render_image tool). Each image links to the served
    /api/generated/... URL so the user can open it full-size. */
@@ -255,13 +297,9 @@ function pushImageMessage(role, urls, caption, personaName, comfyuiFile, labels)
     const sourceFile=files[idx];
     if(sourceFile){
       const bar=document.createElement('div'); bar.style.cssText='display:flex;gap:8px;margin-top:4px';
-      const upd=document.createElement('button'); upd.className='btn ghost'; upd.textContent='Update this image';
-      upd.title='img2img refine: keeps the composition, re-renders the subject with your new prompt';
-      upd.onclick=()=>{
-        window.__vgRefineTarget=sourceFile;
-        const box=$('#message-input');
-        if(box){ box.placeholder='Describe the update (e.g. add a red scarf)... then click Image'; box.focus(); }
-      };
+      const upd=document.createElement('button'); upd.className='btn ghost refine-select-btn'; upd.textContent='Update this image';
+      upd.title='Select this image, describe the changes below, then click Image';
+      upd.onclick=()=>selectImageRefineTarget(sourceFile,card,(labels&&labels[idx])||'selected image');
       bar.appendChild(upd); card.appendChild(bar);
     }
     grid.appendChild(card);

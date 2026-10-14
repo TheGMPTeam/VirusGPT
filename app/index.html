@@ -76,6 +76,10 @@
       <main id="chat-panel" class="chat-panel-pane active" data-pane="chat" style="position:relative">
         <div id="messages"></div>
         <div id="cmd-popup"></div>
+        <div id="refine-mode" role="status" aria-live="polite">
+          <div><strong id="refine-mode-title">Image update selected</strong><span id="refine-mode-help">Describe the changes below, then click Image.</span></div>
+          <button id="refine-mode-cancel" class="btn ghost" type="button">Cancel update</button>
+        </div>
         <div id="input-bar">
           <textarea id="message-input" placeholder="Transmit a message to VirusGPT…" rows="1"></textarea>
           <button id="btn-mic" class="icon-btn" title="Voice input"><span class="vg-ico" data-ico="mic"></span></button>
