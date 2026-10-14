@@ -26,6 +26,25 @@ import httpx
 
 from services import config as cfg, get_client
 
+
+def _auth_headers() -> Dict[str, str]:
+    """Bearer token for ComfyUI-Login protected servers (optional).
+
+    Token sources, in order: VG_COMFY_TOKEN env var, or the first line of the
+    file at VG_COMFY_PASSWORD_FILE (bind-mounted, never logged). Empty when
+    neither is set, so unauthenticated ComfyUI servers keep working.
+    """
+    import os
+    tok = os.environ.get("VG_COMFY_TOKEN", "").strip()
+    if not tok:
+        pf = os.environ.get("VG_COMFY_PASSWORD_FILE", "").strip()
+        if pf:
+            try:
+                tok = Path(pf).read_text().splitlines()[0].strip()
+            except Exception:
+                tok = ""
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
+
 # Where generated images are persisted (served via /api/generated/{file}).
 # In dev this is <repo>/data/generated. In a PyInstaller bundle the `data/`
 # tree is collected under <app>/Contents/Frameworks, while the server's ROOT
@@ -70,7 +89,7 @@ def _timeout(default: float = 120.0) -> float:
 
 async def comfyui_health() -> bool:
     try:
-        r = await get_client().get(f"{_base()}/system_stats", timeout=6.0)
+        r = await get_client().get(f"{_base()}/system_stats", headers=_auth_headers(), timeout=6.0)
         return r.status_code == 200
     except Exception:
         return False
@@ -79,7 +98,7 @@ async def comfyui_health() -> bool:
 async def comfyui_models() -> List[str]:
     """Return checkpoint filenames available on the server (empty if unknown)."""
     try:
-        r = await get_client().get(f"{_base()}/object_info/CheckpointLoaderSimple", timeout=10.0)
+        r = await get_client().get(f"{_base()}/object_info/CheckpointLoaderSimple", headers=_auth_headers(), timeout=10.0)
         if r.status_code != 200:
             return []
         info = r.json()
@@ -195,7 +214,8 @@ async def render_image(
         # 1. submit
         submit = await get_client().post(
             f"{base}/prompt",
-            json={"prompt": workflow, "client_id": str(uuid.uuid4())},
+            json={"prompt": workflow, "client_id": str(uuid.uuid4)},
+            headers=_auth_headers(),
             timeout=15.0,
         )
         if submit.status_code != 200:
@@ -210,7 +230,7 @@ async def render_image(
         import asyncio
         deadline = asyncio.get_event_loop().time() + to
         while asyncio.get_event_loop().time() < deadline:
-            hist = await get_client().get(f"{base}/history/{prompt_id}", timeout=10.0)
+            hist = await get_client().get(f"{base}/history/{prompt_id}", headers=_auth_headers(), timeout=10.0)
             if hist.status_code == 200:
                 data = hist.json().get(prompt_id, {})
                 status = data.get("status", {})
@@ -241,6 +261,7 @@ async def render_image(
         dl = await get_client().get(
             f"{base}/view",
             params={"filename": fname, "subfolder": subfolder, "type": itype},
+            headers=_auth_headers(),
             timeout=30.0,
         )
         if dl.status_code != 200:
