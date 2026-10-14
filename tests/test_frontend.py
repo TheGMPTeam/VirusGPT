@@ -361,19 +361,25 @@ def test_spoken_sentence_highlight_targets_exact_prose_and_skips_code(browser):
 
 def test_sentence_play_buttons_match_highlight_spans(browser):
     ctx, page = _new_page(browser)
-    result = page.evaluate("""() => {
+    result = page.evaluate("""async () => {
       const wrap=document.createElement('div'); wrap.className='msg bot';
       const bubble=document.createElement('div'); bubble.className='bubble';
       const plays=document.createElement('div'); plays.className='sentence-plays';
-      wrap.append(bubble, plays); document.body.appendChild(wrap);
       const text='Sentence one. Sentence two. Sentence three.';
+      // Deliberately build controls BEFORE insertion, matching addMsgEl(). The
+      // click must resolve its target dynamically after the message is attached.
       renderRich(bubble, text); buildSentencePlays(plays, text, null);
+      wrap.append(bubble, plays); document.body.appendChild(wrap);
       const buttons=[...plays.querySelectorAll('.play')].slice(0,3);
       const spans=[...bubble.querySelectorAll('.speakable-sentence')];
       const linked=buttons.map((b,i)=>b.title===spans[i].dataset.spoken);
-      wrap.remove(); return {buttons:buttons.length, spans:spans.length, linked};
+      const original=playTTS; let clickedTarget=null;
+      playTTS=async (spoken, persona, target) => { clickedTarget=target?.dataset?.spoken||null; };
+      buttons[1].click(); await new Promise(r=>setTimeout(r,0)); playTTS=original;
+      wrap.remove(); return {buttons:buttons.length, spans:spans.length, linked, clickedTarget};
     }""")
-    assert result == {"buttons": 3, "spans": 3, "linked": [True, True, True]}
+    assert result == {"buttons": 3, "spans": 3, "linked": [True, True, True],
+                      "clickedTarget": "Sentence two."}
     ctx.close()
 
 

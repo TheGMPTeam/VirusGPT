@@ -110,7 +110,12 @@ function makeSentencePlay(text, persona, highlightEl){
   const c=cleanMd(text);
   const b=document.createElement('button'); b.className='play';
   b.innerHTML=VG_ICON('play'); b.title=c;
-  b.onclick=()=>playSingle(c, persona, highlightEl);
+  b.onclick=()=>{
+    const msg=b.closest('.msg');
+    const target=(highlightEl && highlightEl.isConnected)
+      ? highlightEl : resolveTTSHighlight(c, null, msg);
+    playSingle(c, persona, target, msg);
+  };
   return b;
 }
 /* "Replay all" button: icon-only ⟲; re-streams the whole reply sentence-by-sentence. */

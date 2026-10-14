@@ -107,7 +107,7 @@ function autoPlaySentence(text, persona){
 /* Play exactly ONE sentence, isolated from the shared auto-play queue and from
    any in-flight playback. Used by the per-sentence ▶ buttons so clicking the
    3rd button plays ONLY the 3rd sentence — never the whole reply. */
-function playSingle(text, persona, highlightEl){
+function playSingle(text, persona, highlightEl, messageEl){
   const c=cleanMd(text);
   if(!c) return;
   // Stop whatever is sounding (incl. an auto-play run) so a manual click always
@@ -115,7 +115,7 @@ function playSingle(text, persona, highlightEl){
   try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){}
   clearTTSHighlight(); ttsQueue=[]; ttsPlaying=false;
   const v=(persona?.voice)||(selectedPersonaObj()?.voice)||HEALTH.default_voice||'alba';
-  playTTS(c, {voice:v}, highlightEl, highlightEl?.closest('.msg')||null).catch(()=>{});
+  playTTS(c, {voice:v}, highlightEl, messageEl||highlightEl?.closest('.msg')||null).catch(()=>{});
 }
 function playSentenceNow(text, persona, highlightEl, messageEl){
   // MANUAL play — always plays, regardless of the autoplay (speaker) toggle.
