@@ -20,6 +20,7 @@ function renderRich(bubble, text){
   bubble.innerHTML='';
   const spans = (typeof splitCodeSpans==='function') ? splitCodeSpans(text)
               : [['text', text||'']];
+  let sentenceIndex=0;
   for(const [kind, chunk] of spans){
     if(kind==='code'){
       let body=chunk;
@@ -32,7 +33,22 @@ function renderRich(bubble, text){
       const c=document.createElement('code'); c.textContent=code.replace(/\n+$/,'');
       pre.appendChild(c); bubble.appendChild(pre);
     }else if(chunk){
-      bubble.appendChild(document.createTextNode(chunk));
+      // Wrap readable prose sentence-by-sentence without changing its text. TTS
+      // adds .tts-speaking to the matching span for the duration of playback.
+      const parts=chunk.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [chunk];
+      for(const raw of parts){
+        const spoken=cleanMd(raw.trim());
+        if(isPlayableSentence(spoken)){
+          const s=document.createElement('span');
+          s.className='speakable-sentence';
+          s.dataset.sentenceIndex=String(sentenceIndex++);
+          s.dataset.spoken=spoken;
+          s.textContent=raw;
+          bubble.appendChild(s);
+        }else{
+          bubble.appendChild(document.createTextNode(raw));
+        }
+      }
     }
   }
 }
@@ -90,27 +106,30 @@ function splitSentences(t){
 }
 /* Per-sentence play button: icon-only ▶ on the same inline row; each plays
    ONLY its own sentence, in isolation (it must not trigger the whole reply). */
-function makeSentencePlay(text, persona){
+function makeSentencePlay(text, persona, highlightEl){
   const c=cleanMd(text);
   const b=document.createElement('button'); b.className='play';
   b.innerHTML=VG_ICON('play'); b.title=c;
-  b.onclick=()=>playSingle(c, persona);
+  b.onclick=()=>playSingle(c, persona, highlightEl);
   return b;
 }
 /* "Replay all" button: icon-only ⟲; re-streams the whole reply sentence-by-sentence. */
 function makeReplayAll(text, persona){
   const b=document.createElement('button'); b.className='play'; b.textContent='⟲';
   b.title='Replay all'; b.style.marginTop='6px';
-  b.onclick=()=>replayMessage(text, persona);
+  b.onclick=()=>replayMessage(text, persona, b.closest('.msg'));
   return b;
 }
 /* "Play all" button: ⏯ at the END of a reply. Click-only — never auto-plays.
    Re-streams every sentence in order through the serial queue (stop first so a
    prior replay/auto-play can't overlap). */
-function makePlayAll(sentences, persona){
+function makePlayAll(sentences, persona, highlightEls){
   const b=document.createElement('button'); b.className='play'; b.textContent='⏯';
   b.title='Play all (click to play)'; b.style.marginLeft='4px';
-  b.onclick=()=>{ stopTTS(); sentences.forEach(s=>playSentenceNow(s, persona)); };
+  b.onclick=()=>{
+    stopTTS();
+    sentences.forEach((s,i)=>playSentenceNow(s, persona, highlightEls?.[i], b.closest('.msg')));
+  };
   return b;
 }
 /* Build a message's sentence-play row: ONE ▶ button per clean sentence, plus a
@@ -120,12 +139,18 @@ function buildSentencePlays(container, text, persona){
   if(!container) return;
   container.innerHTML='';
   const sents=splitSentences(text||'');
-  sents.forEach(s=>container.appendChild(makeSentencePlay(s, persona)));
-  if(sents.length) container.appendChild(makePlayAll(sents, persona));
+  const msg=container.closest('.msg');
+  const spans=msg ? [...msg.querySelectorAll('.bubble .speakable-sentence')] : [];
+  sents.forEach((s,i)=>container.appendChild(makeSentencePlay(s, persona, spans[i]||null)));
+  if(sents.length) container.appendChild(makePlayAll(sents, persona, spans));
 }
 
 /* Re-stream a full response: split into sentences, queue them serially. */
-function replayMessage(text, persona){ stopTTS(); splitSentences(text||'').forEach(s=>playSentenceNow(s, persona)); }
+function replayMessage(text, persona, messageEl){
+  stopTTS();
+  const spans=messageEl ? [...messageEl.querySelectorAll('.bubble .speakable-sentence')] : [];
+  splitSentences(text||'').forEach((s,i)=>playSentenceNow(s, persona, spans[i]||null, messageEl));
+}
 
 let currentBot=null;
 function addBotMsg(persona){

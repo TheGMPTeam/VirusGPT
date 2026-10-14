@@ -335,6 +335,48 @@ def test_play_all_button_streams_every_sentence(browser):
     ctx.close()
 
 
+def test_spoken_sentence_highlight_targets_exact_prose_and_skips_code(browser):
+    """The exact spoken sentence receives the live highlight; fenced code never can."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      const wrap=document.createElement('div'); wrap.className='msg bot';
+      const bubble=document.createElement('div'); bubble.className='bubble';
+      wrap.appendChild(bubble); document.body.appendChild(wrap);
+      renderRich(bubble, 'First spoken sentence. Second spoken sentence.\\n```powershell\\nGet-Process.\\n```\\nThird spoken sentence.');
+      const spans=[...bubble.querySelectorAll('.speakable-sentence')];
+      const target=setTTSHighlight('Second spoken sentence.', spans[1], wrap);
+      const during=spans.map(s=>s.classList.contains('tts-speaking'));
+      const codeHighlighted=!!bubble.querySelector('pre.codeblock .tts-speaking');
+      clearTTSHighlight(target);
+      const after=spans.some(s=>s.classList.contains('tts-speaking'));
+      wrap.remove();
+      return {count:spans.length, during, codeHighlighted, after};
+    }""")
+    assert result["count"] == 3
+    assert result["during"] == [False, True, False]
+    assert result["codeHighlighted"] is False
+    assert result["after"] is False
+    ctx.close()
+
+
+def test_sentence_play_buttons_match_highlight_spans(browser):
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      const wrap=document.createElement('div'); wrap.className='msg bot';
+      const bubble=document.createElement('div'); bubble.className='bubble';
+      const plays=document.createElement('div'); plays.className='sentence-plays';
+      wrap.append(bubble, plays); document.body.appendChild(wrap);
+      const text='Sentence one. Sentence two. Sentence three.';
+      renderRich(bubble, text); buildSentencePlays(plays, text, null);
+      const buttons=[...plays.querySelectorAll('.play')].slice(0,3);
+      const spans=[...bubble.querySelectorAll('.speakable-sentence')];
+      const linked=buttons.map((b,i)=>b.title===spans[i].dataset.spoken);
+      wrap.remove(); return {buttons:buttons.length, spans:spans.length, linked};
+    }""")
+    assert result == {"buttons": 3, "spans": 3, "linked": [True, True, True]}
+    ctx.close()
+
+
 def test_tts_audio_pruned_when_session_removed(browser):
     """REGRESSION: every generated TTS clip is tracked; when its session is
     removed/deleted, that audio (and its blob URL) is pruned — and any other

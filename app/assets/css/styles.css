@@ -96,6 +96,11 @@
      sentence audio. The reply itself stays as a single bubble. */
   .sentence-plays{display:flex;flex-direction:row;flex-wrap:wrap;gap:4px;margin-top:6px;max-width:100%}
   .sentence-plays .play{margin:0;padding:4px 7px;line-height:1}
+  /* Exact sentence currently being spoken. box-decoration-break keeps wrapped
+     lines highlighted as one readable phrase; code blocks are never wrapped in
+     these spans and therefore can never receive the playback highlight. */
+  .speakable-sentence{border-radius:4px;transition:background-color .18s ease,color .18s ease,box-shadow .18s ease;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+  .speakable-sentence.tts-speaking{background:rgba(157,255,0,.26);color:#efffd7;box-shadow:0 0 0 2px rgba(157,255,0,.15),0 0 14px rgba(0,255,156,.22)}
   .replay-all{margin-top:6px}
   /* streaming cursor bubble (typing preview) */
   .bubble.current{margin-top:4px}

@@ -6,6 +6,29 @@ let ttsDone=0;             // read offset into ttsBuf (sentence-linking cursor)
 let ttsQueue=[];           // [{text, persona}] played strictly in order, one at a time
 let ttsPlaying=false;
 let ttsCurrentAudio=null;  // the single Audio element currently sounding (so we never overlap)
+let ttsActiveHighlight=null;
+function clearTTSHighlight(expected=null){
+  if(expected && ttsActiveHighlight!==expected) return;
+  if(ttsActiveHighlight){ try{ ttsActiveHighlight.classList.remove('tts-speaking'); }catch(e){} }
+  ttsActiveHighlight=null;
+}
+function resolveTTSHighlight(text, preferred, messageEl){
+  if(preferred && preferred.isConnected) return preferred;
+  const root=(messageEl && messageEl.isConnected) ? messageEl : null;
+  if(!root) return null;
+  const want=cleanMd(text||'');
+  return [...root.querySelectorAll('.speakable-sentence')].find(el=>el.dataset.spoken===want) || null;
+}
+function setTTSHighlight(text, preferred, messageEl){
+  clearTTSHighlight();
+  const el=resolveTTSHighlight(text, preferred, messageEl);
+  if(el){
+    ttsActiveHighlight=el;
+    el.classList.add('tts-speaking');
+    try{ el.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(e){}
+  }
+  return el;
+}
 let audioUnlocked=false;
 // Per-session audio registry: roomName -> [{el, url}] so object URLs can be
 // revoked and <audio> nodes removed when a session is removed / deleted /
@@ -40,7 +63,7 @@ setInterval(pruneOrphanedAudio, 15000);
 let sessionAutoPlay = false;
 // Hard-stop any in-flight playback and clear the queue. Used before a fresh
 // replay / test so sentences from different sources can never overlap.
-function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} ttsQueue=[]; ttsPlaying=false; ttsBuf=''; ttsDone=0; ttsInFence=false; ttsPend=''; }
+function stopTTS(){ try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){} clearTTSHighlight(); ttsQueue=[]; ttsPlaying=false; ttsBuf=''; ttsDone=0; ttsInFence=false; ttsPend=''; }
 // Unlock audio on the first user gesture so post-async play() is allowed (autoplay policy).
 function unlockAudio(){ if(audioUnlocked) return; audioUnlocked=true;
   try{ const u=new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAD//wEA'); u.muted=true; u.play().catch(()=>{}); }catch(e){} }
@@ -79,27 +102,27 @@ function autoPlaySentence(text, persona){
   if(!TTS_ON || !sessionAutoPlay) return;
   const c=cleanMd(text);
   if(!c) return;
-  ttsQueue.push({text:c, persona}); pumpTTS();
+  ttsQueue.push({text:c, persona, messageEl:currentBot?.el||null}); pumpTTS();
 }
 /* Play exactly ONE sentence, isolated from the shared auto-play queue and from
    any in-flight playback. Used by the per-sentence ▶ buttons so clicking the
    3rd button plays ONLY the 3rd sentence — never the whole reply. */
-function playSingle(text, persona){
+function playSingle(text, persona, highlightEl){
   const c=cleanMd(text);
   if(!c) return;
   // Stop whatever is sounding (incl. an auto-play run) so a manual click always
   // wins, then play this one sentence and nothing else.
   try{ if(ttsCurrentAudio){ ttsCurrentAudio.pause(); ttsCurrentAudio=null; } }catch(e){}
-  ttsQueue=[]; ttsPlaying=false;
+  clearTTSHighlight(); ttsQueue=[]; ttsPlaying=false;
   const v=(persona?.voice)||(selectedPersonaObj()?.voice)||HEALTH.default_voice||'alba';
-  playTTS(c, {voice:v}).catch(()=>{});
+  playTTS(c, {voice:v}, highlightEl, highlightEl?.closest('.msg')||null).catch(()=>{});
 }
-function playSentenceNow(text, persona){
+function playSentenceNow(text, persona, highlightEl, messageEl){
   // MANUAL play — always plays, regardless of the autoplay (speaker) toggle.
   // This is what the per-sentence ▶ buttons and the ⟲ replay-all button use.
   const c=cleanMd(text);
   if(!c) return;
-  ttsQueue.push({text:c, persona}); pumpTTS();
+  ttsQueue.push({text:c, persona, highlightEl, messageEl}); pumpTTS();
 }
 function drainSentences(final, persona){
   // Emit only COMPLETE sentences that appear AFTER the emit cursor (ttsDone),
@@ -141,18 +164,19 @@ async function pumpTTS(){
   try{
     while(ttsQueue.length){
       const item=ttsQueue.shift();
-      try{ await playTTS(item.text, item.persona); }catch(e){ /* skip bad chunk */ }
+      try{ await playTTS(item.text, item.persona, item.highlightEl, item.messageEl); }catch(e){ clearTTSHighlight(); /* skip bad chunk */ }
     }
-  }finally{ ttsPlaying=false; }
+  }finally{ clearTTSHighlight(); ttsPlaying=false; }
 }
 // Play ONE sentence and resolve only when it has FINISHED sounding (onended),
 // so the queue in pumpTTS never starts the next sentence until this one is done.
-async function playTTS(text, persona){
+async function playTTS(text, persona, highlightEl=null, messageEl=null){
   if(!text || !text.trim()) return;   // low-level player: NOT gated by the speaker
                                         // toggle. Gating lives in autoPlaySentence
                                         // so manual ▶/⟲ always play.
   unlockAudio();
   let voice=(persona?.voice)||(selectedPersonaObj()?.voice)||HEALTH.default_voice||'alba';
+  let activeHighlight=null;
   try{
     const url=API.base+'/api/tts?text='+encodeURIComponent(text)+'&voice='+encodeURIComponent(voice)+'&format=mp3';
     const r=await fetch(url);
@@ -162,6 +186,7 @@ async function playTTS(text, persona){
     const a=new Audio(blobUrl);
     a.style.display='none'; document.body.appendChild(a);   // attach so it reliably renders/plays
     ttsCurrentAudio=a;
+    activeHighlight=setTTSHighlight(text, highlightEl, messageEl);
     _trackAudio(currentRoom, a, blobUrl);   // tie this clip to the active session for pruning
     // Wait for the clip to actually finish before resolving -> strict no-overlap sequencing.
     // CRITICAL: some engines (WKWebView / blob mp3) never fire 'ended', which would hang the
@@ -185,10 +210,12 @@ async function playTTS(text, persona){
     });
     try{ URL.revokeObjectURL(a.src); }catch(e){}
     try{ a.remove(); }catch(e){}
+    clearTTSHighlight(activeHighlight);
     if(ttsCurrentAudio===a) ttsCurrentAudio=null;
   }catch(e){
+    clearTTSHighlight(activeHighlight);
     ttsCurrentAudio=null;
-    if(voice!==HEALTH.default_voice){ try{ await playTTS(text, {...(persona||{}), voice: HEALTH.default_voice}); return; }catch(e2){} }
+    if(voice!==HEALTH.default_voice){ try{ await playTTS(text, {...(persona||{}), voice: HEALTH.default_voice}, highlightEl, messageEl); return; }catch(e2){} }
     console.error('TTS error',e);
   }
 }
