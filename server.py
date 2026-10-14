@@ -208,10 +208,19 @@ def extract_code_blocks(text):
 
 
 def speech_text(text):
-    """Speech-safe copy: code spans removed, markdown stripped, whitespace
-    collapsed. The rendered bubble keeps the original; only TTS sees this."""
-    parts = [c for kind, c in split_code_spans(text) if kind == "text"]
-    s = "".join(parts)
+    """Return a speech-safe copy with every code form removed.
+
+    This deliberately handles both complete and UNFINISHED fences/spans. The
+    browser streams tokens and may send a sentence while a closing backtick is
+    still in a later chunk; in that case dropping the remainder is safer than
+    ever reading source code aloud.
+    """
+    s = text or ""
+    # Fenced blocks first (complete or open-to-end), then inline code (complete
+    # or open-to-newline/end). Support both Markdown fence styles.
+    s = re.sub(r"```[\s\S]*?(?:```|$)", " ", s)
+    s = re.sub(r"~~~[\s\S]*?(?:~~~|$)", " ", s)
+    s = re.sub(r"`[^`\n]*(?:`|$)", " ", s)
     s = re.sub(r"[*_]{1,3}", "", s)
     s = re.sub(r"^#{1,6}\s*", "", s, flags=re.M)
     s = re.sub(r"^\s*>\s?", "", s, flags=re.M)
@@ -649,15 +658,26 @@ async def _rewrite_for_tts(text: str, tts_cfg: dict) -> Optional[str]:
 async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
     if not text:
         return JSONResponse({"error": "missing text"}, status_code=400)
+    # Mandatory final safety gate: remove fenced, inline, and even unfinished
+    # streamed code BEFORE the rewriting model or synthesizer can see it.
+    text = speech_text(text)
+    if not text:
+        from fastapi.responses import Response
+        resp = Response(status_code=204)
+        resp.headers["X-TTS-Spoken"] = ""
+        resp.headers["X-TTS-Rewritten"] = "false"
+        return resp
     v = voice or cfg.CONFIG["tts"].get("default_voice", "nova")
     # --- Speakability rewrite: rephrase the sentence for natural TTS delivery
     # (expand symbols/abbreviations, kill markdown remnants, keep meaning).
     # Runs per sentence; results are cached so replay/▶ buttons are instant.
     tts_cfg = cfg.CONFIG.get("tts", {})
+    rewritten = False
     if tts_cfg.get("rewrite", True):
         spoken = await _rewrite_for_tts(text, tts_cfg)
         if spoken:
             text = spoken
+            rewritten = True
     # Resolve a locally-cloned voice handle to its stored WAV path.
     # SECURITY: only allow files inside DATA/voices — guard against traversal.
     if v.startswith("local:"):
@@ -677,6 +697,7 @@ async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
     resp = StreamingResponse(iter([audio]), media_type=mt)
     # Debug/inspection: what the voice actually reads (after rewrite).
     resp.headers["X-TTS-Spoken"] = urllib.parse.quote(text)[:800]
+    resp.headers["X-TTS-Rewritten"] = "true" if rewritten else "false"
     return resp
 
 

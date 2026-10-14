@@ -102,6 +102,38 @@ def test_tts_proxy(client, stub_tts):
     assert stub_tts["text"] == "hello world"
 
 
+def test_tts_strips_complete_and_unfinished_code_before_rewrite(client, stub_tts, monkeypatch):
+    import server
+    seen = {}
+
+    async def fake_rewrite(text, _cfg):
+        seen["rewrite_input"] = text
+        return "Natural spoken rewrite."
+
+    monkeypatch.setattr(server, "_rewrite_for_tts", fake_rewrite)
+    source = ("Before code. ```powershell Get-Process | Stop-Process ``` "
+              "Use `ProgressBar.Value` carefully. After code.")
+    r = client.get("/api/tts", params={"text": source, "voice": "nova", "format": "mp3"})
+    assert r.status_code == 200
+    assert seen["rewrite_input"] == "Before code. Use carefully. After code."
+    assert stub_tts["text"] == "Natural spoken rewrite."
+    assert r.headers["x-tts-rewritten"] == "true"
+    assert "Get-Process" not in r.headers["x-tts-spoken"]
+
+
+def test_tts_pure_or_unfinished_code_returns_no_audio(client):
+    for source in ("```python\nprint('secret')\n```", "`unfinished.code_call("):
+        r = client.get("/api/tts", params={"text": source, "voice": "nova"})
+        assert r.status_code == 204
+        assert r.headers["x-tts-spoken"] == ""
+
+
+def test_speech_text_removes_tilde_fences_and_inline_code():
+    from server import speech_text
+    source = "Start. ~~~bash\ncurl secret.example\n~~~ Continue with `safe_call()` now."
+    assert speech_text(source) == "Start. Continue with now."
+
+
 def test_tts_missing_text(client):
     r = client.get("/api/tts")
     assert r.status_code == 400

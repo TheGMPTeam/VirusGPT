@@ -405,6 +405,34 @@ def test_tts_audio_pruned_when_session_removed(browser):
     ctx.close()
 
 
+def test_streaming_tts_filters_inline_backticks_and_both_fence_styles(browser):
+    """Code markers can be split across SSE chunks; no code may reach ttsBuf."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      TTS_ON=false; sessionAutoPlay=false; ttsBuf=''; ttsDone=0;
+      ttsCodeDelim=null; ttsScanPend='';
+      const chunks=[
+        'Intro sentence. Use `Pro',
+        'gressBar.Value` safely. ``',
+        '`powershell\\nGet-Process | Stop-Process.\\n``',
+        '` After fence. ~',
+        '~~bash\\ncurl secret.example.\\n~~~ Done sentence.'
+      ];
+      chunks.forEach(c=>feedTTS(c, selectedPersonaObj()));
+      return {buf:ttsBuf, delim:ttsCodeDelim, pending:ttsScanPend};
+    }""")
+    assert "ProgressBar" not in result["buf"]
+    assert "Get-Process" not in result["buf"]
+    assert "curl secret" not in result["buf"]
+    normalized = " ".join(result["buf"].split())
+    assert "Intro sentence." in normalized
+    assert "Use safely." in normalized
+    assert "After fence." in normalized
+    assert "Done sentence." in normalized
+    assert result["delim"] is None and result["pending"] == ""
+    ctx.close()
+
+
 def test_autoplay_stream_plays_each_sentence_once_no_loop(browser):
     """REGRESSION for the streaming auto-play loop bug: when feedTTS() is called
     repeatedly with a GROWING buffer (real token streaming), drainSentences must

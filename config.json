@@ -26,7 +26,7 @@
     "timeout": 120,
     "rewrite": true,
     "rewrite_model": "ornith-1.5:9b",
-    "rewrite_timeout": 12
+    "rewrite_timeout": 30
   },
   "stt": {
     "enabled": true,
