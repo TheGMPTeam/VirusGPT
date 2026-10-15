@@ -102,6 +102,16 @@ function initInput(){
   $('#message-input').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,140)+'px';});
 }
 
+/* Transcribe the recorded audio and send the transcript straight to chat
+   (not into the text input) so a voice note behaves like typing + Send. */
+async function sendSttToChat(fd){
+  const r=await fetch(API.base+'/api/stt',{method:'POST',body:fd});
+  const d=await r.json();
+  const text=(d.text||'').trim();
+  if(!text) return;
+  if(typeof send==='function'){ await send(text); }
+  else{ const box=$('#message-input'); box.value=(box.value+' '+text).trim(); box.dispatchEvent(new Event('input')); }
+}
 /* ---------- mic (Whisper STT) ---------- */
 // Mobile Chrome requires a SECURE CONTEXT (https://) for getUserMedia, otherwise
 // the mic is silently blocked. Detect and warn clearly instead of failing opaque.
@@ -145,9 +155,7 @@ function initMic(){
           const fd=new FormData();
           const ext=(mime||'audio/webm').includes('mp4')?'mp4':(mime||'audio/webm').includes('webm')?'webm':'wav';
           fd.append('audio', blob, 'rec.'+ext);
-          const r=await fetch(API.base+'/api/stt',{method:'POST',body:fd});
-          const d=await r.json();
-          if(d.text){ const box=$('#message-input'); box.value=(box.value+' '+d.text).trim(); box.dispatchEvent(new Event('input')); }
+          await sendSttToChat(fd);
         }catch(e){ console.error(e); alert('STT failed: '+e.message); }
         finally{ if(__micStream){ __micStream.getTracks().forEach(t=>t.stop()); __micStream=null; } __micRec=null; }
       };

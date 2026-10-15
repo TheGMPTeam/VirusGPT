@@ -76,6 +76,10 @@ async function installApiMocks(){
       const wav='UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
       event.respondWith(new Response(atob(wav),{status:200,headers:{'content-type':'audio/wav'}})); return;
     }
+    if(p === '/api/stt' && method==='POST'){
+      event.respondWith(new Response(JSON.stringify({text:'transcribed voice note'}),
+        {status:200, headers:{'content-type':'application/json'}})); return;
+    }
     if(p === '/api/generate' && method==='POST'){
       event.respondWith(new Response(JSON.stringify({status:'completed',
         url:'/api/generated/cutout.png', file:'cutout.png',
@@ -164,6 +168,9 @@ def _new_page(browser, viewport=None):
             wav = "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
             return route.fulfill(status=200, content_type="audio/wav",
                                   body=__import__("base64").b64decode(wav))
+        if p.endswith("/api/stt") and method == "POST":
+            return route.fulfill(status=200, content_type="application/json",
+                                  body=json.dumps({"text": "transcribed voice note"}))
         if p.endswith("/api/generate") and method == "POST":
             return route.fulfill(status=200, content_type="application/json",
                                   body=json.dumps({"status": "completed",
@@ -302,6 +309,26 @@ def _tts_texts(calls):
 # ---------------------------------------------------------------------------
 # Per-sentence ▶ button ISOLATION (the core fix)
 # ---------------------------------------------------------------------------
+def test_voice_transcript_goes_to_chat_not_input(browser):
+    """A mic transcript must be sent straight to chat, never parked in the
+    text input box."""
+    ctx, page = _new_page(browser)
+    page.evaluate("TTS_ON=false; sessionAutoPlay=false;")
+    page.evaluate("""async () => {
+      // fake the recorded blob so no real mic/getUserMedia is needed
+      try{ window.__sttErr = null; await sendSttToChat(new FormData()); }
+      catch(err){ window.__sttErr = String(err && err.stack || err); }
+    }""")
+    page.wait_for_timeout(500)
+    err = page.evaluate("window.__sttErr")
+    # transcript must appear as a user message in the chat
+    user_msgs = page.evaluate("[...document.querySelectorAll('.msg.user')].map(m=>m.textContent)")
+    assert any("transcribed voice note" in m for m in user_msgs), f"transcript not in chat: {user_msgs} err={err}"
+    # and the input box must be empty (it did not get dumped there)
+    assert page.input_value("#message-input") == "", "transcript leaked into the text input"
+    ctx.close()
+
+
 def test_per_sentence_button_plays_only_its_sentence(browser):
     ctx, page = _new_page(browser)
     # turn speaker OFF so auto-play never contaminates the queue
