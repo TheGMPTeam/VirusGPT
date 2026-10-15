@@ -43,7 +43,7 @@ function renderPersonaCards(){
   const grid=$('#persona-grid'); grid.innerHTML='';
   personas.forEach((p,idx)=>{
     const card=document.createElement('div'); card.className='pcard';
-    const isClone = (p.voice||'').startsWith('local:');
+    const isClone = (p.voice||'').startsWith('clone_');
     card.innerHTML=`
       <h3><div class="pav" style="background:${p.color}">${p.emoji||'🤖'}</div> ${p.name}</h3>
       <div class="form-row" style="padding:0"><label>Name</label><input class="pf-name" value="${p.name||''}" maxlength="25"></div>
@@ -57,9 +57,10 @@ function renderPersonaCards(){
         <div><label>Color</label><input class="pf-color" type="color" value="${p.color||'#00ff9c'}" style="height:38px"></div>
       </div>
       <div class="clone-box hidden" style="border:1px dashed var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
-        <label style="font-size:11px;color:var(--neon2)">Clone a new voice — upload reference audio (WAV)</label>
+        <label style="font-size:11px;color:var(--neon2)">Clone a new voice - upload reference audio (WAV, MP3, or FLAC)</label>
         <input class="clone-name" placeholder="voice name (e.g. Morgan)" maxlength="20">
-        <input type="file" class="clone-audio" accept="audio/*">
+        <input type="file" class="clone-audio" accept="audio/wav,audio/mpeg,audio/flac">
+        <label style="display:flex;gap:7px;align-items:flex-start;font-size:11px"><input type="checkbox" class="clone-consent" style="width:auto;margin-top:2px"> I own this recording or have the speaker's permission to clone it.</label>
         <div style="display:flex;gap:8px">
           <button class="btn-accent clone-do">Upload &amp; Clone</button>
           <button class="btn-secondary clone-prev"><span class="vg-ico" data-ico="speaker_on"></span> Preview</button>
@@ -98,14 +99,15 @@ function renderPersonaCards(){
     };
     card.querySelector('.clone-do').onclick=async()=>{
       const nm=card.querySelector('.clone-name').value.trim(); const f=card.querySelector('.clone-audio').files[0];
-      if(!nm||!f){ alert('Enter a name and choose a WAV'); return; }
-      const fd=new FormData(); fd.append('name',nm); fd.append('audio',f);
-      card.querySelector('.clone-do').textContent='Cloning…';
+      const consent=card.querySelector('.clone-consent').checked;
+      if(!nm||!f){ alert('Enter a name and choose an audio file'); return; }
+      if(!consent){ alert("Confirm that you own the recording or have the speaker's permission."); return; }
+      const fd=new FormData(); fd.append('name',nm); fd.append('audio',f); fd.append('consent_confirmed','true');
+      const btn=card.querySelector('.clone-do'); btn.textContent='Cloning...'; btn.disabled=true;
       try{ const r=await fetch(API.base+'/api/tts/clone',{method:'POST',body:fd}); const d=await r.json();
-        if(d.ok){ await loadVoices(); p.voice=d.voice; renderPersonaCards(); renderPersonas(); }
-        else alert('Clone failed: '+(d.error||'unknown'));
-      }catch(e){ alert('Clone error: '+e.message); }
-      card.querySelector('.clone-do').textContent='Upload & Clone';
+        if(!r.ok||!d.ok) throw new Error(d.error||('clone '+r.status));
+        await loadVoices(true); p.voice=d.voice; savePersonas(); renderPersonaCards(); renderPersonas();
+      }catch(e){ alert('Clone failed: '+(e.message||'unknown')); btn.textContent='Upload & Clone'; btn.disabled=false; }
     };
     card.querySelector('.pf-save').onclick=()=>{
       p.name=card.querySelector('.pf-name').value.trim()||p.name;

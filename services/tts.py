@@ -33,6 +33,30 @@ async def list_voices(base_url: str) -> list[str]:
     return []
 
 
+async def clone_voice(
+    data: bytes,
+    filename: str,
+    content_type: str,
+    name: str,
+    base_url: str,
+    timeout: float = 120.0,
+) -> Optional[dict]:
+    """Upload a reference to PocketTTS and return its persistent voice record."""
+    url = f"{base_url.rstrip('/')}/v1/voices/clone"
+    files = {"reference_file": (filename, data, content_type or "application/octet-stream")}
+    form = {"voiceName": name, "consent_confirmed": "true"}
+    try:
+        r = await get_client().post(url, data=form, files=files, timeout=timeout)
+        if r.status_code in (200, 201):
+            record = r.json()
+            if record.get("id"):
+                return record
+        logger.warning("TTS clone %d: %s", r.status_code, r.text[:300])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("TTS clone failed: %s", exc)
+    return None
+
+
 async def synthesize(
     text: str,
     voice: str,

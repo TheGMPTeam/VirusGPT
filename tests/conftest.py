@@ -78,8 +78,18 @@ def stub_tts(monkeypatch):
     async def fake_list_voices(base_url):
         return [{"id": "nova", "name": "Nova"}, {"id": "alba", "name": "Alba"}]
 
+    async def fake_clone_voice(data, filename, content_type, name, base_url, timeout=120.0):
+        captured["clone"] = {
+            "data": data,
+            "filename": filename,
+            "content_type": content_type,
+            "name": name,
+        }
+        return {"id": "clone_test123", "name": name, "type": "custom"}
+
     monkeypatch.setattr(tts, "synthesize", fake_synthesize)
     monkeypatch.setattr(tts, "list_voices", fake_list_voices)
+    monkeypatch.setattr(tts, "clone_voice", fake_clone_voice, raising=False)
     yield captured
 
 

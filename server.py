@@ -933,21 +933,31 @@ async def tts_voices():
 
 @app.post("/api/tts/clone")
 async def tts_clone(req: Request):
-    """Accept a reference audio upload, store locally, return a voice handle
-    PocketTTS can clone from (a local file path)."""
+    """Upload a reference to PocketTTS and return its persistent voice ID."""
     form = await req.form()
     audio = form.get("audio")
-    name = os.path.basename((form.get("name") or "voice").strip()).replace(" ", "_") or "voice"
+    name = (form.get("name") or "My cloned voice").strip()
+    consent = form.get("consent_confirmed")
+    if consent != "true":
+        return JSONResponse({"error": "confirm recording ownership or speaker permission"}, status_code=400)
     if not audio or not getattr(audio, "filename", None):
         return JSONResponse({"error": "no audio"}, status_code=400)
     data = await audio.read()
-    vdir = DATA / "voices"
-    vdir.mkdir(parents=True, exist_ok=True)
-    # keep extension safe (.wav) and name contained within vdir
-    name = name[:60]
-    path = vdir / f"{name}.wav"
-    path.write_bytes(data)
-    return JSONResponse({"ok": True, "voice": f"local:{path.name}", "path": str(path)})
+    if not data:
+        return JSONResponse({"error": "empty audio"}, status_code=400)
+    if len(data) > 10 * 1024 * 1024:
+        return JSONResponse({"error": "reference exceeds 10 MB"}, status_code=413)
+    record = await tts.clone_voice(
+        data,
+        os.path.basename(audio.filename),
+        getattr(audio, "content_type", None) or "application/octet-stream",
+        name,
+        cfg.CONFIG["tts"]["base_url"],
+        timeout=float(cfg.CONFIG["tts"].get("timeout", 120)),
+    )
+    if not record:
+        return JSONResponse({"error": "voice cloning failed"}, status_code=502)
+    return JSONResponse({"ok": True, "voice": record["id"], "name": record.get("name", name)})
 
 
 @app.post("/api/tts/preview")

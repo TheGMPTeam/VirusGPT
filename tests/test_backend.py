@@ -302,14 +302,20 @@ def test_tts_voices(client, stub_tts):
     assert any(v["id"] == "nova" for v in vs)
 
 
-def test_tts_clone(client):
+def test_tts_clone(client, stub_tts):
     buf = io.BytesIO(b"RIFF....WAVE....")
     buf.name = "ref.wav"
     r = client.post("/api/tts/clone", files={"audio": ("ref.wav", buf, "audio/wav"),
-                                             "name": (None, "myvoice")})
+                                             "name": (None, "myvoice"),
+                                             "consent_confirmed": (None, "true")})
     assert r.status_code == 200
-    assert r.json()["ok"] is True
-    assert r.json()["voice"].startswith("local:")
+    assert r.json() == {"ok": True, "voice": "clone_test123", "name": "myvoice"}
+    assert stub_tts["clone"] == {
+        "data": b"RIFF....WAVE....",
+        "filename": "ref.wav",
+        "content_type": "audio/wav",
+        "name": "myvoice",
+    }
 
 
 def test_tts_clone_no_audio(client):
