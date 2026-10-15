@@ -16,6 +16,11 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
 INDEX = (ROOT / "app" / "index.html").read_text()
 
+
+def test_personas_asset_version_invalidates_pre_consent_cache():
+    assert '/assets/js/personas.js?v=16' in INDEX
+
+
 # In-page service worker: route /api/* to canned responses.
 API_HANDLER = r"""
 async function installApiMocks(){
