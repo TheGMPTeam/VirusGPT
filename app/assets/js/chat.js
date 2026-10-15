@@ -1,6 +1,37 @@
 /* chat.js — sending messages, persona routing, slash commands, and the
    streaming chat turn that renders a live bot bubble with TTS. */
 
+// Render a plain-chat tool call visibly: an inline card in the conversation
+// (tool name, args summary, result status, duration) mirrored into the Team
+// Workflow #tool-call-log via team.js logToolCall().
+function renderChatToolCall(agentName, tc){
+  if(!tc || !tc.tool) return;
+  const bot = currentBot;
+  const argVal = (tc.args && (tc.args.query || tc.args.url || tc.args.command ||
+                tc.args.expression || tc.args.path || tc.args.question ||
+                tc.args.claim || tc.args.sql || tc.args.text)) || '';
+  const ok = !(tc.result && tc.result.error);
+  // Inline card in the chat column (between the streaming bubble and the
+  // message list bottom) so the user sees each call as it happens.
+  if(bot && bot.el){
+    const card=document.createElement('div'); card.className='chat-tool-call';
+    const dur = (typeof tc.duration_ms==='number') ? ' '+(tc.duration_ms)+'ms' : '';
+    card.innerHTML='<span class="ctc-icon">*</span>'
+      +'<span class="ctc-tool"></span><span class="ctc-arg"></span>'
+      +'<span class="'+(ok?'ctc-ok':'ctc-err')+'">'+(ok?'ok':'failed')+dur+'</span>';
+    card.querySelector('.ctc-tool').textContent=tc.tool;
+    card.querySelector('.ctc-arg').textContent=String(argVal).slice(0,80);
+    // Insert after the current streaming bubble, before the plays row.
+    if(bot.plays && bot.plays.parentNode===bot.el){ bot.el.insertBefore(card, bot.plays); }
+    else { bot.el.appendChild(card); }
+    const msgs=$('#messages'); if(msgs) msgs.scrollTop=msgs.scrollHeight;
+  }
+  // Mirror into the Team Workflow tool-call log (team.js, loaded after chat.js).
+  if(typeof logToolCall==='function'){
+    logToolCall(agentName||'chat', tc.tool, tc.args||{}, ok);
+  }
+}
+
 // Pick the persona that should answer, given routing mode + the user's text.
 async function choosePersona(text){
   const rm=activeRoom(); const lineup=roomPersonas(rm);
@@ -257,6 +288,7 @@ async function send(text){
       let i; while((i=buf.indexOf('\n\n'))>=0){const chunk=buf.slice(0,i);buf=buf.slice(i+2);
         if(chunk.startsWith('data: ')){const obj=JSON.parse(chunk.slice(6));
           if(obj.content){acc+=obj.content; pending=acc; if(!rafPending){ rafPending=true; requestAnimationFrame(flushDOM); } feedTTS(obj.content, persona);}
+          if(obj.tool_call) renderChatToolCall(persona?.name||'chat', obj.tool_call);
           if(obj.done) flushTTS(persona);
           if(obj.error){gotError=true; if(currentBot) currentBot.cur.textContent='⚠ '+obj.error;}}}}
     flushDOM();

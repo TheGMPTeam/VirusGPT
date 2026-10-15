@@ -51,9 +51,18 @@ async function runTeamRound(task){
   const workers = lineup.filter(p=>p!==planner);
   kbAdd('backlog','Task', task, 'progress');
   pushMessage('user', task, 'YOU');
+  // 0) INTERVIEW PHASE: the Planner asks clarifying questions BEFORE planning.
+  //    Questions persist server-side; other agents answer only what they know,
+  //    the rest wait for human input (and survive a page reload).
+  updatePlanPanel('interview...');
+  const qaPairs = await runInterviewPhase(planner, workers, task);
+  if(!__teamActive){ $('#message-input').disabled=false; $('#btn-send').disabled=false; return; }
   // 1) Planner lays out an ordered turn sequence (rotation across agents).
+  const qaBlock = qaPairs.length
+    ? '\n\nINTERVIEW ANSWERS so far (use these to refine the plan):\n' + qaPairs.map(q=>'Q: '+q.question+'\nA ('+q.answered_by+'): '+q.answer).join('\n')
+    : '';
   const plan = await silentStream(planner,
-    `Team members: ${lineup.map(p=>p.name).join(', ')}.\nGoal: ${task}\n\nProduce an ORDERED sequence of turns that completes the goal. Rotate among team members so each takes a turn. Output ONE turn per line, format:\n@<PersonName>: <what they should say or do>\nDo NOT do the work yourself — only delegate. Aim for several turns so the team collaborates.`,
+    `Team members: ${lineup.map(p=>p.name).join(', ')}.\nGoal: ${task}${qaBlock}\n\nProduce an ORDERED sequence of turns that completes the goal. Rotate among team members so each takes a turn. Output ONE turn per line, format:\n@<PersonName>: <what they should say or do>\nDo NOT do the work yourself — only delegate. Aim for several turns so the team collaborates.`,
     `You are ${planner.name}, the PLANNER and team lead. Decompose the goal into an ordered list of agent turns. Never answer the task yourself.`,
     null);
   updatePlanPanel('✓ plan ready');
@@ -103,6 +112,138 @@ async function runTeamRound(task){
   __teamActive=false;
   $('#message-input').disabled=false;
   $('#btn-send').disabled=false;
+}
+
+/* ---------- Team interview phase (Planner clarifies before planning) ----------
+ * The Planner asks up to 3 clarifying questions about the goal. Each question
+ * is a persistent server record (GET/POST /api/questions). Teammates attempt
+ * answers via silentStream and must reply UNKNOWN when unsure; unresolved
+ * questions become human_pending and render inline answer controls. Existing
+ * answered Q+A pairs are returned so the plan prompt can use them. */
+async function fetchQuestions(status, roomId){
+  try{
+    const qs=[]; if(status) qs.push('status='+encodeURIComponent(status));
+    if(roomId) qs.push('room_id='+encodeURIComponent(roomId));
+    const r=await fetch(API.base+'/api/questions'+(qs.length?('?'+qs.join('&')):''));
+    const d=await r.json(); return (d&&d.ok&&d.questions)||[];
+  }catch(e){ return []; }
+}
+async function createQuestion(qText, roomId, askedBy){
+  try{
+    const r=await fetch(API.base+'/api/questions',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question:qText, room_id:roomId||null, asked_by:askedBy||'planner'})});
+    const d=await r.json(); return (d&&d.ok)?d.question:null;
+  }catch(e){ return null; }
+}
+async function answerQuestionApi(qid, answer, answeredBy, provenance){
+  try{
+    const r=await fetch(API.base+'/api/questions/'+encodeURIComponent(qid)+'/answer',
+      {method:'POST',headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({answer, answered_by:answeredBy, provenance})});
+    const d=await r.json(); return (d&&d.ok)?d.question:null;
+  }catch(e){ return null; }
+}
+async function markQuestionHumanPending(qid){
+  try{
+    await fetch(API.base+'/api/questions/'+encodeURIComponent(qid)+'/human_pending',{method:'POST'});
+  }catch(e){}
+}
+
+function renderInterviewCard(q){
+  const wrap=document.createElement('div');
+  wrap.className='iq-card iq-status-'+(q.status||'pending');
+  wrap.dataset.qid=q.id;
+  const qEl=document.createElement('div'); qEl.className='iq-q'; qEl.textContent='? '+q.question; wrap.appendChild(qEl);
+  const meta=document.createElement('div'); meta.className='iq-meta';
+  meta.textContent=(q.asked_by||'planner')+' asked - status: '+(q.status||'pending'); wrap.appendChild(meta);
+  if(q.status==='answered' && q.answer){
+    const a=document.createElement('div'); a.className='iq-answer';
+    a.textContent=(q.answered_by||'agent')+': '+q.answer; wrap.appendChild(a);
+  } else if(q.status==='human_pending' || q.status==='pending'){
+    const ctr=document.createElement('div'); ctr.className='iq-controls';
+    const inp=document.createElement('input'); inp.placeholder='Answer this question (human)...';
+    const btn=document.createElement('button'); btn.className='btn small'; btn.textContent='Answer';
+    btn.onclick=async()=>{
+      const v=inp.value.trim(); if(!v) return;
+      const row=await answerQuestionApi(q.id, v, 'human', 'human');
+      if(row){ meta.textContent=(q.asked_by||'planner')+' asked - status: answered';
+        const a=document.createElement('div'); a.className='iq-answer'; a.textContent='human: '+v;
+        wrap.appendChild(a); ctr.remove(); wrap.className='iq-card iq-status-answered'; }
+    };
+    ctr.appendChild(inp); ctr.appendChild(btn); wrap.appendChild(ctr);
+  }
+  const msgs=$('#messages'); if(msgs){ msgs.appendChild(wrap); msgs.scrollTop=msgs.scrollHeight; }
+  return wrap;
+}
+
+async function runInterviewPhase(planner, workers, task){
+  const rm=activeRoom();
+  const roomId = rm && rm.name ? String(rm.name) : null;
+  // Load any open questions from a previous pass (survives reloads).
+  const open = await fetchQuestions('', roomId);
+  const questions = open.filter(q=>q.status!=='answered');
+  // Planner proposes clarifying questions (max 3) if none are open yet.
+  if(!questions.length){
+    let raw='';
+    try{
+      raw = await silentStream(planner,
+        `Goal: ${task}\nTeam members: ${workers.map(w=>w.name).join(', ')}.
+Before planning, list up to 3 CLARIFYING QUESTIONS about this goal that would materially improve the plan (scope, constraints, deliverable format, deadline). If the goal is already fully specified, output exactly NONE.
+Output one question per line, no numbering.`,
+        `You are ${planner.name}, the PLANNER. Ask only questions whose answers change the plan. Never answer the goal yourself.`,
+        null);
+    }catch(e){ raw=''; }
+    const lines=(raw||'').split('\n').map(s=>s.replace(/^[\d).:\-\s]+/,'').trim()).filter(s=>s && s.length>8 && !/^NONE$/i.test(s));
+    for(const line of lines.slice(0,3)){
+      const rec=await createQuestion(line, roomId, planner.name);
+      if(rec) questions.push(rec);
+    }
+  }
+  // Offer each open question to teammates; UNKNOWN means they do not know.
+  const answered=[];
+  for(const q of questions){
+    if(!__teamActive) break;
+    const card = renderInterviewCard(q);
+    let resolved=false;
+    if(q.status!=='human_pending'){
+      for(const w of workers){
+        if(!__teamActive) break;
+        let a='';
+        try{
+          a = await silentStream(w,
+            `The team planner asked: "${q.question}"
+Goal context: ${task}
+If you genuinely know the answer, answer in one or two sentences. If you do not know or are guessing, reply exactly: UNKNOWN`,
+            `You are ${w.name}. Honesty over helpfulness: reply UNKNOWN rather than guessing.`,
+            null);
+        }catch(e){ a=''; }
+        a=(a||'').trim();
+        if(a && !/^UNKNOWN\b/i.test(a) && a.length>2){
+          const row=await answerQuestionApi(q.id, a, w.name, 'agent');
+          if(row){ answered.push({question:q.question, answer:a, answered_by:w.name});
+            if(card){ const meta=card.querySelector('.iq-meta'); if(meta) meta.textContent=(q.asked_by||'planner')+' asked - status: answered';
+              const el=document.createElement('div'); el.className='iq-answer'; el.textContent=w.name+': '+a; card.appendChild(el);
+              const ctr=card.querySelector('.iq-controls'); if(ctr) ctr.remove();
+              card.className='iq-card iq-status-answered'; }
+            resolved=true; break; }
+        }
+      }
+      if(!resolved){
+        await markQuestionHumanPending(q.id);
+        if(card){ card.className='iq-card iq-status-human_pending';
+          const meta=card.querySelector('.iq-meta'); if(meta) meta.textContent=(q.asked_by||'planner')+' asked - status: human_pending (waiting for you)'; }
+      }
+    }
+  }
+  // Include previously answered questions for this room in the plan prompt.
+  const all = await fetchQuestions('answered', roomId);
+  for(const row of all){
+    if(!answered.some(x=>x.question===row.question)){
+      answered.push({question:row.question, answer:row.answer, answered_by:row.answered_by||'agent'});
+    }
+  }
+  updatePlanPanel(answered.length ? ('interview: '+answered.length+' answered') : 'interview: none needed');
+  return answered;
 }
 
 /* After a team round, post one canonical export card. The first download uses
@@ -557,3 +698,18 @@ async function loadMissionsList(){
   }catch(e){ const el=$('#mission-state'); if(el) el.textContent='⚠ missions unavailable'; }
 }
 
+/* Restore open interview questions after a page reload: pending/human_pending
+   questions re-render with their answer controls so nothing is lost. */
+async function restoreInterviewQuestions(){
+  const rm=activeRoom();
+  const roomId = rm && rm.name ? String(rm.name) : null;
+  if(!roomId) return;
+  const open = await fetchQuestions('', roomId);
+  for(const q of open){
+    if(q.status==='answered') continue;
+    renderInterviewCard(q);
+  }
+}
+if(typeof document!=='undefined'){
+  document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(restoreInterviewQuestions, 800); });
+}

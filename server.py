@@ -82,7 +82,7 @@ async def index():
 
 
 # --------------------------------------------------------------------------
-# Health — aggregate all backends
+# Health -- aggregate all backends
 # --------------------------------------------------------------------------
 @app.get("/api/health")
 async def health():
@@ -111,7 +111,7 @@ async def health():
 
 
 # -------------------------------------------------------------------------
-# In-app updater — version reporting + git-based rebuild/replace
+# In-app updater -- version reporting + git-based rebuild/replace
 # -------------------------------------------------------------------------
 from services import updater as _updater
 
@@ -166,7 +166,7 @@ async def api_features():
 
 
 # -------------------------------------------------------------------------
-# Chat — proxy to Ollama, stream SSE {content|done|error}
+# Chat -- proxy to Ollama, stream SSE {content|done|error}
 # -------------------------------------------------------------------------
 def split_code_spans(text):
     """Split text into [(kind, chunk)] where kind is 'text' or 'code'.
@@ -265,7 +265,7 @@ async def chat(req: Request):
     model = (body.get("model") or cfg.CONFIG["ollama"]["default_model"]).strip()
     # Reject path/control chars (defense against malformed model strings).
     # Allow legitimate Ollama names like "qwen2.5:3b" or "digitsflow/bonsai-8b:latest"
-    # (dots and forward-slashes are valid in model names) — only block backslash,
+    # (dots and forward-slashes are valid in model names) -- only block backslash,
     # control chars, and ".." traversal.
     _bad = ("\\" in model) or ("\x00" in model) or ("\x1f" in model) or ".." in model
     if not model or _bad or len(model) > 64:
@@ -377,7 +377,7 @@ async def chat(req: Request):
                 if chunk.get("done"):
                     break
             if not tool_calls:
-                # Final answer (already streamed) — nothing more to do.
+                # Final answer (already streamed) -- nothing more to do.
                 break
             # Record the assistant turn (with its tool_calls) for context.
             assistant_msg["tool_calls"] = tool_calls
@@ -406,7 +406,7 @@ async def chat(req: Request):
                                agent=persona_name or "chat")
                 # Surface the call in the chat stream itself so the user sees
                 # each tool call inline as it happens.
-                yield f"data: {json.dumps({'tool_call': {'id': call_id, 'tool': name, 'args': args, 'result': result}})}\n\n"
+                yield f"data: {json.dumps({'tool_call': {'id': call_id, 'tool': name, 'args': args, 'result': result, 'duration_ms': int((time.time()-t0)*1000)}})}\n\n"
                 messages.append({
                     "role": "tool",
                     "content": json.dumps(result, ensure_ascii=False)[:4000],
@@ -839,7 +839,7 @@ async def suggest(req: Request):
 
 
 # --------------------------------------------------------------------------
-# TTS — proxy to PocketTTS
+# TTS -- proxy to PocketTTS
 # --------------------------------------------------------------------------
 _TTS_REWRITE_CACHE: dict = {}
 _TTS_REWRITE_SYS = (
@@ -1052,7 +1052,7 @@ async def tts_preview(req: Request):
 
 
 # --------------------------------------------------------------------------
-# STT — proxy to Whisper
+# STT -- proxy to Whisper
 # --------------------------------------------------------------------------
 @app.post("/api/stt")
 async def stt_proxy(req: Request):
@@ -1086,7 +1086,7 @@ async def stt_proxy(req: Request):
 
 
 # --------------------------------------------------------------------------
-# Memory graph — live OKF stats from the shared MCP
+# Memory graph -- live OKF stats from the shared MCP
 # --------------------------------------------------------------------------
 @app.get("/api/memory/graph")
 async def memory_graph():
@@ -1224,7 +1224,7 @@ async def gateway_status():
 
 
 # -------------------------------------------------------------------------
-# Modular LAN services — status, image generation, and served output
+# Modular LAN services -- status, image generation, and served output
 # -------------------------------------------------------------------------
 @app.get("/api/services/status")
 async def services_status():
@@ -1329,7 +1329,7 @@ async def n8n_get(workflow_id: str):
 
 
 # -------------------------------------------------------------------------
-# Maton API Gateway — YouTube / Gmail / Snapchat (full control)
+# Maton API Gateway -- YouTube / Gmail / Snapchat (full control)
 # -------------------------------------------------------------------------
 @app.get("/api/marton/status")
 async def marton_status_route():
@@ -1563,7 +1563,7 @@ async def generated_image(filename: str):
 
 
 # --------------------------------------------------------------------------
-# Personas — persisted on this Mac
+# Personas -- persisted on this Mac
 # --------------------------------------------------------------------------
 def _load_personas():
     if PERSONAS_FILE.exists():
@@ -1571,7 +1571,7 @@ def _load_personas():
             data = json.loads(PERSONAS_FILE.read_text())
             if isinstance(data, list):
                 return data
-            # Corrupt/legacy shape (single object) — recover the .bak if valid.
+            # Corrupt/legacy shape (single object) -- recover the .bak if valid.
             bak = PERSONAS_FILE.with_suffix(".json.bak")
             if bak.exists():
                 try:
@@ -1620,6 +1620,77 @@ async def save_personas(req: Request):
             pass
     _save_personas(cleaned)
     return JSONResponse({"ok": True, "count": len(cleaned)})
+
+
+@app.get("/api/questions")
+async def list_questions(status: str = "", room_id: str = "", limit: int = 100):
+    """Interview questions (Planner asks; agents/humans answer). Persistent."""
+    try:
+        rows = _auto_repo.list_questions(
+            status=(status or None), room_id=(room_id or None), limit=limit)
+        return JSONResponse({"ok": True, "questions": rows})
+    except Exception as e:  # noqa
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/questions")
+async def create_question(req: Request):
+    body = await req.json()
+    q_text = (body.get("question") or "").strip()
+    if not q_text:
+        return JSONResponse({"ok": False, "error": "question required"}, status_code=400)
+    try:
+        from autonomous.database import Question
+        q = Question(
+            mission_id=(body.get("mission_id") or None),
+            room_id=(body.get("room_id") or None),
+            question=q_text,
+            asked_by=(body.get("asked_by") or "planner"),
+            status=(body.get("status") or "pending"),
+        )
+        _auto_repo.create_question(q)
+        return JSONResponse({"ok": True, "question": {
+            "id": q.id, "question": q.question, "status": q.status,
+            "asked_by": q.asked_by, "room_id": q.room_id}})
+    except Exception as e:  # noqa
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/questions/{qid}/answer")
+async def answer_question(qid: str, req: Request):
+    """Record an answer. provenance: 'agent' (from a team agent) or 'human'."""
+    body = await req.json()
+    answer = (body.get("answer") or "").strip()
+    if not answer:
+        return JSONResponse({"ok": False, "error": "answer required"}, status_code=400)
+    provenance = body.get("provenance") or "human"
+    if provenance not in ("agent", "human"):
+        provenance = "human"
+    try:
+        row = _auto_repo.answer_question(
+            qid, answer=answer,
+            answered_by=(body.get("answered_by") or provenance),
+            provenance=provenance)
+        if not row:
+            return JSONResponse({"ok": False, "error": "question not found"}, status_code=404)
+        return JSONResponse({"ok": True, "question": row})
+    except Exception as e:  # noqa
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/questions/{qid}/human_pending")
+async def question_human_pending(qid: str):
+    """Mark a question as waiting for human input (no agent knew the answer)."""
+    try:
+        row = _auto_repo.get_question(qid)
+        if not row:
+            return JSONResponse({"ok": False, "error": "question not found"}, status_code=404)
+        row = _auto_repo.answer_question(
+            qid, answer=row.get("answer") or "", answered_by="",
+            provenance="", status="human_pending")
+        return JSONResponse({"ok": True, "question": row})
+    except Exception as e:  # noqa
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.get("/api/sessions")
@@ -1689,7 +1760,7 @@ async def save_rooms(req: Request):
 
 
 # --------------------------------------------------------------------------
-# Autonomous engine — SQLite-backed mission/task runtime + SSE stream
+# Autonomous engine -- SQLite-backed mission/task runtime + SSE stream
 # --------------------------------------------------------------------------
 from autonomous.database import init_db as _init_auto_db, Repository as AutoRepo, auto_heal_db
 from autonomous.orchestrator import Supervisor

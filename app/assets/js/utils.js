@@ -9,7 +9,7 @@ function initTabs(){
       t.classList.add('active');
       $('#pane-'+t.dataset.tab).classList.add('active');
       if(t.dataset.tab==='memory') loadMemoryGraph();
-      if(t.dataset.tab==='personas'){ loadVoices().then(renderPersonaCards); }
+      if(t.dataset.tab==='personas'){ Promise.all([loadVoices(), loadMasterTools()]).then(renderPersonaCards); }
       if(t.dataset.tab==='chat'){ renderPersonas(); renderSessions(); }
       if(t.dataset.tab==='missions'){ loadMissionsList(); }
     };

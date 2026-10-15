@@ -1,4 +1,4 @@
-"""Persistence layer — SQLite by default, PlanetScale MySQL when configured."""
+"""Persistence layer -- SQLite by default, PlanetScale MySQL when configured."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ def backup_db(tag: str = "") -> Optional[str]:
         # NOTE: delete the .db file itself (old) plus its -wal/-shm siblings,
         # which backup_db names as "<stem>-wal" / "<stem>-shm". The earlier
         # `old.stem + ""` form dropped the ".db" extension and so never deleted
-        # the main backup — that made the prune a silent no-op.
+        # the main backup -- that made the prune a silent no-op.
         backs = sorted(BACKUP_DIR.glob("virusgpt-*.db"), key=lambda p: p.stat().st_mtime)
         for old in backs[:-BACKUP_KEEP]:
             for sib in (old, old.parent / (old.stem + "-wal"),
@@ -279,6 +279,23 @@ def init_db():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 """
             )
+            conn.cursor().execute(
+                """
+                CREATE TABLE IF NOT EXISTS questions (
+                    id VARCHAR(64) PRIMARY KEY,
+                    mission_id VARCHAR(64),
+                    room_id VARCHAR(64),
+                    question TEXT,
+                    status VARCHAR(32) DEFAULT 'pending',
+                    asked_by VARCHAR(64),
+                    answered_by VARCHAR(64),
+                    answer TEXT,
+                    provenance VARCHAR(16),
+                    created_at VARCHAR(32),
+                    answered_at VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """
+            )
             for idx, table, column in (
                 ("idx_tasks_mission", "tasks", "mission_id"),
                 ("idx_events_mission", "events", "mission_id"),
@@ -358,6 +375,20 @@ def init_db():
                 data TEXT,
                 updated_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS questions (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT,
+                room_id TEXT,
+                question TEXT,
+                status TEXT DEFAULT 'pending',
+                asked_by TEXT,
+                answered_by TEXT,
+                answer TEXT,
+                provenance TEXT,
+                created_at TEXT,
+                answered_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_questions_status ON questions(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_mission ON tasks(mission_id);
             CREATE INDEX IF NOT EXISTS idx_events_mission ON events(mission_id);
             CREATE INDEX IF NOT EXISTS idx_memory_agent ON agent_memory(agent);
@@ -492,6 +523,28 @@ class AgentMemory:
     content: str = ""
     importance: float = 0.5
     created_at: str = field(default_factory=_now)
+
+
+@dataclass
+class Question:
+    """Planner interview question -- persistent so it survives page reloads.
+
+    status: pending (awaiting an agent/human answer) | answered | human_pending
+    provenance: 'agent' or 'human' once answered.
+    room_id carries the client-side team-round identifier (team rounds are
+    client-side today, so mission_id stays nullable).
+    """
+    id: str = field(default_factory=lambda: f"Q-{uuid.uuid4().hex[:10]}")
+    mission_id: Optional[str] = None
+    room_id: Optional[str] = None
+    question: str = ""
+    status: str = "pending"
+    asked_by: str = ""
+    answered_by: Optional[str] = None
+    answer: Optional[str] = None
+    provenance: Optional[str] = None
+    created_at: str = field(default_factory=_now)
+    answered_at: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +765,7 @@ class Repository:
                 conn.close()
 
     # ------------------------------------------------------------------
-    # Personas — server-persisted (replaces localStorage vg_personas)
+    # Personas -- server-persisted (replaces localStorage vg_personas)
     # ------------------------------------------------------------------
     def get_personas(self) -> List[Dict[str, Any]]:
         conn = self._conn()
@@ -740,7 +793,7 @@ class Repository:
                 conn.close()
 
     # ------------------------------------------------------------------
-    # Sessions (browser/chat rooms) — server-persisted
+    # Sessions (browser/chat rooms) -- server-persisted
     # ------------------------------------------------------------------
     def get_sessions(self) -> List[Dict[str, Any]]:
         conn = self._conn()
@@ -769,6 +822,71 @@ class Repository:
         conn = self._conn()
         try:
             _execute(conn, "DELETE FROM sessions WHERE name=?", (name,))
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    # ------------------------------------------------------------------
+    # Interview questions -- Planner asks, team/human answer (persistent)
+    # ------------------------------------------------------------------
+    def create_question(self, q: Question) -> Question:
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "INSERT INTO questions (id,mission_id,room_id,question,status,asked_by,answered_by,answer,provenance,created_at,answered_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (q.id, q.mission_id, q.room_id, q.question, q.status,
+                 q.asked_by, q.answered_by, q.answer, q.provenance,
+                 q.created_at, q.answered_at),
+            )
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+        return q
+
+    def get_question(self, qid: str) -> Optional[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            return _fetchone(conn, "SELECT * FROM questions WHERE id=?", (qid,))
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def list_questions(self, status: Optional[str] = None,
+                       room_id: Optional[str] = None,
+                       limit: int = 100) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            sql = "SELECT * FROM questions"
+            where, params = [], []
+            if status:
+                where.append("status=?")
+                params.append(status)
+            if room_id:
+                where.append("room_id=?")
+                params.append(room_id)
+            if where:
+                sql += " WHERE " + " AND ".join(where)
+            sql += " ORDER BY created_at ASC LIMIT ?"
+            params.append(limit)
+            return _fetchall(conn, sql, tuple(params))
+        finally:
+            if DB_BACKEND not in ("planetscale", "mysql"):
+                conn.close()
+
+    def answer_question(self, qid: str, answer: str, answered_by: str,
+                        provenance: str = "human",
+                        status: str = "answered") -> Optional[Dict[str, Any]]:
+        """Record an answer (agent or human). Returns the updated row or None."""
+        conn = self._conn()
+        try:
+            _execute(
+                conn,
+                "UPDATE questions SET answer=?, answered_by=?, provenance=?, status=?, answered_at=? WHERE id=?",
+                (answer, answered_by, provenance, status, _now(), qid),
+            )
+            return _fetchone(conn, "SELECT * FROM questions WHERE id=?", (qid,))
         finally:
             if DB_BACKEND not in ("planetscale", "mysql"):
                 conn.close()

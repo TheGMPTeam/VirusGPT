@@ -220,6 +220,43 @@ function renderServiceDetail(name, data) {
   }
 }
 
+/* ---------- Master tool catalog (read-only) ----------
+ * The single source of truth shared by the /api/chat ReAct loop and the MCP
+ * server (GET /api/tools). Personas store name allow-lists against this list;
+ * editing happens in the Personas tab, not here. */
+async function loadMasterToolList() {
+  const box = document.getElementById("st-master-tools");
+  if (!box) return;
+  box.innerHTML = '<span class="st-muted">loading…</span>';
+  let tools;
+  try {
+    const r = await fetch("api/tools", { cache: "no-store" });
+    const arr = await r.json();
+    tools = Array.isArray(arr) ? arr : ((arr && arr.tools) || []);
+  } catch (e) {
+    box.innerHTML = '<span class="st-muted">failed to load tool catalog</span>';
+    return;
+  }
+  if (!tools.length) {
+    box.innerHTML = '<span class="st-muted">no tools registered</span>';
+    return;
+  }
+  box.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "st-muted";
+  head.textContent = tools.length + " tools — exposed over MCP and chat; allow-list per persona in the Personas tab.";
+  box.appendChild(head);
+  for (const t of tools) {
+    const row = document.createElement("div");
+    row.className = "master-tool-row";
+    const nm = document.createElement("span"); nm.className = "mt-name"; nm.textContent = t.name;
+    const ds = document.createElement("span"); ds.className = "mt-desc";
+    ds.textContent = t.description || ""; ds.title = t.description || "";
+    row.appendChild(nm); row.appendChild(ds);
+    box.appendChild(row);
+  }
+}
+
 function initServicesPanel() {
   const refresh = document.getElementById("st-services-refresh");
   if (refresh) refresh.onclick = loadServicesPanel;
@@ -227,6 +264,6 @@ function initServicesPanel() {
   const openBtn = document.getElementById("btn-settings");
   if (openBtn) {
     const orig = openBtn.onclick;
-    openBtn.onclick = () => { if (typeof orig === "function") orig(); loadServicesPanel(); };
+    openBtn.onclick = () => { if (typeof orig === "function") orig(); loadServicesPanel(); loadMasterToolList(); };
   }
 }

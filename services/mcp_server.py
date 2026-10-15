@@ -1,7 +1,7 @@
 """VirusGPT MCP SERVER (Direction A: expose VirusGPT + n8n tools to MCP clients).
 
-Runs an MCP server (FastMCP, SSE transport) so external MCP clients — n8n's
-"MCP Client" node (on a newer n8n), Claude Desktop, Cursor, or any MCP host —
+Runs an MCP server (FastMCP, SSE transport) so external MCP clients -- n8n's
+"MCP Client" node (on a newer n8n), Claude Desktop, Cursor, or any MCP host --
 can call VirusGPT's capabilities and drive n8n through us.
 
 Tools exposed:
@@ -147,7 +147,7 @@ async def n8n_add_authorization(name: str, auth_type: str = "oAuth2",
     """Build an n8n authorization/credentials node for a service (e.g. Google).
 
     Returns a JSON string describing the credential node to embed in a workflow.
-    This is the n8n "Add Authorization" step — it constructs the credential
+    This is the n8n "Add Authorization" step -- it constructs the credential
     payload that a node references via `credentials`.
 
     Args:
@@ -198,6 +198,39 @@ async def n8n_add_spreadsheet(title: str, rows_json: str = "[]",
         },
     }
     return json.dumps({"status": "ok", "sheets_node": node, "row_count": len(rows)})
+
+
+# ---------------------------------------------------------------------------
+# Master tool catalog bridge (Direction B): every tool in the canonical
+# registry (autonomous/tools.py TOOLS) is ALSO exposed here over MCP, so the
+# master list powers both the /api/chat ReAct loop and MCP clients. Handlers
+# take a JSON-string args object mirroring the ReAct tool-call shape.
+# ---------------------------------------------------------------------------
+def _expose_master_tools():
+    try:
+        from autonomous import tools as _tools
+    except Exception:  # registry unavailable at import time
+        return
+    for spec in _tools.list_tools():
+        name = spec["name"]
+
+        def make_handler(tool_name: str):
+            async def _bridge(args_json: str = "{}") -> str:
+                try:
+                    args = json.loads(args_json) if args_json else {}
+                except Exception:
+                    args = {}
+                result = await _tools.run_tool(tool_name, args)
+                return json.dumps(result, ensure_ascii=False, default=str)
+            return _bridge
+
+        handler = make_handler(name)
+        handler.__name__ = name
+        handler.__doc__ = spec["description"]
+        mcp.tool()(handler)
+
+
+_expose_master_tools()
 
 
 # ---------------------------------------------------------------------------

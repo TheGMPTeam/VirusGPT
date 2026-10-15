@@ -3,6 +3,19 @@
 
 function personaByName(n){ return personas.find(p=>p.name===n) || null; }
 
+/* ---------- master tool catalog (shared with MCP + ReAct) ---------- */
+let MASTER_TOOLS = [];
+let MASTER_TOOLS_TS = 0;
+async function loadMasterTools(force){
+  if(!force && MASTER_TOOLS.length && (Date.now()-MASTER_TOOLS_TS)<60000) return MASTER_TOOLS;
+  try{
+    const r=await fetch(API.base+'/api/tools'); const arr=await r.json();
+    if(Array.isArray(arr)){ MASTER_TOOLS=arr; MASTER_TOOLS_TS=Date.now(); }
+  }catch(e){ /* keep previous */ }
+  return MASTER_TOOLS;
+}
+function toolNames(){ return MASTER_TOOLS.map(t=>t.name); }
+
 /* ---------- sidebar personas (chat tab: name only + remove) ---------- */
 function renderPersonas(){
   const rm=activeRoom(); const lineup=roomPersonas(rm);
@@ -55,6 +68,14 @@ function renderPersonaCards(){
         <div><label>TTS Voice</label><select class="pf-voice">${voiceOptions(p.voice)}</select></div>
         <div><label>Emoji</label><input class="pf-emoji" maxlength="2" value="${p.emoji||'🤖'}"></div>
         <div><label>Color</label><input class="pf-color" type="color" value="${p.color||'#00ff9c'}" style="height:38px"></div>
+      </div>
+      <div class="form-row" style="padding:0"><label>Allowed Tools (allow-list from the master catalog)</label>
+        <div class="pf-tools" style="display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow:auto;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--panel2)">
+          ${MASTER_TOOLS.length ? MASTER_TOOLS.map(t=>{
+            const on=(p.tools||[]).includes(t.name);
+            return `<label class="pf-tool-chip" title="${(t.description||'').replace(/"/g,'&quot;')}" style="display:inline-flex;gap:4px;align-items:center;font-size:11px;padding:2px 7px;border:1px solid var(--border);border-radius:10px;cursor:pointer"><input type="checkbox" class="pf-tool" value="${t.name}" ${on?'checked':''} style="width:auto;margin:0">${t.name}</label>`;
+          }).join('') : '<span style="font-size:11px;color:var(--txt-dim)">loading tool catalog...</span>'}
+        </div>
       </div>
       <div class="clone-box hidden" style="border:1px dashed var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">
         <label style="font-size:11px;color:var(--neon2)">Clone a new voice - upload reference audio (WAV, MP3, or FLAC)</label>
@@ -118,6 +139,7 @@ function renderPersonaCards(){
       const vsel=card.querySelector('.pf-voice').value; p.voice = vsel==='__clone__' ? p.voice : vsel;
       p.emoji=card.querySelector('.pf-emoji').value||'🤖';
       p.color=card.querySelector('.pf-color').value;
+      p.tools=Array.from(card.querySelectorAll('.pf-tool:checked')).map(c=>c.value);
       savePersonas(); renderPersonaCards(); renderPersonas();
     };
     card.querySelector('.pf-del').onclick=()=>{ if(personas.length<=1)return; personas.splice(idx,1); savePersonas(); renderPersonaCards(); renderPersonas(); };
