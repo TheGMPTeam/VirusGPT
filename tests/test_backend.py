@@ -234,6 +234,29 @@ def test_tts_proxy(client, stub_tts):
     assert stub_tts["text"] == "hello world"
 
 
+def test_tts_legacy_local_voice_uses_pocket_alias(client, stub_tts, monkeypatch, tmp_path):
+    import server
+
+    voices = tmp_path / "voices"
+    voices.mkdir()
+    (voices / "pocket_aliases.json").write_text(json.dumps({
+        "local:Billy_Madison.wav": "clone_test123",
+    }))
+    monkeypatch.setattr(server, "DATA", tmp_path)
+
+    async def passthrough(text, _cfg):
+        return None
+
+    monkeypatch.setattr(server, "_rewrite_for_tts", passthrough)
+    r = client.get("/api/tts", params={
+        "text": "Voice alias test.",
+        "voice": "local:Billy_Madison.wav",
+        "format": "mp3",
+    })
+    assert r.status_code == 200
+    assert stub_tts["voice"] == "clone_test123"
+
+
 def test_tts_strips_complete_and_unfinished_code_before_rewrite(client, stub_tts, monkeypatch):
     import server
     seen = {}

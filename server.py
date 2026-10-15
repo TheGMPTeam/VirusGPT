@@ -862,15 +862,20 @@ async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
         if spoken:
             text = spoken
             rewritten = True
-    # Resolve a locally-cloned voice handle to its stored WAV path.
-    # SECURITY: only allow files inside DATA/voices — guard against traversal.
+    # Resolve legacy local clone handles. Older Personas tabs stored a path that
+    # only existed inside VirusGPT, while PocketTTS runs in another container.
+    # A persistent alias maps that old handle to PocketTTS's real clone ID.
     if v.startswith("local:"):
-        name = os.path.basename(v[len("local:"):])
-        vp = (DATA / "voices" / name).resolve()
-        allowed = (DATA / "voices").resolve()
-        if not str(vp).startswith(str(allowed) + os.sep) or not vp.is_file():
-            return JSONResponse({"error": f"cloned voice not found: {v}"}, status_code=404)
-        v = str(vp)
+        aliases = {}
+        alias_file = DATA / "voices" / "pocket_aliases.json"
+        try:
+            aliases = json.loads(alias_file.read_text()) if alias_file.is_file() else {}
+        except (OSError, ValueError):
+            aliases = {}
+        mapped = aliases.get(v)
+        if not mapped:
+            return JSONResponse({"error": f"legacy cloned voice needs re-cloning: {v}"}, status_code=409)
+        v = mapped
     # PocketTTS silently skips words in chunks over ~50 model tokens. The
     # client already splits long sentences, but the rewrite can grow a chunk
     # again, so enforce the limit here too: synthesize sub-sentences and
