@@ -744,6 +744,44 @@ def test_speaker_toggle_re_enables_autoplay(browser):
     ctx.close()
 
 
+def test_delete_all_sessions_button(browser):
+    """The sidebar 'Delete all' button wipes every room from vg_rooms and
+    leaves a single fresh 'default' room (test runs pile up chat-N clutter)."""
+    ctx, page = _new_page(browser)
+    page.evaluate("""() => {
+      rooms = [
+        {name:'default', messages:[{role:'user',content:'hi'}], personas:['VirusGPT']},
+        {name:'chat-1', messages:[{role:'user',content:'a'}], personas:['VirusGPT']},
+        {name:'chat-2', messages:[], personas:['VirusGPT']}
+      ];
+      currentRoom = 'chat-2';
+      saveJSON('vg_rooms', rooms);
+      renderSessions();
+    }""")
+    assert page.evaluate("document.querySelectorAll('#session-list .session-row').length") == 3
+    page.once("dialog", lambda d: d.accept())
+    page.click("#btn-clear-sessions")
+    page.wait_for_timeout(200)
+    state = page.evaluate("""() => ({
+      stored: JSON.parse(localStorage.getItem('vg_rooms')),
+      rows: document.querySelectorAll('#session-list .session-row .sname').length,
+      current: currentRoom
+    })""")
+    assert len(state["stored"]) == 1 and state["stored"][0]["name"] == "default"
+    # Only the system confirmation may remain in the fresh room.
+    msgs = state["stored"][0]["messages"]
+    assert all(m["role"] == "system" for m in msgs)
+    assert state["rows"] == 1
+    assert state["current"] == "default"
+    # Declining the confirm must change nothing.
+    page.evaluate("newSession()")
+    page.once("dialog", lambda d: d.dismiss())
+    page.click("#btn-clear-sessions")
+    page.wait_for_timeout(200)
+    assert page.evaluate("JSON.parse(localStorage.getItem('vg_rooms')).length") == 2
+    ctx.close()
+
+
 # ---------------------------------------------------------------------------
 # /team Agent-to-Agent round (multi-agent chat)
 # ---------------------------------------------------------------------------

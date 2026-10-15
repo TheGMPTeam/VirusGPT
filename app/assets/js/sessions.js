@@ -52,5 +52,18 @@ function newSession(){
   sessionAutoPlay=false; stopTTS();
   pushMessage('system','✨ New session: '+name);
 }
+// Delete every session at once (test runs leave chat-N clutter in vg_rooms).
+function deleteAllSessions(){
+  if(!confirm('Delete ALL sessions and their messages? This cannot be undone.')) return;
+  stopTTS();
+  Object.keys(sessionAudio).forEach(pruneSessionAudio); // revoke/release every room's audio
+  rooms = [{name:'default', messages:[], personas: personas.map(p=>p.name)}];
+  currentRoom = 'default';
+  saveJSON('vg_rooms', rooms);
+  $('#messages').innerHTML='';
+  sessionAutoPlay=false;
+  renderSessions(); renderPersonas();
+  pushMessage('system','🗑 All sessions deleted.');
+}
 // Wire the New button (declared in markup) once DOM is ready.
-function initSessions(){ $('#btn-new-session').onclick=newSession; renderSessions(); }
+function initSessions(){ $('#btn-new-session').onclick=newSession; const b=$('#btn-clear-sessions'); if(b) b.onclick=deleteAllSessions; renderSessions(); }
