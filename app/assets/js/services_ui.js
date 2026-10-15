@@ -13,7 +13,7 @@
 const SERVICE_LABELS = {
   n8n: "n8n", comfyui: "ComfyUI",
   youtube: "YouTube", gmail: "Gmail", snapchat: "Snapchat",
-  marton: "Marton Gateway",
+  marton: "Marton Gateway", hermes: "Hermes Bridge",
 };
 
 function _serviceLabel(name) { return SERVICE_LABELS[name] || name; }
@@ -108,7 +108,7 @@ function renderServiceDetail(name, data) {
   pane.appendChild(head);
 
   // Services that expose an editable secret key in the UI.
-  const KEY_FIELDS = { n8n: "api_key", marton: "api_key" };
+  const KEY_FIELDS = { n8n: "api_key", marton: "api_key", hermes: "token" };
 
   // settings fields (read-only summary + the same editable save)
   const editable = ["base_url", "enabled", "timeout", "default_model", "connection_id"];

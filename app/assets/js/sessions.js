@@ -1,6 +1,44 @@
 /* sessions.js — chat rooms as a managed list in the LEFT sidebar.
    Switch / create / rename / delete (remove) / save. Replaces the old
-   single dropdown. Each room keeps its own messages + persona lineup. */
+   single dropdown. Each room keeps its own messages + persona lineup.
+
+   Server sync: the full room list is mirrored to the server (SQLite) as the
+   session record "_rooms" so rooms survive browser resets and follow the
+   user across devices. localStorage stays the fast local cache; the server
+   copy is refreshed on every save (debounced) and consulted at boot.
+*/
+
+let _syncTimer = null;
+function syncRoomsToServer(list){
+  // Debounced: chat streams save after every message; batch bursts into one POST.
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(()=>{
+    try{
+      fetch('api/sessions/rooms', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({rooms: list})})
+        .catch(()=>{});
+    }catch(e){}
+  }, 1500);
+}
+async function hydrateRoomsFromServer(){
+  // Called once at boot. Server wins only when it has richer data than this
+  // browser (more rooms, or more messages in rooms we share), so a fresh
+  // device picks up history without clobbering a local session that's ahead.
+  try{
+    const r = await fetch('api/sessions/rooms', {cache:'no-store'});
+    if(!r.ok) return;
+    const srv = (await r.json()).rooms || [];
+    if(!srv.length) { if(rooms.length) syncRoomsToServer(rooms); return; }
+    const score = rs => rs.reduce((a,r)=>a + (1 + (r.messages||[]).length), 0);
+    if(score(srv) > score(rooms)){
+      rooms = srv;
+      if(!rooms.some(r=>r.name===currentRoom)) currentRoom = rooms[0].name;
+      saveJSON('vg_rooms', rooms);
+      renderSessions();
+      switchRoom(currentRoom);
+    }
+  }catch(e){ /* server offline — local copy is authoritative this session */ }
+}
 
 function activeRoom(){ return rooms.find(r=>r.name===currentRoom) || rooms[0]; }
 // Assigned persona lineup for a room (migrate old rooms that lack it).

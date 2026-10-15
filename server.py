@@ -32,6 +32,7 @@ from services import settings_base as base
 from services import n8n_settings as _n8n_set, comfyui_settings as _comfy_set
 from services import youtube_settings as _yt_set, gmail_settings as _gmail_set, snapchat_settings as _snap_set
 from services import marton_settings as _mart
+from services import hermes_settings as _hermes_set
 from services import close_client
 
 # Per-service settings/tools dispatcher (each connected service has its own
@@ -43,6 +44,7 @@ SERVICE_MODULES = {
     "gmail": _gmail_set,
     "snapchat": _snap_set,
     "marton": _mart,
+    "hermes": _hermes_set,
 }
 
 ROOT = Path(__file__).resolve().parent
@@ -1637,6 +1639,45 @@ async def delete_session(name: str):
     try:
         _auto_repo.delete_session(name)
         return JSONResponse({"ok": True, "name": name})
+    except Exception as e:  # noqa
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+_ROOMS_SESSION = "_rooms"
+
+
+@app.get("/api/sessions/rooms")
+async def get_rooms():
+    """Server-side mirror of the browser chat rooms (survives browser resets
+    and follows the user across devices)."""
+    try:
+        for s in _auto_repo.get_sessions():
+            if s.get("name") == _ROOMS_SESSION:
+                return JSONResponse({"rooms": s.get("rooms", []),
+                                     "updated_at": s.get("updated_at")})
+        return JSONResponse({"rooms": []})
+    except Exception as e:  # noqa
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/sessions/rooms")
+async def save_rooms(req: Request):
+    body = await req.json()
+    rooms = body.get("rooms")
+    if not isinstance(rooms, list):
+        return JSONResponse({"ok": False, "error": "rooms must be a list"}, status_code=400)
+    # Basic shape guard: every room needs a name; cap runaway message lists.
+    cleaned = []
+    for r in rooms:
+        if not isinstance(r, dict) or not (r.get("name") or "").strip():
+            continue
+        msgs = r.get("messages")
+        if isinstance(msgs, list) and len(msgs) > 2000:
+            r["messages"] = msgs[-2000:]
+        cleaned.append(r)
+    try:
+        _auto_repo.save_session({"name": _ROOMS_SESSION, "rooms": cleaned})
+        return JSONResponse({"ok": True, "count": len(cleaned)})
     except Exception as e:  # noqa
         return JSONResponse({"error": str(e)}, status_code=500)
 

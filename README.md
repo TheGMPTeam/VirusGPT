@@ -76,8 +76,24 @@ automatically. No config change or restart needed.
 - **First connect from Android:** open the URL, accept the self-signed
   certificate warning once (or install `data/ssl/virusgpt.crt` as a CA on the
   phone to silence it permanently).
-- **API keys / tokens** are supplied via the local `.env` file (never committed)
-  and surfaced in **Settings**; they are not stored in `config.json`.
+- **API keys / tokens** are entered in **Settings -> Connected Services** (n8n
+  `api_key`, Marton `api_key`, Hermes Bridge `token`). They are stored masked,
+  never written to `config.json`, and persisted to the gitignored env file
+  `data/.env` (`VG_N8N_TOKEN`, `VG_MARTON_KEY`, `VG_HERMES_TOKEN`). In Docker
+  that file lives inside the bind-mounted data volume, so keys survive
+  container restarts AND image rebuilds. Equivalent env vars can also be set
+  at container launch (`-e VG_N8N_TOKEN=...`).
+- **Hermes Bridge auth:** the Hermes peer (A2A gateway, default
+  `http://<host>:9900`) rejects unauthenticated calls with JSON-RPC
+  `-32050 unauthorized`. Generate a shared secret on the Hermes host, put it
+  in the peer's env as `A2A_BEARER_TOKEN` (plus `A2A_HOST=0.0.0.0` to expose
+  beyond loopback), and paste the same value into the Hermes Bridge token
+  field in Settings. Restart the Hermes gateway after changing its env.
+- **Session sync:** chat rooms are mirrored to the server (SQLite session
+  record `_rooms`, endpoints `GET/POST /api/sessions/rooms`) on every save and
+  re-hydrated at boot when the server copy is richer. Rooms survive browser
+  resets and follow the user across devices; localStorage remains the local
+  cache.
 
 ### Keys, tokens & commit signing
 

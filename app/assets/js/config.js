@@ -26,7 +26,8 @@ let currentAbort = null, runToken = 0, RUN_TIMEOUT_MS = 60000;
 let currentModel = lsGet('vg_model', '');
 
 function loadJSON(k, def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
-function saveJSON(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ /* storage unavailable (e.g. file://) — ignore */ } }
+function saveJSON(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ /* storage unavailable (e.g. file://) — ignore */ }
+  if(k==='vg_rooms'){ try{ syncRoomsToServer(v); }catch(e){} } }
 function selectedPersonaObj(){ return personas.find(p=>p.name===selectedPersona) || null; }
 function whoMode(){ return document.querySelector('input[name=who]:checked').value; }
 // Build the SYSTEM prompt for a persona: its own prompt + its own specialized

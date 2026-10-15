@@ -38,6 +38,7 @@ function boot(){
     if(window.initIcons) initIcons();   // fill .vg-ico placeholders from icons.js
     initTabs();
     initSessions();      // builds the left-side session list + New button
+    hydrateRoomsFromServer();  // pull server-mirrored rooms (cross-device)
     renderPersonas();
     switchRoom(currentRoom);
     initAutocomplete();

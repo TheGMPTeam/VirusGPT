@@ -104,7 +104,12 @@ def _load_dotenv_local() -> None:
     Falls back across several candidate paths for frozen (PyInstaller) builds.
     """
     root = Path(__file__).resolve().parent.parent
-    env_path = root / ".env"
+    # In Docker the bind-mounted data dir is the durable home for .env
+    # (settings_base._env_path writes it there); prefer it, then the legacy
+    # project-root .env used by bare-metal/dev runs.
+    env_path = root / "data" / ".env"
+    if not env_path.exists():
+        env_path = root / ".env"
     if not env_path.exists():
         # Frozen/PyInstaller build: __file__ lives inside the bundle, so walk
         # up a few levels and also try the canonical project root where .env

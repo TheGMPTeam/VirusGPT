@@ -83,6 +83,18 @@ def write_settings(name: str, patch: Dict[str, Any]) -> Dict[str, Any]:
     return read_settings(name)
 
 
+def _env_path():
+    """Canonical secrets file: <data dir>/.env (=/app/data/.env in Docker).
+
+    The data dir is a bind-mounted volume, so keys saved from Settings survive
+    container restarts AND image rebuilds. (Previously this wrote to the
+    project parent dir which, in Docker, resolved to '/' — outside every
+    mount, and out of sync with the loader that read /app/.env.)
+    """
+    from pathlib import Path
+    return Path(__file__).resolve().parent.parent / "data" / ".env"
+
+
 def _persist_env(key: str, value: str) -> None:
     """Write/update a single KEY=VALUE line in the project .env file.
 
@@ -90,8 +102,8 @@ def _persist_env(key: str, value: str) -> None:
     absent it is appended. Secrets live only in this gitignored file.
     """
     try:
-        from pathlib import Path
-        env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+        env_path = _env_path()
+        env_path.parent.mkdir(parents=True, exist_ok=True)
         if not env_path.exists():
             env_path.write_text(f"{key}={value}\n")
             return
@@ -117,6 +129,7 @@ _SECRET_ENV_MAP = {
     ("n8n", "api_key"): "VG_N8N_TOKEN",
     ("marton", "api_key"): "VG_MARTON_KEY",
     ("marton", "connection_id"): "VG_MARTON_CONN",
+    ("hermes", "token"): "VG_HERMES_TOKEN",
 }
 
 
