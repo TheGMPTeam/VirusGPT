@@ -98,30 +98,78 @@ function isPlayableSentence(s){
    Every returned chunk is a NON-EMPTY, PLAYABLE, markdown-clean sentence so a
    play button can never bind to a blank/junk value — and each button plays
    ONLY its own sentence. */
+/* Sentence boundary regex shared by splitSentences and the streaming splitter.
+   A '.' is NOT terminal when: preceded by a single capital letter (initials,
+   drive letters: "C.", "U.S."), followed by a digit (decimals: "4.2"), or the
+   word before it is a known abbreviation ("e.g.", "i.e.", "etc.", "Dr.").
+   Ellipses ("...") never end a sentence mid-thought. */
+const SENT_RE = /[^.!?]+[.!?]+(?=[\s"')\]}<]|$)|[^.!?]+$/g;
+function isBoundaryDot(s, i){
+  if(s[i-1] === '.') return false;                      // ellipsis / multi-dot
+  if(s[i+1] === '.') return false;                      // "..." never ends here
+  const prev = s[i-1] || '';
+  const next = s[i+1] || '';
+  if(/[0-9]/.test(next)) return false;                  // decimal / version
+  if(/^[A-Z]$/.test(prev)){                             // initials, drive letters
+    // "... C. Then" (next word capitalized) IS a real boundary; "U.S. forces" is not.
+    return next === ' ' && /^[A-Z]/.test(s[i+2] || '');
+  }
+  // trailing token may itself contain dots ("e.g", "i.e") — match those whole.
+  const w = (s.slice(0, i).match(/([A-Za-z][A-Za-z.]*)\s*$/) || [])[1] || '';
+  if(/^(e\.g|i\.e|e|i|etc|approx|vs|dr|mr|mrs|ms|prof|jr|sr|st|no|nos|vol|fig|inc|ltd|co|dept|gov|sen|rep|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec|ft|mi|kg|km|lb)$/i.test(w)) return false;
+  return true;
+}
+/* Sentence matches over a (possibly code-sentineled) string, as [text, start,
+   end]. A match whose dots are all FALSE boundaries (abbreviation, decimal) is
+   held open and merged into the next span, so junk 1-2 word TTS chunks like
+   "g." or ", 5-minute TTL) for every call)." can never be produced. The final
+   span may be an unterminated partial (end === s.length). */
+function sentenceSpans(s){
+  const out=[]; let m; let start=0;
+  SENT_RE.lastIndex=0;
+  while((m=SENT_RE.exec(s))){
+    let end=m[0].length;
+    // evaluate boundaries against the FULL string at absolute indices so
+    // context beyond the regex match (next word) is visible.
+    while(end>0 && /[.!?]/.test(m[0][end-1]) && !isBoundaryDot(s, m.index+end-1)) end--;
+    if(end===0 || !/[.!?]/.test(m[0][end-1])) continue;  // no true terminator yet
+    const abs=m.index+end;
+    out.push([s.slice(start, abs), start, abs]);
+    start=abs; SENT_RE.lastIndex=abs;
+  }
+  if(start<s.length) out.push([s.slice(start), start, s.length]);
+  return out;
+}
+/* Remove the code sentinel left by splitSentences and tidy punctuation the code
+   span used to separate ("using \u0000," -> "using,", "checks \u0000." -> "checks."). */
+function cleanSpeechArtifacts(s){
+  return (s||'')
+    .replace(/\u0000/g,'')
+    .replace(/\s+([,.;:!?])/g,'$1')
+    .replace(/,\s*,/g,',')
+    .replace(/\s{2,}/g,' ')
+    .trim();
+}
 function splitSentences(t){
   // A saved room message can carry a non-string text (corrupt localStorage);
   // boot must never crash on it and a junk value must never be spoken.
   if(typeof t !== 'string') return [];
   const text=t.trim();
   if(!text) return [];
-  // Drop fenced/inline code BEFORE sentence splitting so a ▶ button can never
-  // bind to code (code is for reading, not speaking).
-  const prose = (typeof splitCodeSpans==='function')
-    ? splitCodeSpans(text).filter(s=>s[0]==='text').map(s=>s[1]).join('\n')
+  // Replace fenced/inline code with a ONE-character sentinel BEFORE sentence
+  // splitting. Offsets survive, so a code span can never leave a dangling
+  // fragment ("...checks using ." -> its own junk chunk) nor be spoken.
+  const sent = (typeof splitCodeSpans==='function')
+    ? splitCodeSpans(text).map(s=>s[0]==='code' ? '\u0000' : s[1]).join('')
     : text;
-  if(!prose.trim()) return [];
-  // Split into sentence-ish pieces on . ! ? (keep the terminator). The previous
-  // regex accidentally matched the WHOLE reply as one span (so every ▶ button
-  // bound to the entire text and clicking any sentence played everything) — this
-  // one matches each terminal-bounded sentence strictly.
-  const parts = prose.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [prose];
+  if(!sent.trim()) return [];
   const out=[];
-  for(const raw of parts){
-    const s=cleanMd(raw.trim());
+  for(const [chunk] of sentenceSpans(sent)){
+    const s=cleanSpeechArtifacts(cleanMd(chunk));
     if(isPlayableSentence(s)) out.push(s);
   }
   if(out.length) return out;
-  const cleaned=cleanMd(text);
+  const cleaned=cleanSpeechArtifacts(cleanMd(sent));
   return isPlayableSentence(cleaned)?[cleaned]:[];
 }
 /* Per-sentence play button: icon-only ▶ on the same inline row; each plays

@@ -587,6 +587,45 @@ def test_split_sentences_survives_corrupt_room_content(browser):
     ctx.close()
 
 
+def test_sentence_splitting_protects_abbreviations_and_code_gaps(browser):
+    """REGRESSION: the '.' splitter must not cut on abbreviations, decimals or
+    drive letters (that produced 1-2 word junk TTS chunks like 'g.' and
+    ', 5-minute TTL) for every call). and inline-code removal must not leave a
+    dangling 'using .' fragment that becomes its own spoken chunk."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      const abbrev = splitSentences('Key lifecycle: each agent holds a long-lived private key; it signs a short-lived access token (e.g. 5-minute TTL) for every call.');
+      const drive = splitSentences('Format the Disc C. Then apply the WIM image.');
+      const dec = splitSentences('The ISO is 4.2 GB and boots fast.');
+      const codeGap = splitSentences('we began with the foundational integrity checks using `DISM`, layered in the instructions.');
+      // Streaming path must use the same splitter.
+      ttsBuf=''; ttsDone=0; currentBot=null;
+      TTS_ON=true; sessionAutoPlay=true;
+      const realPump = pumpTTS; window.pumpTTS = () => {};   // inspect queue contents, no playback
+      feedTTS('It signs a token (e.g. 5-minute TTL) for every call. Done.', 'v');
+      flushTTS('v');
+      const streamed = ttsQueue.map(q=>q.text);
+      window.pumpTTS = realPump; stopTTS(); sessionAutoPlay=false;
+      return {abbrev, drive, dec, codeGap, streamed};
+    }""")
+    # abbreviation stays inside one sentence
+    assert len(result["abbrev"]) == 1, result["abbrev"]
+    assert "5-minute TTL" in result["abbrev"][0]
+    # "Disc C." is not split after the drive letter
+    assert len(result["drive"]) == 2, result["drive"]
+    assert result["drive"][0].endswith("Disc C.")
+    # decimal not split
+    assert len(result["dec"]) == 1 and "4.2 GB" in result["dec"][0]
+    # inline code removed WITHOUT a dangling 'using .' chunk
+    assert len(result["codeGap"]) == 1, result["codeGap"]
+    assert "using ." not in result["codeGap"][0]
+    assert "DISM" not in result["codeGap"][0]
+    # streaming path matches
+    assert len(result["streamed"]) == 2, result["streamed"]
+    assert "5-minute TTL" in result["streamed"][0]
+    ctx.close()
+
+
 def test_autoplay_stream_plays_each_sentence_once_no_loop(browser):
     """REGRESSION for the streaming auto-play loop bug: when feedTTS() is called
     repeatedly with a GROWING buffer (real token streaming), drainSentences must

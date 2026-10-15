@@ -180,13 +180,16 @@ function drainSentences(final, persona){
   // this is what stops auto-play from re-queuing every prior sentence (the
   // "loops every sentence" bug) when feedTTS is called repeatedly during a
   // streamed reply.
+  // sentenceSpans (not the raw regex) so abbreviations ("e.g."), decimals and
+  // drive letters never produce 1-2 word junk TTS chunks mid-stream.
   const tail = ttsBuf.slice(ttsDone);
-  const all = tail.match(/[^.!?]+[.!?]+/g) || [];
-  const emit = all.filter(s => /[.!?]$/.test(s.trim()));
+  const spans = sentenceSpans(tail).filter(([chunk, , end]) =>
+    /[.!?]$/.test(chunk.trim()) && end < tail.length);
   let consumed = 0;
-  for (const s of emit) {
-    consumed += s.length;
-    const c2 = cleanMd(s);
+  for (const [chunk, start, end] of spans) {
+    consumed += end;
+    const c2 = cleanSpeechArtifacts(cleanMd(chunk));
+    if (!c2) continue;
     if (currentBot && currentBot.plays && currentBot.plays.isConnected) {
       currentBot.plays.appendChild(makeSentencePlay(c2, persona));
     }
@@ -197,8 +200,8 @@ function drainSentences(final, persona){
   if (final) {
     const rest = ttsBuf.slice(ttsDone);
     ttsDone = ttsBuf.length;
-    if (rest.trim() && isPlayableSentence(rest)) {
-      const c2 = cleanMd(rest);
+    const c2 = cleanSpeechArtifacts(cleanMd(rest));
+    if (c2 && isPlayableSentence(c2)) {
       if (currentBot && currentBot.plays && currentBot.plays.isConnected) {
         currentBot.plays.appendChild(makeSentencePlay(c2, persona));
       }
