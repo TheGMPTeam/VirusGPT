@@ -271,6 +271,30 @@ def test_tts_missing_text(client):
     assert r.status_code == 400
 
 
+def test_tts_proxy_splits_oversized_text(client, stub_tts, monkeypatch):
+    """REGRESSION: PocketTTS skips words in chunks over ~50 tokens, which the
+    user heard as audio 'not played' or 'ended abruptly'. The proxy must split
+    oversized spoken text and concatenate the pieces."""
+    import server
+    async def passthrough(text, tts_cfg):
+        return None
+    monkeypatch.setattr(server, "_rewrite_for_tts", passthrough)
+    sentence = ("The deployment pipeline uses DISM to apply the image, then copies "
+                "the answer file into the Windows directory, creates the boot "
+                "partition, validates the volume, and reports the final status. ")
+    long_text = sentence * 8  # ~1200 chars
+    r = client.get("/api/tts", params={"text": long_text, "voice": "nova", "format": "mp3"})
+    assert r.status_code == 200
+    texts = stub_tts["texts"]
+    assert len(texts) >= 3, f"expected multiple synthesis chunks, got {len(texts)}"
+    assert all(len(t) <= 480 for t in texts), [len(t) for t in texts]
+    # Nothing dropped: every character of the source survives in the chunks.
+    assert "".join(texts).replace(" ", "") == long_text.replace(" ", "")
+    # Audio pieces concatenated (header + silence per chunk).
+    assert r.content.startswith(b"\xff\xfb\x90\x00")
+    assert len(r.content) == len(texts) * (4 + 64)
+
+
 def test_tts_voices(client, stub_tts):
     r = client.get("/api/tts/voices")
     assert r.status_code == 200

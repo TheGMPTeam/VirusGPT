@@ -69,6 +69,7 @@ def stub_tts(monkeypatch):
     captured = {}
 
     async def fake_synthesize(text, voice, base_url, response_format="mp3", timeout=120.0):
+        captured.setdefault("texts", []).append(text)
         captured["text"] = text
         captured["voice"] = voice
         # 1-second of silence as a valid-ish mp3 placeholder (header bytes).

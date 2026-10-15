@@ -871,10 +871,42 @@ async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
         if not str(vp).startswith(str(allowed) + os.sep) or not vp.is_file():
             return JSONResponse({"error": f"cloned voice not found: {v}"}, status_code=404)
         v = str(vp)
-    audio = await tts.synthesize(
-        text, v, cfg.CONFIG["tts"]["base_url"], response_format=format,
-        timeout=float(cfg.CONFIG["tts"].get("timeout", 120)),
-    )
+    # PocketTTS silently skips words in chunks over ~50 model tokens. The
+    # client already splits long sentences, but the rewrite can grow a chunk
+    # again, so enforce the limit here too: synthesize sub-sentences and
+    # concatenate the MP3 frames (frame streams remain playable when joined).
+    max_chars = int(tts_cfg.get("max_chunk_chars", 480))
+    pieces = [text]
+    if len(text) > max_chars:
+        import re as _re
+        sents = _re.split(r"(?<=[.!?])\s+", text)
+        pieces, cur = [], ""
+        for s in sents:
+            if cur and len(cur) + len(s) + 1 > max_chars:
+                pieces.append(cur.strip()); cur = s
+            else:
+                cur = (cur + " " + s).strip()
+        if cur: pieces.append(cur.strip())
+        # Hard-split any single oversized sentence at clause boundaries.
+        fixed = []
+        for p in pieces:
+            while len(p) > max_chars:
+                cut = max(p.rfind(", ", 0, max_chars), p.rfind(" ", 0, max_chars))
+                cut = cut if cut > 60 else max_chars
+                fixed.append(p[:cut].strip()); p = p[cut:].strip()
+            if p: fixed.append(p)
+        pieces = fixed
+    audio = None
+    for piece in pieces:
+        part = await tts.synthesize(
+            piece, v, cfg.CONFIG["tts"]["base_url"], response_format=format,
+            timeout=float(cfg.CONFIG["tts"].get("timeout", 120)),
+        )
+        if part is None:
+            if audio is None:
+                return JSONResponse({"error": "TTS unavailable"}, status_code=502)
+            break  # keep the audio we already have
+        audio = part if audio is None else audio + part
     if audio is None:
         return JSONResponse({"error": "TTS unavailable"}, status_code=502)
     mt = "audio/mpeg" if format == "mp3" else "audio/wav"

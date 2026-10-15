@@ -219,15 +219,20 @@ async function pumpTTS(){
 }
 // Play ONE sentence and resolve only when it has FINISHED sounding (onended),
 // so the queue in pumpTTS never starts the next sentence until this one is done.
+// Long sentences are split into clause chunks first: PocketTTS silently skips
+// words in chunks over ~50 model tokens, which sounded like audio being lost
+// or ending abruptly mid-sentence.
 async function playTTS(text, persona, highlightEl=null, messageEl=null){
   if(!text || !text.trim()) return;   // low-level player: NOT gated by the speaker
                                         // toggle. Gating lives in autoPlaySentence
                                         // so manual ▶/⟲ always play.
   unlockAudio();
   let voice=(persona?.voice)||(selectedPersonaObj()?.voice)||HEALTH.default_voice||'alba';
-  let activeHighlight=null;
-  try{
-    const url=API.base+'/api/tts?text='+encodeURIComponent(text)+'&voice='+encodeURIComponent(voice)+'&format=mp3';
+  // Highlight the WHOLE sentence once; every chunk keeps it lit, so
+  // highlighting never depends on the chunk boundaries below.
+  const group=setTTSHighlight(text, highlightEl, messageEl);
+  const playChunk=async(chunkText,chunkVoice)=>{
+    const url=API.base+'/api/tts?text='+encodeURIComponent(chunkText)+'&voice='+encodeURIComponent(chunkVoice)+'&format=mp3';
     const r=await fetch(url);
     if(!r.ok) throw new Error('tts '+r.status);
     const b=await r.blob();
@@ -235,38 +240,72 @@ async function playTTS(text, persona, highlightEl=null, messageEl=null){
     const a=new Audio(blobUrl);
     a.style.display='none'; document.body.appendChild(a);   // attach so it reliably renders/plays
     ttsCurrentAudio=a;
-    activeHighlight=setTTSHighlight(text, highlightEl, messageEl);
     _trackAudio(currentRoom, a, blobUrl);   // tie this clip to the active session for pruning
     // Wait for the clip to actually finish before resolving -> strict no-overlap sequencing.
     // CRITICAL: some engines (WKWebView / blob mp3) never fire 'ended', which would hang the
     // serial queue forever (Play-all plays sentence 1 then freezes, and every re-click piles
-    // up another stuck loop). So we ALSO resolve on a duration-based timeout as a hard fallback.
+    // up another stuck loop). So we ALSO resolve on a duration-based timeout as a fallback.
+    // The fallback MUST be derived from the clip's own duration: the old absolute 15s ceiling
+    // cut long clips mid-word (audio ended abruptly while the highlight stayed correct).
     await new Promise((resolve)=>{
       let done=false; const fin=()=>{ if(done) return; done=true; resolve(); };
       a.onended=fin; a.onerror=fin;
       a.play().catch(fin);   // autoplay-blocked -> resolve so we don't hang the queue
-      // Fallback timer: once we know the duration, schedule resolution shortly after it ends.
-      // If duration is unknown (0/NaN), fall back to a generous fixed ceiling.
+      // Once metadata is known, the fallback fires shortly after the clip's real end.
+      let armed=false;
       const arm=()=>{
+        if(armed) return; armed=true;
         const d=a.duration;
-        const ms=(isFinite(d)&&d>0) ? (d*1000)+400 : 12000;
+        const ms=(isFinite(d)&&d>0) ? (d*1000)+400 : 20000;
         setTimeout(fin, ms);
       };
       if(a.readyState>=1 && a.duration) arm();
       else a.addEventListener('loadedmetadata', arm, {once:true});
-      // Absolute ceiling so a never-ending clip can never wedge the queue.
-      setTimeout(fin, 15000);
+      // Only if metadata NEVER arrives: a fixed ceiling so a dead clip cannot
+      // wedge the queue. A clip with known duration is never cut by this.
+      setTimeout(()=>{ if(!armed) fin(); }, 15000);
     });
     try{ URL.revokeObjectURL(a.src); }catch(e){}
     try{ a.remove(); }catch(e){}
-    clearTTSHighlight(activeHighlight);
     if(ttsCurrentAudio===a) ttsCurrentAudio=null;
+  };
+  try{
+    for(const chunk of ttsChunks(text)){
+      try{ await playChunk(chunk, voice); }
+      catch(e){
+        if(voice!==HEALTH.default_voice){
+          try{ await playChunk(chunk, HEALTH.default_voice); continue; }catch(e2){}
+        }
+        console.error('TTS chunk failed',e);   // skip this chunk, keep the rest of the sentence
+      }
+    }
+    clearTTSHighlight(group);
   }catch(e){
-    clearTTSHighlight(activeHighlight);
+    clearTTSHighlight(group);
     ttsCurrentAudio=null;
-    if(voice!==HEALTH.default_voice){ try{ await playTTS(text, {...(persona||{}), voice: HEALTH.default_voice}, highlightEl, messageEl); return; }catch(e2){} }
     console.error('TTS error',e);
   }
+}
+// Split a sentence into synthesis-safe chunks (<= ~50 model tokens / ~240 chars).
+// Cut at clause boundaries nearest the limit so prosody stays natural; each
+// chunk is synthesized on its own so the engine never skips middle words.
+function ttsChunks(text){
+  const t=(text||'').trim();
+  if(!t || t.length<=240) return t?[t]:[];
+  const parts=[]; let rest=t;
+  while(rest.length>240){
+    const win=rest.slice(0,240);
+    let cut=-1;
+    for(const sep of [', ','; ',': ','\u2014 ',' and ']){
+      const k=win.lastIndexOf(sep);
+      if(k>60) cut=Math.max(cut, k+sep.length);
+    }
+    if(cut<0) cut=240;
+    parts.push(rest.slice(0,cut).trim());
+    rest=rest.slice(cut).trim();
+  }
+  if(rest) parts.push(rest);
+  return parts.filter(Boolean);
 }
 // Play a sample line with a specific voice handle (used by the Test buttons).
 async function playTestVoice(voice, statusEl){

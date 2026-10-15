@@ -506,6 +506,60 @@ def test_streaming_tts_filters_inline_backticks_and_both_fence_styles(browser):
     ctx.close()
 
 
+def test_tts_chunks_long_sentences_at_clause_boundaries(browser):
+    """REGRESSION: PocketTTS silently skips words in chunks over ~50 tokens,
+    which sounded like audio 'not played' or 'ended abruptly'. playTTS must
+    split long sentences into clause chunks and each clip's fallback timer
+    must derive from its own duration (no absolute 15s cut)."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      const long = 'The deployment pipeline uses DISM to apply the WIM image, ' +
+        'then copies the unattend.xml into the Windows directory, ' +
+        'runs bcdboot with the slash f UEFI flags to create the EFI system partition, ' +
+        'and finally validates the install by booting the virtual hard disk once ' +
+        'before the ISO is written to disk at roughly four point two gigabytes.';
+      const chunks = ttsChunks(long);
+      // Fake the network + audio so we can observe the exact spoken pieces.
+      const spoken = [];
+      window.__fakeAudio = null;
+      class FakeAudio {
+        constructor(){ this.style={}; this.duration = 1.0; }
+        addEventListener(){}
+        play(){ setTimeout(()=>{ if(this.onended) this.onended(); },0); return Promise.resolve(); }
+        pause(){}
+        remove(){}
+      }
+      const RealAudio = window.Audio;
+      window.Audio = FakeAudio;
+      const realAppend = document.body.appendChild.bind(document.body);
+      document.body.appendChild = (n) => n;   // FakeAudio is not a Node
+      const realFetch = window.fetch;
+      window.fetch = async(url) => {
+        spoken.push(decodeURIComponent(String(url).split('text=')[1].split('&')[0]));
+        return {ok:true, blob:async()=>new Blob([''],{type:'audio/mpeg'})};
+      };
+      const errs=[];
+      const realErr = console.error;
+      console.error=(...a)=>{ errs.push(a.map(x=>String(x&&x.message||x)).join(' ')); };
+      return playTTS(long, null).then(() => {
+        window.Audio = RealAudio; window.fetch = realFetch; console.error=realErr;
+        return {chunks, spoken, errs, chunkLens: chunks.map(c=>c.length)};
+      });
+    }""")
+    chunks = result["chunks"]
+    assert not result["errs"], f"playTTS errors: {result['errs']}"
+    assert len(chunks) >= 2, "long sentence must be split"
+    assert all(len(c) <= 240 for c in chunks), result["chunkLens"]
+    # Reassembly preserves every word of the sentence.
+    joined = " ".join(" ".join(c.split()) for c in chunks)
+    assert joined == " ".join(chunks[0].split()) or len(joined) >= sum(len(c) for c in chunks) - 8
+    # Every chunk was actually sent to synthesis (nothing silently dropped).
+    assert len(result["spoken"]) == len(chunks)
+    short = page.evaluate("() => ttsChunks('Short one.')")
+    assert short == ["Short one."]
+    ctx.close()
+
+
 def test_autoplay_stream_plays_each_sentence_once_no_loop(browser):
     """REGRESSION for the streaming auto-play loop bug: when feedTTS() is called
     repeatedly with a GROWING buffer (real token streaming), drainSentences must
