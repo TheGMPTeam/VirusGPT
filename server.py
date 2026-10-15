@@ -1878,7 +1878,9 @@ async def mission_feed(limit: int = 80):
             event_ts = datetime.datetime.fromisoformat(row.get("created_at") or "").timestamp()
         except Exception:
             event_ts = 0
-        if (event_ts >= cutoff and agent
+        agent_event = (event.startswith("agent.") or event.startswith("tool.")
+                       or event.startswith("task.") or event.startswith("round."))
+        if (event_ts >= cutoff and agent_event and agent
                 and agent not in {"mission-control", "tts", "stt", "voice"}):
             latest_by_agent[agent] = event
         if event.startswith("voice.") or event.startswith("tts."):
