@@ -193,18 +193,33 @@ Then open `http://localhost:8500`.
 
 ## Docker
 
-Prebuilt image on Docker Hub (recommended):
+Prebuilt images on Docker Hub (recommended). `beta` is the deployment channel:
 
 ```bash
-docker pull thegmpteam/virusgpt:latest   # or :beta
-docker run -d --name virusgpt -p 8500:8500 \
-  -v $(pwd)/data:/app/data \
-  -e VG_OLLAMA_URL=http://YOUR_HOST:11434 \
-  -e VG_TTS_URL=http://YOUR_HOST:49112 \
-  thegmpteam/virusgpt:latest
+docker pull thegmpteam/virusgpt:beta
+docker run -d --name virusgpt -p 8500:8500 --restart unless-stopped \
+  -v /home/dad/Config/data/virusgpt:/app/data \
+  -v /path/to/comfyui/PASSWORD:/app/secrets/comfyui_password:ro \
+  -e VG_OLLAMA_URL=http://10.0.0.157:11434 \
+  -e VG_TTS_URL=http://10.0.0.157:49112 \
+  -e VG_MODEL=gemma4:e4b \
+  -e VG_COMFY_PASSWORD_FILE=/app/secrets/comfyui_password \
+  thegmpteam/virusgpt:beta
 ```
 
-Web UI at `https://localhost:8500` (self-signed cert generated on first boot).
+- `/app/data` holds personas, chats, memory graph, and `virusgpt.db` - bind it
+  to a host directory so upgrades never lose data.
+- The ComfyUI password file is mounted read-only; its path is never committed.
+- Web UI at `https://localhost:8500` (self-signed cert generated on first boot).
+
+Build from source (only if you are developing; the Hub image is preferred):
+
+```bash
+git clone https://github.com/thegmpteam/VirusGPT && cd VirusGPT && git checkout beta
+docker build --build-arg BUILD_COMMIT=$(git rev-parse --short HEAD) \
+  --build-arg BUILD_TIME=$(date -u +%FT%TZ) --build-arg BUILD_CHANNEL=beta \
+  -t thegmpteam/virusgpt:beta .
+```
 
 Full-stack compose (bundles its own Ollama / PocketTTS / Whisper):
 
