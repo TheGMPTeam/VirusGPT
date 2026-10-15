@@ -560,6 +560,33 @@ def test_tts_chunks_long_sentences_at_clause_boundaries(browser):
     ctx.close()
 
 
+def test_split_sentences_survives_corrupt_room_content(browser):
+    """REGRESSION: a corrupt saved room message (non-string content) must not
+    crash boot — splitSentences coerces, and switchRoom skips bad entries."""
+    ctx, page = _new_page(browser)
+    result = page.evaluate("""() => {
+      const a = splitSentences(null);
+      const b = splitSentences({finalize:true});
+      const c = splitSentences('Real sentence. Another one.');
+      // switchRoom must render only the valid messages.
+      localStorage.setItem('vg_rooms', JSON.stringify([
+        {name:'default', messages:[
+          {role:'assistant', content:{finalize:true}},
+          {role:'assistant', content:'Good message.'}
+        ], personas:['VirusGPT']}
+      ]));
+      rooms = JSON.parse(localStorage.getItem('vg_rooms'));
+      currentRoom = 'default';
+      switchRoom('default');
+      const rendered = document.querySelectorAll('#messages .msg').length;
+      return {a, b, cLen: c.length, rendered};
+    }""")
+    assert result["a"] == [] and result["b"] == []
+    assert result["cLen"] == 2
+    assert result["rendered"] == 1, "corrupt entry skipped, valid one rendered"
+    ctx.close()
+
+
 def test_autoplay_stream_plays_each_sentence_once_no_loop(browser):
     """REGRESSION for the streaming auto-play loop bug: when feedTTS() is called
     repeatedly with a GROWING buffer (real token streaming), drainSentences must

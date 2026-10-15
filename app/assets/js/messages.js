@@ -99,7 +99,10 @@ function isPlayableSentence(s){
    play button can never bind to a blank/junk value — and each button plays
    ONLY its own sentence. */
 function splitSentences(t){
-  const text=(t||'').trim();
+  // A saved room message can carry a non-string text (corrupt localStorage);
+  // boot must never crash on it and a junk value must never be spoken.
+  if(typeof t !== 'string') return [];
+  const text=t.trim();
   if(!text) return [];
   // Drop fenced/inline code BEFORE sentence splitting so a ▶ button can never
   // bind to code (code is for reading, not speaking).

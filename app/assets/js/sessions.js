@@ -38,7 +38,8 @@ function renderSessions(){
     list.appendChild(row);
   });
 }
-function switchRoom(name){ const old=currentRoom; currentRoom=name; pruneSessionAudio(old); pruneOrphanedAudio(); $('#messages').innerHTML=''; (activeRoom().messages||[]).forEach(m=>addMsgEl(m.role,m.content, personaByName(m.persona))); renderSessions(); renderPersonas(); }
+function switchRoom(name){ const old=currentRoom; currentRoom=name; pruneSessionAudio(old); pruneOrphanedAudio(); $('#messages').innerHTML=''; (activeRoom().messages||[]).forEach(m=>{ if(typeof m.content!=='string') return;   // corrupt saved entry: skip, never crash boot
+  addMsgEl(m.role,m.content, personaByName(m.persona)); }); renderSessions(); renderPersonas(); }
 function newSession(){
   pruneSessionAudio(currentRoom);   // drop audio from the room we're leaving
   pruneOrphanedAudio();
