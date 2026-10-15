@@ -40,7 +40,6 @@ function refreshHud(){
   set('hud-uptime', bootUptime());
   set('hud-latency', d.latency!=null ? d.latency+'ms' : '—');
   set('hud-models', (d.models&&d.models.length)||'—');
-  set('hud-voice', d.default_voice||'—');
   set('hud-io', ((d.tts?'TTS✓':'TTS✗')+' / '+(d.whisper?'STT✓':'STT✗')));
   set('hud-backend-pct', backendPct+'%');
   const bar=document.getElementById('hud-backend-bar'); if(bar) bar.style.width=backendPct+'%';
@@ -70,7 +69,6 @@ async function refreshHealth(){
     if(!currentModel && models.length) currentModel = pickPreferred();
     const sel = currentModel || models[0] || '';
     $('#st-model').innerHTML = models.map(m=>`<option ${m===sel?'selected':''}>${m}</option>`).join('');
-    $('#st-voice').innerHTML = (d.voices||[]).map(v=>`<option ${v===(d.default_voice||'alba')?'selected':''}>${v}</option>`).join('');
     if(!currentModel && (d.default_model||d.models?.[0])) currentModel = d.default_model||d.models[0];
     $('#btn-mic').disabled = !d.whisper;
     $('#btn-mic').title = d.whisper ? 'Voice input' : 'Voice input (whisper offline)';

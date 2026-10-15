@@ -104,7 +104,6 @@
             <div class="hud-bar-label"><span>Backend</span><span id="hud-backend-pct">0%</span></div>
             <div class="hud-bar"><div class="hud-bar-fill" id="hud-backend-bar"></div></div>
           </div>
-          <div class="hud-row"><span>Active voice</span><b id="hud-voice">—</b></div>
           <div class="hud-row"><span>TTS / STT</span><b id="hud-io">—</b></div>
         </div>
         <div style="padding-top:0">
@@ -185,7 +184,6 @@
         <div class="st-col st-col-basic">
           <div class="st-col-title">General</div>
           <div class="form-row"><label>Model</label><select id="st-model"></select><button id="st-refresh-models" class="btn-accent" style="margin-left:8px">⟳</button></div>
-          <div class="form-row"><label>Default TTS Voice</label><select id="st-voice"></select></div>
           <div class="form-row"><label>Backend URL</label><input id="st-url" value=""></div>
           <div class="form-rows"><label>Think timeout (ms)</label><input id="st-timeout" type="number" value="60000"></div>
           <div class="form-actions"><button id="st-save" class="btn-accent">Save</button></div>
@@ -213,14 +211,10 @@
         </div>
         <!-- Column 1.7: VOICE options (NEW) -->
         <div class="st-col st-col-voice">
-          <div class="st-col-title">Voice</div>
-          <div class="form-row"><label>Test voice</label>
-            <button id="st-voice-test" class="btn-accent">▶ Play sample</button>
-          </div>
+          <div class="st-col-title">Playback</div>
           <div class="form-row st-switch-row"><label for="st-autoplay">Auto-play replies</label><input id="st-autoplay" type="checkbox"></div>
           <div class="form-row st-switch-row"><label for="st-sentence">Per-sentence playback</label><input id="st-sentence" type="checkbox"></div>
-          <div class="form-row st-switch-row"><label for="st-jarvis">Default to JARVIS clone</label><input id="st-jarvis" type="checkbox"></div>
-          <div class="rightbar-hint" style="font-size:11px;color:var(--txt-dim)">JARVIS = Iron Man voice clone (local PocketTTS).</div>
+          <div class="rightbar-hint" style="font-size:11px;color:var(--txt-dim)">Each persona speaks with its own voice. Set or clone a voice per persona on the Personas tab.</div>
         </div>
         <!-- Column 2: connected services (name list) -->
         <div class="st-col st-col-services">
@@ -263,7 +257,7 @@
 
   <script src="/assets/js/icons.js?v=1"></script>
   <script src="/assets/js/config.js?v=16"></script>
-  <script src="/assets/js/utils.js?v=16"></script>
+  <script src="/assets/js/utils.js?v=18"></script>
   <script src="/assets/js/tts.js?v=16"></script>
   <script src="/assets/js/messages.js?v=17"></script>
   <script src="/assets/js/personas.js?v=16"></script>
@@ -272,7 +266,7 @@
   <script src="/assets/js/autocomplete.js?v=14"></script>
   <script src="/assets/js/team.js?v=14"></script>
   <script src="/assets/js/memory.js?v=15"></script>
-  <script src="/assets/js/ui.js?v=17"></script>
+  <script src="/assets/js/ui.js?v=18"></script>
   <script src="/assets/js/services_ui.js?v=14"></script>
   <script src="/assets/js/updates.js?v=14"></script>
   <script src="/assets/js/main.js?v=17"></script>

@@ -13,6 +13,7 @@ import re
 import sys
 import time
 import urllib.parse
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -374,13 +375,27 @@ async def chat(req: Request):
             for call in tool_calls:
                 fn = (call.get("function") or {})
                 name = fn.get("name", "")
+                call_id = call.get("id") or f"c-{uuid.uuid4().hex[:8]}"
                 try:
                     args = fn.get("arguments", {}) or {}
                     if isinstance(args, str):
                         args = json.loads(args or "{}")
                 except Exception:
                     args = {}
+                # Mission Control: every tool call is a visible lifecycle event.
+                from autonomous import mission_control as _mc
+                await _mc.emit(_auto_repo, "agent", "tool.start",
+                               {"call_id": call_id, "tool": name, "args": args},
+                               agent=persona_name or "chat")
+                t0 = time.time()
                 result = await agent_tools.run_tool(name, args)
+                await _mc.emit(_auto_repo, "agent", "tool.call",
+                               {"call_id": call_id, "tool": name, "args": args,
+                                "result": result, "duration_ms": int((time.time()-t0)*1000)},
+                               agent=persona_name or "chat")
+                # Surface the call in the chat stream itself so the user sees
+                # each tool call inline as it happens.
+                yield f"data: {json.dumps({'tool_call': {'id': call_id, 'tool': name, 'args': args, 'result': result}})}\n\n"
                 messages.append({
                     "role": "tool",
                     "content": json.dumps(result, ensure_ascii=False)[:4000],
@@ -902,18 +917,28 @@ async def tts_proxy(text: str = "", voice: str = "", format: str = "mp3"):
             if p: fixed.append(p)
         pieces = fixed
     audio = None
+    from autonomous import mission_control as _mc
+    await _mc.emit(_auto_repo, "voice", "tts.request",
+                   {"text": text[:300], "voice": v, "rewritten": rewritten,
+                    "pieces": len(pieces)}, agent="tts")
     for piece in pieces:
         part = await tts.synthesize(
             piece, v, cfg.CONFIG["tts"]["base_url"], response_format=format,
             timeout=float(cfg.CONFIG["tts"].get("timeout", 120)),
         )
         if part is None:
+            await _mc.emit(_auto_repo, "voice", "tts.error",
+                           {"text": text[:300], "voice": v,
+                            "error": "synthesizer returned no audio"}, agent="tts")
             if audio is None:
                 return JSONResponse({"error": "TTS unavailable"}, status_code=502)
             break  # keep the audio we already have
         audio = part if audio is None else audio + part
     if audio is None:
         return JSONResponse({"error": "TTS unavailable"}, status_code=502)
+    await _mc.emit(_auto_repo, "voice", "tts.synth",
+                   {"text": text[:300], "voice": v, "pieces": len(pieces),
+                    "bytes": len(audio)}, agent="tts")
     mt = "audio/mpeg" if format == "mp3" else "audio/wav"
     resp = StreamingResponse(iter([audio]), media_type=mt)
     # Debug/inspection: what the voice actually reads (after rewrite).
@@ -1757,6 +1782,44 @@ async def list_tools():
     """Catalog of tools agents can call (the 'tool-call list')."""
     from autonomous import tools as agent_tools
     return JSONResponse(agent_tools.list_tools())
+
+
+@app.post("/api/mission/report")
+async def mission_report(req: Request):
+    """Browser-reported lifecycle events (playback, team turns) so Mission
+    Control covers audio and agent activity that lives client-side."""
+    try:
+        body = await req.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json"}, status_code=400)
+    from autonomous import mission_control as _mc
+    out = await _mc.report_frontend(
+        _auto_repo, str(body.get("event") or ""),
+        body.get("data") if isinstance(body.get("data"), dict) else {},
+        agent=str(body.get("agent") or "")[:60])
+    return JSONResponse(out)
+
+
+@app.get("/api/mission/feed")
+async def mission_feed(limit: int = 80):
+    """Combined live feed for the Mission Control panel: the most recent
+    lifecycle events across the active agent + voice missions."""
+    from autonomous import mission_control as _mc
+    rows = []
+    for kind, mid in list(_mc._ACTIVE.items()):
+        try:
+            for e in _auto_repo.mission_events(mid, limit=limit):
+                try:
+                    data = json.loads(e.data) if isinstance(e.data, str) else e.data
+                except Exception:
+                    data = e.data
+                rows.append({"kind": kind, "mission_id": mid, "agent": e.agent,
+                             "event": e.event, "data": data,
+                             "created_at": e.created_at})
+        except Exception:
+            continue
+    rows.sort(key=lambda r: r["created_at"] or "")
+    return JSONResponse(rows[-limit:])
 
 
 @app.get("/api/missions")

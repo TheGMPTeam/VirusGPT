@@ -83,12 +83,8 @@ function initVoiceSettings(){
   const $=(id)=>document.getElementById(id);
   const ap=$('st-autoplay'); if(ap) ap.checked = lsGet('vg_autoplay','off')==='on';
   const sp=$('st-sentence'); if(sp) sp.checked = lsGet('vg_sentence','on')==='on';
-  const jv=$('st-jarvis'); if(jv) jv.checked = lsGet('vg_jarvis','off')==='on';
   if(ap) ap.onchange=()=>{ lsSet('vg_autoplay', ap.checked?'on':'off'); if(typeof sessionAutoPlay!=='undefined') sessionAutoPlay=ap.checked; };
   if(sp) sp.onchange=()=>{ lsSet('vg_sentence', sp.checked?'on':'off'); };
-  if(jv) jv.onchange=()=>{ lsSet('vg_jarvis', jv.checked?'on':'off'); if(jv.checked && typeof HEALTH!=='undefined'){ HEALTH.default_voice='jarvis'; const sv=$('st-voice'); if(sv) sv.value='jarvis'; } };
-  const test=$('st-voice-test');
-  if(test) test.onclick=()=>{ if(typeof playTTS==='function'){ const v=(typeof HEALTH!=='undefined'&&HEALTH.default_voice)||'alba'; playTTS('Systems nominal. JARVIS voice online and ready, sir.', {voice:v}).catch(()=>{}); } };
 }
 
 /* ---------- input ---------- */
