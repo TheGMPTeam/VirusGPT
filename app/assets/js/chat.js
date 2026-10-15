@@ -26,7 +26,9 @@ async function choosePersona(text){
     const roster=lineup.map(personaByName).filter(Boolean).map(p=>`- ${p.name}: ${(p.description||'')}`).join('\n');
     const meta=[{role:'system',content:'You are a chat router. Given the room personas and the user message, reply with ONLY the exact name of the single best persona to answer (no explanation). Personas:\n'+roster},
                 {role:'user',content:text}];
-    const r=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:meta})});
+    // think:false + tiny num_predict: a one-word routing decision must not
+    // burn 10+ seconds of hidden chain-of-thought on thinking models (gemma4).
+    const r=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:meta,think:false,options:{num_predict:16,temperature:0}})});
     if(r.ok){
       // /api/chat returns SSE (data: {content}), not JSON — accumulate the stream.
       const reader=r.body.getReader(); const dec=new TextDecoder(); let buf=''; let pick='';
@@ -227,6 +229,9 @@ async function send(text){
     await runSlashCommand(text);
     return;
   }
+  // Render the user's message IMMEDIATELY — routing (choosePersona) is an LLM
+  // round-trip and must never delay the message appearing on screen.
+  pushMessage('user',text);
   const persona=await choosePersona(text);
   const sys=buildSystem(persona);
   // Each persona keeps its OWN context (isolated agent memory), not the shared
@@ -234,7 +239,6 @@ async function send(text){
   const WINDOW = 40;
   const ctx=(persona?.context||[]).slice(-WINDOW);
   const msgs=[{role:'system',content:sys}, ...ctx.map(m=>({role:m.role,content:m.content})), {role:'user',content:text}];
-  pushMessage('user',text);
   const bot=addBotMsg(persona); currentBot=bot; let acc='',gotError=false; const myToken=++runToken; currentAbort=new AbortController();
   // Start this reply's TTS stream from a clean buffer so a leftover partial from
   // a previous turn can never be prepended/replayed into the new stream.

@@ -24,6 +24,8 @@ async def stream_chat(
     timeout: float = 120.0,
     tools: Optional[list] = None,
     tool_choice: Optional[object] = None,
+    think: Optional[bool] = None,
+    options: Optional[dict] = None,
 ) -> AsyncGenerator[dict, None]:
     """Yield dicts: {"content": str} | {"tool_calls": [...]} | {"done": True} | {"error": str}."""
     url = f"{base_url.rstrip('/')}/api/chat"
@@ -32,6 +34,10 @@ async def stream_chat(
         "messages": messages,
         "stream": True,
     }
+    if think is not None:
+        payload["think"] = bool(think)
+    if options:
+        payload["options"] = options
     if tools:
         payload["tools"] = tools
         # tool_choice: "auto" (default), "none", or a forced function dict.

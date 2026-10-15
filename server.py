@@ -342,11 +342,17 @@ async def chat(req: Request):
 
     base = cfg.CONFIG["ollama"]["base_url"]
     chat_timeout = float(cfg.CONFIG.get("chat_timeout", 60))
+    # Caller-side generation controls: meta-calls (chat router, suggest, etc.)
+    # pass think=false + a small num_predict so thinking models do not burn
+    # 10+ seconds of hidden chain-of-thought on a one-word answer.
+    think = body.get("think")
+    gen_options = body.get("options") if isinstance(body.get("options"), dict) else None
 
     async def _gen_body():
         # No tools -> plain streaming chat (original behavior, untouched).
         if not ollama_tools:
-            async for chunk in llm.stream_chat(model, messages, base, timeout=chat_timeout):
+            async for chunk in llm.stream_chat(model, messages, base, timeout=chat_timeout,
+                                               think=think, options=gen_options):
                 yield f"data: {json.dumps(chunk)}\n\n"
             return
         # ReAct loop: stream the model, execute any tool_calls, then loop until
