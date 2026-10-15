@@ -395,133 +395,317 @@ async def chat(req: Request):
 
 
 # --------------------------------------------------------------------------
-# Project export — package a finished team round (plan, transcript, code)
+# Project export - package a finished team round into a compact, verifiable ZIP
 # --------------------------------------------------------------------------
+def _export_slug(value, fallback="team-project", max_len=50):
+    slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
+    return (slug[:max_len].rstrip("-") or fallback)
+
+
+def _export_topic(heading, task):
+    text = f"{heading or ''} {task or ''}".lower()
+    rules = [
+        ("image-copy", (r"image\s+copy", r"\bwim\b", r"\bdism\b", r"capture image", r"apply image")),
+        ("hud-ui", (r"\bhud\b", r"\bui\b", r"\bxaml\b", r"interface", r"layout", r"window")),
+        ("architecture", (r"architecture", r"system design", r"component", r"orchestrat")),
+        ("deployment", (r"deploy", r"install", r"bootstrap", r"entry point", r"setup")),
+        ("security", (r"security", r"credential", r"permission", r"hardening")),
+        ("testing", (r"test", r"validat", r"verification", r"quality")),
+        ("configuration", (r"config", r"setting", r"environment", r"manifest")),
+        ("networking", (r"network", r"download", r"http", r"proxy")),
+        ("data-storage", (r"database", r"storage", r"schema", r"data model")),
+        ("documentation", (r"document", r"readme", r"guide", r"instructions")),
+    ]
+    for name, patterns in rules:
+        if any(re.search(pattern, text) for pattern in patterns):
+            return name
+    return _export_slug(heading or task, "general", 32)
+
+
+def _export_fenced_parts(text, task, transcript_line):
+    """Split one turn into coherent prose and fenced-code parts with line anchors."""
+    lines = (text or "").splitlines()
+    parts = []
+    heading = task or "General"
+    prose = []
+    prose_line = transcript_line
+
+    def flush_prose():
+        nonlocal prose, prose_line
+        content = "\n".join(prose).strip()
+        if content:
+            parts.append({"kind": "prose", "content": content, "language": "",
+                          "heading": heading, "line": prose_line})
+        prose = []
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        heading_match = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", line)
+        fence_match = re.match(r"^\s{0,3}(```|~~~)\s*([a-zA-Z0-9+_.-]{0,20})\s*$", line)
+        if heading_match:
+            flush_prose()
+            heading = heading_match.group(1).strip()
+            prose_line = transcript_line + i + 1
+            i += 1
+            continue
+        if fence_match:
+            flush_prose()
+            fence = fence_match.group(1)
+            language = fence_match.group(2).strip()
+            start = i
+            i += 1
+            code = []
+            while i < len(lines) and not re.match(rf"^\s{{0,3}}{re.escape(fence)}\s*$", lines[i]):
+                code.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1
+            content = "\n".join(code).strip()
+            if content:
+                parts.append({"kind": "code", "content": content, "language": language,
+                              "heading": heading, "line": transcript_line + start})
+            prose_line = transcript_line + i
+            continue
+        if not prose:
+            prose_line = transcript_line + i
+        prose.append(line)
+        i += 1
+    flush_prose()
+    return parts
+
+
+def _export_code_type(language, content):
+    """Classify by content first; return (extension, fence language) or prose."""
+    lang = (language or "").lower()
+    stripped = content.strip()
+    lines = [line for line in stripped.splitlines() if line.strip()]
+    joined = "\n".join(lines)
+
+    if (re.search(r"<(?:Window|Page|UserControl|Grid|StackPanel)\b", joined)
+            and ("xmlns=" in joined or re.search(r"</(?:Window|Page|UserControl)>", joined))):
+        return ".xaml", "xaml"
+
+    ps_patterns = [r"\[CmdletBinding\(\)\]", r"^\s*param\s*\(", r"\$[A-Za-z_]\w*",
+                   r"\b(?:Write|Get|Set|New|Remove|Mount|Dismount|Start|Stop)-[A-Za-z]+\b",
+                   r"^\s*function\s+[A-Za-z]+-[A-Za-z]+"]
+    ps_score = sum(bool(re.search(pattern, joined, re.M)) for pattern in ps_patterns)
+    if ps_score >= 2 or (lang in {"ps1", "powershell"} and ps_score >= 1):
+        return ".ps1", "powershell"
+
+    extmap = {"py": ".py", "python": ".py", "bash": ".sh", "sh": ".sh",
+              "shell": ".sh", "js": ".js", "javascript": ".js", "json": ".json",
+              "yaml": ".yaml", "yml": ".yaml", "html": ".html", "css": ".css",
+              "dockerfile": ".dockerfile", "sql": ".sql", "toml": ".toml",
+              "ts": ".ts", "typescript": ".ts", "csharp": ".cs", "cs": ".cs",
+              "cpp": ".cpp", "c": ".c", "xml": ".xml"}
+    if lang in extmap:
+        return extmap[lang], lang
+    if lang in {"text", "txt", "md", "markdown", "prose"}:
+        return None, "text"
+    if re.search(r"^\s*(?:def |class |import |from \w+ import )", joined, re.M):
+        return ".py", "python"
+    if re.search(r"^\s*(?:#!/|sudo |apt |curl |docker |winget )", joined, re.M):
+        return ".sh", "bash"
+    if re.search(r"[{};]", joined) and re.search(r"\b(?:const|let|function|return)\b", joined):
+        return ".js", "javascript"
+    return None, "text"
+
+
+def _export_semantic_name(content, heading, topic, extension):
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    comment_name = re.match(r"^(?:#|//|<!--)\s*([A-Za-z0-9_.-]+)(?:\s*-->)?$", first)
+    if comment_name:
+        candidate = comment_name.group(1)
+        if "." in candidate:
+            candidate = candidate.rsplit(".", 1)[0]
+        return _export_slug(candidate, topic, 42)
+    if extension == ".xaml":
+        xclass = re.search(r"x:Class=[\"']([^\"']+)[\"']", content)
+        if xclass:
+            return _export_slug(xclass.group(1).split(".")[-1], "main-window", 42)
+    function = re.search(r"^\s*function\s+([A-Za-z0-9_-]+)", content, re.M)
+    if function:
+        return _export_slug(function.group(1), topic, 42)
+    return _export_slug(heading, f"{topic}-snippet", 42)
+
+
 @app.post("/api/export/project")
 async def export_project(req: Request):
-    """Build a ZIP of a team project: README with the goal/plan/synthesis,
-    the full transcript, and every code block extracted to its own file.
-
-    Payload: {goal, plan?, turns:[{who, task, output}], synthesis?, name?}
-    """
+    """Build a compact topic-grouped project ZIP with integrity checks."""
+    import hashlib
     import io
     import zipfile
+    from datetime import datetime, timezone
+
     body = await req.json()
     goal = (body.get("goal") or "team project").strip()
     plan = (body.get("plan") or "").strip()
     turns = body.get("turns") or []
     synthesis = (body.get("synthesis") or "").strip()
-    slug = re.sub(r"[^a-z0-9]+", "-", goal.lower()).strip("-")[:40] or "team-project"
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    slug = _export_slug(body.get("name") or goal)
+    root = f"{slug}/"
+    revision = max(1, min(int(body.get("export_revision") or 1), 999))
+    exported = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    stable_payload = json.dumps({"goal": goal, "plan": plan, "turns": turns,
+                                 "synthesis": synthesis}, sort_keys=True,
+                                ensure_ascii=False).encode("utf-8")
+    round_id = str(body.get("round_id") or f"round-{hashlib.sha256(stable_payload).hexdigest()[:12]}")
+    round_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", round_id).strip("-")[:80] or "round"
+
+    # README retains the original human summary layout.
+    readme = [f"# {goal}", "", f"_Exported {exported} from VirusGPT team round._", ""]
+    if plan:
+        readme += ["## Plan", "", plan, ""]
+    readme += ["## Contributions", ""]
+    for i, turn in enumerate(turns, 1):
+        readme.append(f"{i}. **{turn.get('who','agent')}** - {turn.get('task','')}")
+    readme.append("")
+    if synthesis:
+        readme += ["## Final synthesis", "", synthesis, ""]
+
+    # Transcript stays full and untrimmed while recording exact line anchors.
+    transcript = [f"GOAL: {goal}", ""]
+    turn_lines = []
+    for i, turn in enumerate(turns, 1):
+        transcript.append(f"--- [{i}] {turn.get('who','agent')} | task: {turn.get('task','')} ---")
+        output_start = len(transcript) + 1
+        output = (turn.get("output") or "").strip()
+        transcript.extend(output.splitlines())
+        transcript.append("")
+        turn_lines.append(output_start)
+    if synthesis:
+        transcript.append("--- FINAL SYNTHESIS ---")
+        transcript.extend(synthesis.splitlines())
+    transcript_text = "\n".join(transcript)
+
+    decisions = [f"# Decisions: {goal}", ""]
+    if plan:
+        decisions += ["## Plan", "", plan, ""]
+    if synthesis:
+        decisions += ["## Consolidated decision", "", synthesis, ""]
+    decisions += ["## Design record", ""]
+    for turn in turns:
+        output = re.sub(r"```[\s\S]*?```|~~~[\s\S]*?~~~", "", turn.get("output") or "").strip()
+        output = re.sub(r"\n{3,}", "\n\n", output).strip()
+        if output:
+            decisions += [f"### {turn.get('who','agent')}",
+                          f"Task: {turn.get('task','')}", "", output, ""]
+
+    topics = {}
+    topic_order = []
+    snippet_rows = []
+    snippet_number = 0
+    used_paths = set()
+
+    def topic_bucket(topic):
+        if topic not in topics:
+            topic_order.append(topic)
+            topics[topic] = {"number": len(topic_order), "notes": [], "files": {}}
+        return topics[topic]
+
+    for turn_index, turn in enumerate(turns):
+        who = turn.get("who") or "agent"
+        task = turn.get("task") or ""
+        parts = _export_fenced_parts(turn.get("output") or "", task, turn_lines[turn_index])
+        for part in parts:
+            content = part["content"].strip()
+            if not content:
+                continue
+            topic = _export_topic(part["heading"], task)
+            bucket = topic_bucket(topic)
+            folder = f"{bucket['number']:02d}-{topic}"
+            snippet_number += 1
+            snippet_id = f"S{snippet_number:03d}"
+            anchor = f"transcript.md#L{part['line']}"
+            extension, fence_language = (None, "text")
+            if part["kind"] == "code":
+                extension, fence_language = _export_code_type(part["language"], content)
+            line_count = len(content.splitlines())
+
+            if part["kind"] == "prose" or extension is None or line_count < 10:
+                notes_path = f"snippets/{folder}/notes.md"
+                section = [f"# --- from {who}, transcript line {part['line']} ---", ""]
+                if part["kind"] == "code" and extension is not None:
+                    section += [f"```{fence_language}", content, "```", ""]
+                else:
+                    section += [content, ""]
+                bucket["notes"].extend(section)
+                output_path = notes_path
+            else:
+                semantic = _export_semantic_name(content, part["heading"], topic, extension)
+                base_path = f"snippets/{folder}/{snippet_number:03d}-{semantic}{extension}"
+                output_path = base_path
+                duplicate = 2
+                while output_path in used_paths:
+                    output_path = base_path[:-len(extension)] + f"-{duplicate}{extension}"
+                    duplicate += 1
+                used_paths.add(output_path)
+                bucket["files"][output_path] = content.rstrip() + "\n"
+
+            snippet_rows.append({"id": snippet_id, "agent": who, "topic": topic,
+                                 "anchor": anchor, "path": output_path})
+
+    archive_files = {
+        "README.md": "\n".join(readme).rstrip() + "\n",
+        "transcript.md": transcript_text.rstrip() + "\n",
+        "decisions.md": "\n".join(decisions).rstrip() + "\n",
+    }
+    for topic in topic_order:
+        bucket = topics[topic]
+        folder = f"{bucket['number']:02d}-{topic}"
+        if bucket["notes"]:
+            archive_files[f"snippets/{folder}/notes.md"] = (
+                f"# {topic.replace('-', ' ').title()}\n\n" + "\n".join(bucket["notes"]).rstrip() + "\n")
+        archive_files.update(bucket["files"])
+
+    index = ["# Snippet index", "",
+             "| Snippet | Agent | Topic | Transcript anchor | File |",
+             "|---|---|---|---|---|"]
+    for row in snippet_rows:
+        cells = [str(row[key]).replace("|", "\\|").replace("\n", " ")
+                 for key in ("id", "agent", "topic", "anchor", "path")]
+        index.append("| " + " | ".join(cells) + " |")
+    archive_files["snippets/index.md"] = "\n".join(index).rstrip() + "\n"
+
+    encoded = {path: content.encode("utf-8") for path, content in archive_files.items()}
+    agents = []
+    for turn in turns:
+        name = turn.get("who") or "agent"
+        if name not in agents:
+            agents.append(name)
+    manifest = {
+        "schema": "virusgpt.team-export.v2",
+        "export_version": 2,
+        "round_id": round_id,
+        "export_revision": revision,
+        "exported_at": exported,
+        "project": slug,
+        "agents": agents,
+        "checksum_scope": "all archive files except MANIFEST.json",
+        "snippet_count": len(snippet_rows),
+        "files": [{"path": path, "bytes": len(data),
+                   "sha256": hashlib.sha256(data).hexdigest()}
+                  for path, data in sorted(encoded.items())],
+    }
 
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        # 1) README: goal, plan, synthesis, index of contributions and code.
-        readme = [f"# {goal}", "", f"_Exported {stamp} from VirusGPT team round._", ""]
-        if plan:
-            readme += ["## Plan", "", plan, ""]
-        readme += ["## Contributions", ""]
-        for i, t in enumerate(turns, 1):
-            readme.append(f"{i}. **{t.get('who','agent')}** - {t.get('task','')}")
-        readme.append("")
-        if synthesis:
-            readme += ["## Final synthesis", "", synthesis, ""]
-        z.writestr("README.md", "\n".join(readme))
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path, data in sorted(encoded.items()):
+            archive.writestr(root + path, data)
+        archive.writestr(root + "MANIFEST.json",
+                         json.dumps(manifest, indent=2, ensure_ascii=False).encode("utf-8"))
 
-        # 2) Full transcript (untrimmed, exactly as the team produced it).
-        tr = [f"GOAL: {goal}", ""]
-        for i, t in enumerate(turns, 1):
-            tr.append(f"--- [{i}] {t.get('who','agent')} | task: {t.get('task','')} ---")
-            tr.append((t.get("output") or "").strip())
-            tr.append("")
-        if synthesis:
-            tr.append("--- FINAL SYNTHESIS ---")
-            tr.append(synthesis)
-        z.writestr("transcript.md", "\n".join(tr))
-
-        # 2b) PROJECT.json — machine-readable bundle for a larger model to
-        # resume the project: full untruncated outputs, roles, tasks, code.
-        project = {
-            "schema": "virusgpt.team-project.v1",
-            "exported": stamp,
-            "goal": goal,
-            "plan": plan or None,
-            "team": [{"name": t.get("who", "agent"), "role": t.get("role"),
-                      "task": t.get("task", "")} for t in turns],
-            "turns": [{"index": i, "who": t.get("who", "agent"),
-                       "task": t.get("task", ""),
-                       "output": t.get("output") or ""}
-                      for i, t in enumerate(turns, 1)],
-            "synthesis": synthesis or None,
-            "code_files": [],  # filled in step 3 below
-        }
-
-        # 2c) context.md — a single model-ready document: goal, plan, every
-        # turn with code inline, synthesis, and a resume instruction. A larger
-        # model can be handed this file verbatim to continue the work.
-        ctx = [f"# Project context: {goal}", "",
-               "This document is a complete handoff of a VirusGPT team round.",
-               "Use it to continue, review, or extend the project. All code",
-               "blocks are reproduced inline and also exist as files under code/.",
-               ""]
-        if plan:
-            ctx += ["## Plan", "", plan, ""]
-        ctx += ["## Team contributions", ""]
-        for i, t in enumerate(turns, 1):
-            ctx += [f"### {i}. {t.get('who','agent')}",
-                    f"Task: {t.get('task','')}", "",
-                    (t.get("output") or "").strip(), ""]
-        if synthesis:
-            ctx += ["## Final synthesis", "", synthesis, ""]
-        z.writestr("context.md", "\n".join(ctx))
-
-        # 3) Every fenced code block -> its own file under code/, deduped.
-        seen = {}
-        manifest = []
-        for t in turns + ([{"who": "synthesis", "output": synthesis}] if synthesis else []):
-            who = re.sub(r"[^a-z0-9]+", "-", (t.get("who") or "agent").lower()).strip("-")
-            for lang, block in extract_code_blocks(t.get("output") or ""):
-                key = block.strip()
-                if key in seen:
-                    continue
-                # Extension from the fence language tag, else content heuristics.
-                ext = ".txt"
-                extmap = {"py": ".py", "python": ".py", "bash": ".sh", "sh": ".sh",
-                          "shell": ".sh", "ps1": ".ps1", "powershell": ".ps1",
-                          "js": ".js", "javascript": ".js", "json": ".json",
-                          "yaml": ".yaml", "yml": ".yaml", "html": ".html",
-                          "css": ".css", "md": ".md", "dockerfile": ".dockerfile",
-                          "sql": ".sql", "toml": ".toml", "ts": ".ts"}
-                if lang:
-                    ext = extmap.get(lang.lower(), ".txt")
-                elif re.match(r"^\s*(def |import |from \w+ import )", block):
-                    ext = ".py"
-                elif re.match(r"^\s*(Write-|Get-|Set-|\$)", block):
-                    ext = ".ps1"
-                elif re.match(r"^\s*(#!/|sudo |apt |curl |docker |winget )", block):
-                    ext = ".sh"
-                n = seen.get(ext, 0) + 1
-                seen[ext] = n
-                fname = f"code/{who}-{stamp}-{n:02d}{ext}"
-                z.writestr(fname, block.strip() + "\n")
-                manifest.append({"file": fname, "by": t.get("who", "agent")})
-                project["code_files"].append(
-                    {"path": fname, "author": t.get("who", "agent"),
-                     "language": lang or ext.lstrip("."), "content": block.strip()})
-        z.writestr("code/manifest.json", json.dumps(manifest, indent=2))
-        z.writestr("PROJECT.json", json.dumps(project, indent=2))
-
-    data = buf.getvalue()
+    suffix = "" if revision == 1 else f"-v{revision}"
     from fastapi.responses import Response
-    return Response(
-        content=data, media_type="application/zip",
-        headers={"Content-Disposition":
-                 f'attachment; filename="virusgpt-{slug}-{stamp}.zip"'},
-    )
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="{slug}{suffix}.zip"'})
 
 
 # --------------------------------------------------------------------------
-# AI text improvement — rewrite the user's typed draft into a polished version
+# AI text improvement - rewrite the user's typed draft into a polished version
 # --------------------------------------------------------------------------
 @app.post("/api/improve")
 async def improve(req: Request):

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import sys
 import time
+import zipfile
 
 import pytest
 
@@ -90,6 +92,136 @@ def test_suggest_empty(client):
     r = client.post("/api/suggest", json={"text": ""})
     assert r.status_code == 200
     assert r.json()["suggestions"] == []
+
+
+# ---------------------------------------------------------------------------
+# Team project export
+# ---------------------------------------------------------------------------
+def test_project_export_builds_grouped_verified_package(client):
+    payload = {
+        "name": "win11pe-installer-design",
+        "round_id": "round-win11pe-001",
+        "export_revision": 1,
+        "goal": "Win11PE installer design",
+        "plan": "Architecture first, then HUD UI, then image copy deployment.",
+        "synthesis": "Use one deployment entry point and a progress-driven HUD.",
+        "turns": [
+            {
+                "who": "Architect",
+                "role": "planner",
+                "task": "Define the architecture and deployment entry point",
+                "output": """## Architecture
+Use a single deployment entry point and explicit phases. Inline `Get-Date` is documentation, not a standalone file.
+
+```powershell
+# deploy-entry.ps1
+[CmdletBinding()]
+param([string]$ImagePath)
+$ErrorActionPreference = 'Stop'
+Write-Host 'Preparing media'
+Mount-DiskImage -ImagePath $ImagePath
+$disk = Get-DiskImage -ImagePath $ImagePath
+$volume = $disk | Get-Volume
+Write-Host $volume.DriveLetter
+Write-Host 'Applying image'
+Write-Host 'Installing boot files'
+Write-Host 'Complete'
+```
+
+```powershell
+Write-Host 'Phase start'
+Write-Host 'Phase end'
+```
+""",
+            },
+            {
+                "who": "HUD Designer",
+                "role": "worker",
+                "task": "Design the HUD UI in XAML",
+                "output": """## HUD UI
+The display uses one progress rail and a concise status message.
+
+```xaml
+<Window x:Class="Installer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        Title="Installer HUD"
+        Width="900"
+        Height="520">
+  <Grid>
+    <StackPanel>
+      <TextBlock Text="Installing Windows" />
+      <ProgressBar Minimum="0" Maximum="100" Value="42" />
+      <TextBlock Text="Applying image" />
+    </StackPanel>
+  </Grid>
+</Window>
+```
+""",
+            },
+            {
+                "who": "Deployment Engineer",
+                "role": "worker",
+                "task": "Specify image copy and validation",
+                "output": """## Image Copy
+Copy the WIM in bounded chunks, verify the destination hash, and report progress.
+
+```text
+Source image must remain read-only.
+Destination verification is mandatory.
+```
+""",
+            },
+        ],
+    }
+    r = client.post("/api/export/project", json=payload)
+    assert r.status_code == 200
+    assert 'filename="win11pe-installer-design.zip"' in r.headers["content-disposition"]
+
+    with zipfile.ZipFile(io.BytesIO(r.content)) as archive:
+        names = sorted(archive.namelist())
+        root = "win11pe-installer-design/"
+        assert all(name.startswith(root) for name in names)
+        assert root + "MANIFEST.json" in names
+        assert root + "README.md" in names
+        assert root + "transcript.md" in names
+        assert root + "decisions.md" in names
+        assert root + "snippets/index.md" in names
+        assert not any(name.endswith("context.md") for name in names)
+        assert not any(name.endswith("PROJECT.json") for name in names)
+        assert not any("/code/" in name for name in names)
+
+        snippet_files = [name for name in names if "/snippets/" in name and not name.endswith("index.md")]
+        assert any("/01-architecture/" in name and name.endswith("deploy-entry.ps1") for name in snippet_files)
+        assert any("/02-hud-ui/" in name and name.endswith(".xaml") for name in snippet_files)
+        assert any("/03-image-copy/notes.md" in name for name in snippet_files)
+        # Inline code and short fenced snippets are merged into topic notes.
+        assert not any("get-date" in name.lower() for name in snippet_files)
+        assert len(snippet_files) <= 6
+
+        manifest = json.loads(archive.read(root + "MANIFEST.json"))
+        assert manifest["schema"] == "virusgpt.team-export.v2"
+        assert manifest["round_id"] == "round-win11pe-001"
+        assert manifest["export_revision"] == 1
+        assert manifest["agents"] == ["Architect", "HUD Designer", "Deployment Engineer"]
+        assert manifest["checksum_scope"] == "all archive files except MANIFEST.json"
+        for entry in manifest["files"]:
+            data = archive.read(root + entry["path"])
+            assert entry["bytes"] == len(data)
+            assert entry["sha256"] == hashlib.sha256(data).hexdigest()
+
+        index = archive.read(root + "snippets/index.md").decode()
+        assert "| Snippet | Agent | Topic | Transcript anchor | File |" in index
+        assert "transcript.md#L" in index
+        deploy_row = next(line for line in index.splitlines() if "deploy-entry.ps1" in line)
+        assert "transcript.md#L7" in deploy_row
+        assert "Architect" in index and "HUD Designer" in index
+        assert "Architecture first" in archive.read(root + "decisions.md").decode()
+        transcript = archive.read(root + "transcript.md").decode()
+        assert "Source image must remain read-only." in transcript
+
+    payload["export_revision"] = 2
+    r2 = client.post("/api/export/project", json=payload)
+    assert 'filename="win11pe-installer-design-v2.zip"' in r2.headers["content-disposition"]
 
 
 # ---------------------------------------------------------------------------

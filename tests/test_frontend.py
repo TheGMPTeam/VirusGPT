@@ -699,6 +699,52 @@ def test_prompt_suggestions_sit_above_input_below_chat(browser):
     ctx.close()
 
 
+def test_project_download_uses_stable_round_and_versioned_reexports(browser):
+    ctx, page = _new_page(browser)
+    page.evaluate("""(() => {
+      window.__exportBodies=[];
+      window.__downloadNames=[];
+      HTMLAnchorElement.prototype.click=function(){ window.__downloadNames.push(this.download); };
+      const originalFetch=window.fetch.bind(window);
+      window.fetch=async function(input,init){
+        const url=String(input && input.url ? input.url : input);
+        if(url.includes('/api/export/project')){
+          window.__exportBodies.push(JSON.parse(init.body));
+          const revision=window.__exportBodies.length;
+          const filename=revision===1?'demo-project.zip':'demo-project-v2.zip';
+          return new Response(new Blob(['zip']),{status:200,headers:{'Content-Disposition':'attachment; filename="'+filename+'"'}});
+        }
+        return originalFetch(input,init);
+      };
+      pushProjectDownload('Demo project','Plan one',[{who:'Architect',role:'planner',task:'Design',output:'Full output'}],'Final decision');
+    })()""")
+    card = page.locator("#messages .msg.bot").last
+    text = card.locator(".bubble").inner_text()
+    assert "MANIFEST.json" in text
+    assert "decisions.md" in text
+    assert "topic-grouped snippets" in text
+    assert "context.md" not in text
+    assert "PROJECT.json" not in text
+
+    button = card.locator("button")
+    button.click()
+    page.wait_for_function("window.__exportBodies.length === 1")
+    first = page.evaluate("window.__exportBodies[0]")
+    assert first["export_revision"] == 1
+    assert first["round_id"].startswith("round-")
+    page.wait_for_function("document.querySelector('#messages .msg.bot:last-child button').textContent.includes('v2')")
+    assert "v2" in button.inner_text().lower()
+
+    button.click()
+    page.wait_for_function("window.__exportBodies.length === 2")
+    second = page.evaluate("window.__exportBodies[1]")
+    assert second["round_id"] == first["round_id"]
+    assert second["export_revision"] == 2
+    page.wait_for_function("window.__downloadNames.length === 2")
+    assert page.evaluate("window.__downloadNames") == ["demo-project.zip", "demo-project-v2.zip"]
+    ctx.close()
+
+
 # ---------------------------------------------------------------------------
 # Mic secure-context guard
 # ---------------------------------------------------------------------------

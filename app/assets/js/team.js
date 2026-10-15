@@ -97,34 +97,40 @@ async function runTeamRound(task){
       // rolling-history window for this call so nothing gets trimmed away.
       maxHistory:60, maxHistoryTokens:24000 });
   updatePlanPanel('✓ done');
-  // Offer the full project package (plan + transcript + code + AI handoff).
+  // Offer the compact verified project package (manifest, transcript, decisions,
+  // and topic-grouped snippets).
   pushProjectDownload(task, plan, turnLog, synthesis);
   __teamActive=false;
   $('#message-input').disabled=false;
   $('#btn-send').disabled=false;
 }
 
-/* After a team round, post a card with a Download button that packages the
-   ENTIRE project server-side: README, full transcript, context.md (single
-   model-ready handoff doc), PROJECT.json (machine-readable for a larger
-   model), and every code block as its own file under code/. */
+/* After a team round, post one canonical export card. The first download uses
+   the stable round filename; later downloads keep the same round id and request
+   explicit -v2, -v3 revisions instead of ambiguous timestamped duplicates. */
 function pushProjectDownload(goal, plan, turnLog, synthesis){
   const wrap=document.createElement('div'); wrap.className='msg bot';
   const av=document.createElement('div'); av.className='persona-avatar';
-  av.style.background='var(--neon)'; av.textContent='📦';
+  av.style.background='var(--neon)'; av.textContent='ZIP';
   const col=document.createElement('div'); col.style.minWidth='0';
   const who=document.createElement('div'); who.className='who'; who.textContent='System';
   const bubble=document.createElement('div'); bubble.className='bubble';
-  const codeCount=(turnLog||[]).reduce((n,t)=>n+((t.output||'').match(/```/g)||[]).length/2,0);
-  bubble.textContent=`Team project complete. Download the full package: plan, complete transcript, all code (${Math.round(codeCount)} blocks), plus PROJECT.json + context.md formatted for a larger model to continue the work.`;
+  bubble.textContent='Team project complete. Download the compact package with MANIFEST.json checksums, README.md, the full transcript, expanded decisions.md, and topic-grouped snippets. Short snippets and prose are merged into readable topic notes.';
   const btn=document.createElement('button'); btn.className='play';
-  btn.style.marginTop='6px'; btn.textContent='⬇ Download project (.zip)';
+  const randomPart=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==='function')
+    ? globalThis.crypto.randomUUID()
+    : (Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+  const roundId='round-'+randomPart;
+  let exportRevision=0;
+  btn.style.marginTop='6px'; btn.textContent='Download project package (.zip)';
   btn.onclick=async()=>{
-    btn.disabled=true; btn.textContent='Packaging…';
+    const nextRevision=exportRevision+1;
+    btn.disabled=true; btn.textContent='Packaging...';
     try{
       const r=await fetch(API.base+'/api/export/project',{method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({goal, plan:plan||'', turns:turnLog, synthesis:synthesis||''})});
+        body:JSON.stringify({goal, plan:plan||'', turns:turnLog, synthesis:synthesis||'',
+                             round_id:roundId, export_revision:nextRevision})});
       if(!r.ok) throw new Error('server '+r.status);
       const blob=await r.blob();
       const cd=r.headers.get('Content-Disposition')||'';
@@ -132,8 +138,9 @@ function pushProjectDownload(goal, plan, turnLog, synthesis){
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       a.download=m?m[1]:'virusgpt-project.zip'; a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
-      btn.textContent='⬇ Download again';
-    }catch(e){ btn.textContent='⬇ Retry download'; alert('Export failed: '+(e.message||e)); }
+      exportRevision=nextRevision;
+      btn.textContent='Download again (creates v'+(exportRevision+1)+')';
+    }catch(e){ btn.textContent='Retry download'; alert('Export failed: '+(e.message||e)); }
     btn.disabled=false;
   };
   col.appendChild(who); col.appendChild(bubble); col.appendChild(btn);
