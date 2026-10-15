@@ -59,6 +59,11 @@ function renderHudFeed(rows){
 }
 async function refreshMissionFeed(){
   const hud=document.getElementById('mission-hud'); if(!hud) return;
+  // The HUD only renders in Mission theme / with the HUD toggle on. Polling a
+  // hidden feed every second is pure waste (86k requests/day) — skip it and
+  // let the feed re-seed the moment the HUD becomes visible (applySettings /
+  // theme switch call refreshHud, and the interval resumes fetching).
+  if(hud.style.display==='none' || hud.offsetParent===null){ return; }
   try{
     const r=await fetch(API.base+'/api/mission/feed?limit=80',{cache:'no-store'});
     if(!r.ok) throw new Error('feed '+r.status);

@@ -131,10 +131,14 @@ def get_branches() -> dict:
 # (you can update from main, or switch to beta and update). Add experimental
 # features here as they are built.
 def features() -> dict:
+    # Channel-gated feature flags. The in-app updater only works when the
+    # build actually has a source tree + venv on disk (get_buildinfo);
+    # container builds report it truthfully instead of promising an updater
+    # that /api/update/check then refuses.
     return {
         "channel": update_branch(),
         "is_beta": update_branch() == "beta",
-        "in_app_updater": True,   # updating always allowed
+        "in_app_updater": bool(get_buildinfo().get("updatable")),
     }
 
 # In-flight update state, polled by the frontend via /api/update/status.

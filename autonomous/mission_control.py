@@ -35,7 +35,12 @@ _LOCK = asyncio.Lock()
 
 async def ensure_mission(repo, kind: str, goal: str) -> str:
     """Return the id of the active Mission Control mission for *kind*,
-    creating a fresh one when none exists or the old one went stale."""
+    creating a fresh one when none exists or the old one went stale.
+
+    A stale telemetry mission is CLOSED (completed) at rotation instead of
+    being abandoned: leaked "running" pseudo-missions used to pile up in
+    /api/missions forever.
+    """
     async with _LOCK:
         mid = _ACTIVE.get(kind)
         if mid:
@@ -43,6 +48,13 @@ async def ensure_mission(repo, kind: str, goal: str) -> str:
             if (m is not None and m.status == "running"
                     and _age_seconds(m.created_at) < _FRESH_SECONDS):
                 return mid
+            if m is not None and m.status == "running":
+                try:
+                    m.status = "completed"
+                    m.completed_at = _now()
+                    repo.update_mission(m)
+                except Exception:
+                    pass
         m = Mission(goal=goal, status="running", planner="mission-control")
         repo.create_mission(m)
         _ACTIVE[kind] = m.id

@@ -544,6 +544,7 @@ function stopMission(notify=true){
   __activeMissionId = null;
   $('#btn-mission-start').classList.remove('hidden');
   $('#btn-mission-stop').classList.add('hidden');
+  if(notify){ const el=$('#mission-state'); if(el) el.textContent='stopped'; }
 }
 async function loadMissionsList(){
   try{

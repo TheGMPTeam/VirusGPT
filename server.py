@@ -786,11 +786,13 @@ async def suggest(req: Request):
     model = (body.get("model") or cfg.CONFIG["ollama"]["default_model"]).strip()
     if not model or len(model) > 64:
         return JSONResponse({"suggestions": []})
-    sys = ("You are an autocomplete engine for a chat with VirusGPT, a local AI cyber-tool. "
+    sys = ("You are an autocomplete engine for a chat with VirusGPT, a friendly local AI assistant. "
            "Given the user's partial message, return up to 3 short, natural continuations "
            "that complete their thought. Each must be a SINGLE concise phrase (<= 8 words), "
            "no numbering, no quotation marks, no explanations. "
-           "Return ONLY valid JSON: {\"suggestions\": [\"...\",\"...\",\"...\"]}.")
+           "Stay helpful and wholesome: never suggest hacking, exploits, malware, or anything "
+           "illegal or harmful, even as a topic continuation. "
+           "Return ONLY valid JSON: {\"suggestions\": [\"...\", \"...\", \"...\"]}.")
     messages = [{"role": "system", "content": sys}, {"role": "user", "content": text}]
     out = []
     async for chunk in llm.stream_chat(model, messages, cfg.CONFIG["ollama"]["base_url"],
@@ -1558,7 +1560,19 @@ async def generated_image(filename: str):
 def _load_personas():
     if PERSONAS_FILE.exists():
         try:
-            return json.loads(PERSONAS_FILE.read_text())
+            data = json.loads(PERSONAS_FILE.read_text())
+            if isinstance(data, list):
+                return data
+            # Corrupt/legacy shape (single object) — recover the .bak if valid.
+            bak = PERSONAS_FILE.with_suffix(".json.bak")
+            if bak.exists():
+                try:
+                    b = json.loads(bak.read_text())
+                    if isinstance(b, list):
+                        _save_personas(b)
+                        return b
+                except Exception:
+                    pass
         except Exception:
             pass
     return []
@@ -1575,9 +1589,29 @@ async def get_personas():
 
 @app.post("/api/personas")
 async def save_personas(req: Request):
+    # Blind overwrite hazard: a malformed body (single object instead of the
+    # array) used to wipe every persona. Validate shape, refuse non-lists,
+    # and keep a one-shot .bak of the previous array for recovery.
     data = await req.json()
-    _save_personas(data)
-    return JSONResponse({"ok": True, "count": len(data)})
+    if not isinstance(data, list):
+        return JSONResponse({"ok": False, "error": "payload must be a list of personas"}, status_code=400)
+    cleaned = []
+    for p in data:
+        if not isinstance(p, dict) or not (p.get("name") or "").strip():
+            return JSONResponse({"ok": False, "error": "each persona needs a name"}, status_code=400)
+        # Cap runaway per-persona context growth (team transcripts used to
+        # accumulate unbounded in this file). Keep the most recent 40 turns.
+        ctx = p.get("context")
+        if isinstance(ctx, list) and len(ctx) > 40:
+            p["context"] = ctx[-40:]
+        cleaned.append(p)
+    if PERSONAS_FILE.exists():
+        try:
+            PERSONAS_FILE.with_suffix(".json.bak").write_text(PERSONAS_FILE.read_text())
+        except Exception:
+            pass
+    _save_personas(cleaned)
+    return JSONResponse({"ok": True, "count": len(cleaned)})
 
 
 @app.get("/api/sessions")
