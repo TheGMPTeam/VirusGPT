@@ -251,9 +251,17 @@ async function playTTS(text, persona, highlightEl=null, messageEl=null){
     // The fallback MUST be derived from the clip's own duration: the old absolute 15s ceiling
     // cut long clips mid-word (audio ended abruptly while the highlight stayed correct).
     await new Promise((resolve)=>{
-      let done=false; const fin=()=>{ if(done) return; done=true; resolve(); };
-      a.onended=fin; a.onerror=fin;
-      a.play().catch(fin);   // autoplay-blocked -> resolve so we don't hang the queue
+      let done=false; const started=performance.now();
+      reportMissionEvent('voice.play',{voice:chunkVoice,text:chunkText.slice(0,240)},persona?.name||'tts');
+      const fin=(outcome='end')=>{
+        if(done) return; done=true;
+        reportMissionEvent(outcome==='error'?'voice.error':'voice.end',
+          {voice:chunkVoice,text:chunkText.slice(0,240),duration_ms:Math.round(performance.now()-started),outcome},
+          persona?.name||'tts');
+        resolve();
+      };
+      a.onended=()=>fin('end'); a.onerror=()=>fin('error');
+      a.play().catch(()=>fin('error'));   // autoplay-blocked -> resolve so we don't hang the queue
       // Once metadata is known, the fallback fires shortly after the clip's real end.
       let armed=false;
       const arm=()=>{

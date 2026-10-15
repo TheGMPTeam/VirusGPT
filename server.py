@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import asyncio
+import datetime
 import os
 import re
 import sys
@@ -16,6 +17,8 @@ import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Optional
+
+_SERVER_STARTED = time.monotonic()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
@@ -101,6 +104,7 @@ async def health():
         "default_model": cfg.CONFIG["ollama"]["default_model"],
         "voices": voices or ["alba", "azelma", "cosette", "eponine", "fantine", "javert", "jean", "marius"],
         "default_voice": cfg.CONFIG["tts"].get("default_voice", "alba"),
+        "uptime_seconds": int(time.monotonic() - _SERVER_STARTED),
     })
 
 
@@ -318,7 +322,6 @@ async def chat(req: Request):
     mem_ctx = ""
     if chat_cfg.get("memory_enabled", True):
         try:
-            import asyncio
             from services import memory as _mem
             mem_ctx = await asyncio.wait_for(
                 asyncio.to_thread(_mem.retrieve_context, last_user,
@@ -338,7 +341,7 @@ async def chat(req: Request):
     base = cfg.CONFIG["ollama"]["base_url"]
     chat_timeout = float(cfg.CONFIG.get("chat_timeout", 60))
 
-    async def gen():
+    async def _gen_body():
         # No tools -> plain streaming chat (original behavior, untouched).
         if not ollama_tools:
             async for chunk in llm.stream_chat(model, messages, base, timeout=chat_timeout):
@@ -405,6 +408,28 @@ async def chat(req: Request):
             # model answer normally with the tool result in context.
             _tc = None
         yield f"data: {json.dumps({'done': True})}\n\n"
+
+    async def gen():
+        from autonomous import mission_control as _mc
+        agent = persona_name or "chat"
+        status = "completed"
+        await _mc.emit(_auto_repo, "agent", "agent.start",
+                       {"model": model, "tools": [t["function"]["name"] for t in (ollama_tools or [])]},
+                       agent=agent)
+        try:
+            async for payload in _gen_body():
+                yield payload
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
+        except Exception as exc:
+            status = "error"
+            await _mc.emit(_auto_repo, "agent", "agent.error",
+                           {"model": model, "error": str(exc)[:300]}, agent=agent)
+            raise
+        finally:
+            await _mc.emit(_auto_repo, "agent", "agent.finish",
+                           {"model": model, "status": status}, agent=agent)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -1033,10 +1058,20 @@ async def stt_proxy(req: Request):
     if len(data) > max_mb * 1024 * 1024:
         return JSONResponse({"error": f"audio too large (max {max_mb:.0f}MB)"}, status_code=413)
     mt = getattr(audio, "content_type", "audio/webm") or "audio/webm"
+    from autonomous import mission_control as _mc
+    await _mc.emit(_auto_repo, "voice", "stt.request",
+                   {"bytes": len(data), "content_type": mt}, agent="stt")
+    t0 = time.time()
     res = await stt.transcribe(data, mt, cfg.CONFIG["stt"]["base_url"],
                                timeout=float(cfg.CONFIG["stt"].get("timeout", 30)))
     if res is None:
+        await _mc.emit(_auto_repo, "voice", "stt.error",
+                       {"bytes": len(data), "error": "transcriber unavailable"}, agent="stt")
         return JSONResponse({"error": "STT unavailable"}, status_code=502)
+    await _mc.emit(_auto_repo, "voice", "stt.result",
+                   {"bytes": len(data), "duration_ms": int((time.time()-t0)*1000),
+                    "text": str(res.get("text", ""))[:300] if isinstance(res, dict) else ""},
+                   agent="stt")
     return JSONResponse(res)
 
 
@@ -1802,24 +1837,57 @@ async def mission_report(req: Request):
 
 @app.get("/api/mission/feed")
 async def mission_feed(limit: int = 80):
-    """Combined live feed for the Mission Control panel: the most recent
-    lifecycle events across the active agent + voice missions."""
-    from autonomous import mission_control as _mc
+    """Recent agent, tool, TTS, STT, playback, and autonomous events."""
+    limit = max(1, min(int(limit), 200))
+    missions = {m.id: m for m in _auto_repo.list_missions(30)}
     rows = []
-    for kind, mid in list(_mc._ACTIVE.items()):
+    for mid, mission in missions.items():
         try:
             for e in _auto_repo.mission_events(mid, limit=limit):
                 try:
                     data = json.loads(e.data) if isinstance(e.data, str) else e.data
                 except Exception:
-                    data = e.data
-                rows.append({"kind": kind, "mission_id": mid, "agent": e.agent,
-                             "event": e.event, "data": data,
+                    data = {"detail": str(e.data)[:500]}
+                if not isinstance(data, dict):
+                    data = {"detail": str(data)[:500]}
+                # Keep polling payloads bounded even when a tool returns a large object.
+                bounded = {}
+                for key, value in data.items():
+                    if key == "result":
+                        text = json.dumps(value, ensure_ascii=False, default=str)
+                        bounded[key] = text[:800] + ("..." if len(text) > 800 else "")
+                    elif isinstance(value, str):
+                        bounded[key] = value[:800] + ("..." if len(value) > 800 else "")
+                    else:
+                        bounded[key] = value
+                rows.append({"mission_id": mid, "goal": mission.goal,
+                             "agent": e.agent, "event": e.event, "data": bounded,
                              "created_at": e.created_at})
         except Exception:
             continue
     rows.sort(key=lambda r: r["created_at"] or "")
-    return JSONResponse(rows[-limit:])
+    rows = rows[-limit:]
+
+    latest_by_agent = {}
+    latest_voice = ""
+    cutoff = datetime.datetime.now().timestamp() - 120
+    for row in rows:
+        agent = row.get("agent") or ""
+        event = row.get("event") or ""
+        try:
+            event_ts = datetime.datetime.fromisoformat(row.get("created_at") or "").timestamp()
+        except Exception:
+            event_ts = 0
+        if (event_ts >= cutoff and agent
+                and agent not in {"mission-control", "tts", "stt", "voice"}):
+            latest_by_agent[agent] = event
+        if event.startswith("voice.") or event.startswith("tts."):
+            latest_voice = str((row.get("data") or {}).get("voice") or latest_voice)
+    stopped = {"agent.finish", "agent.error", "task.completed", "task.failed",
+               "mission.completed", "mission.failed", "round.finish"}
+    active_agents = sum(1 for event in latest_by_agent.values() if event not in stopped)
+    return JSONResponse({"events": rows, "active_agents": active_agents,
+                         "active_voice": latest_voice})
 
 
 @app.get("/api/missions")

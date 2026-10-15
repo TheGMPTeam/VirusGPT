@@ -17,31 +17,71 @@ function initTabs(){
 }
 
 /* ---------- mission-control HUD ---------- */
-let __VG_BOOT = Date.now();
-function bootUptime(){
-  const s = Math.floor((Date.now()-__VG_BOOT)/1000);
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
-  return (h? h+'h ':'') + m + 'm';
+let __hudLastKey='';
+let __hudLastPoll=0;
+function formatUptime(total){
+  const s=Math.max(0,Number(total)||0), h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+  return (h?h+'h ':'')+m+'m';
+}
+function reportMissionEvent(event,data={},agent='browser'){
+  fetch(API.base+'/api/mission/report',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event,data,agent}),keepalive:true}).catch(()=>{});
+}
+function hudEventDetail(row){
+  const d=row.data||{}, ev=row.event||'';
+  if(ev.startsWith('tool.')) return String(d.tool||'tool')+(d.duration_ms!=null?' '+d.duration_ms+'ms':'');
+  if(ev.startsWith('tts.')) return String(d.voice||'voice')+(d.pieces?' '+d.pieces+' chunks':'');
+  if(ev.startsWith('voice.')) return String(d.voice||'voice')+(d.duration_ms!=null?' '+d.duration_ms+'ms':'');
+  if(ev.startsWith('stt.')) return (d.duration_ms!=null?d.duration_ms+'ms ':'')+String(d.text||d.content_type||'audio');
+  return String(d.title||d.model||d.status||d.detail||row.goal||'');
+}
+function renderHudFeed(rows){
+  const feed=document.getElementById('hud-feed'); if(!feed) return;
+  const key=rows.map(r=>[r.mission_id,r.created_at,r.agent,r.event].join('|')).join(';');
+  if(key===__hudLastKey) return;
+  __hudLastKey=key;
+  const follow=feed.scrollHeight-feed.scrollTop-feed.clientHeight<28;
+  feed.textContent='';
+  if(!rows.length){ const e=document.createElement('div'); e.className='hud-feed-empty'; e.textContent='Waiting for agent activity...'; feed.appendChild(e); return; }
+  rows.slice(-50).forEach(row=>{
+    const ev=String(row.event||'event');
+    const item=document.createElement('div');
+    item.className='hud-event '+(ev.includes('error')||ev.includes('failed')?'error':ev.startsWith('tool.')?'tool':(ev.startsWith('tts.')||ev.startsWith('stt.')||ev.startsWith('voice.'))?'voice':'agent');
+    const tm=document.createElement('span'); tm.className='hud-event-time';
+    const dt=new Date(row.created_at); tm.textContent=isNaN(dt)?'--:--':dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    const main=document.createElement('span'); main.className='hud-event-main';
+    const agent=document.createElement('span'); agent.className='hud-event-agent'; agent.textContent=String(row.agent||'system');
+    const name=document.createElement('span'); name.className='hud-event-name'; name.textContent=ev;
+    const detail=document.createElement('span'); detail.className='hud-event-detail'; detail.textContent=hudEventDetail(row);
+    main.append(agent,name,detail); item.append(tm,main); feed.appendChild(item);
+  });
+  if(follow||!feed.dataset.ready){ feed.scrollTop=feed.scrollHeight; feed.dataset.ready='1'; }
+}
+async function refreshMissionFeed(){
+  const hud=document.getElementById('mission-hud'); if(!hud) return;
+  try{
+    const r=await fetch(API.base+'/api/mission/feed?limit=80',{cache:'no-store'});
+    if(!r.ok) throw new Error('feed '+r.status);
+    const d=await r.json(); __hudLastPoll=Date.now();
+    const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+    set('hud-agents',d.active_agents||0);
+    set('hud-voice',d.active_voice||HEALTH.default_voice||'--');
+    set('hud-feed-age','now'); renderHudFeed(d.events||[]);
+  }catch(e){ const age=document.getElementById('hud-feed-age'); if(age) age.textContent='offline'; }
 }
 function refreshHud(){
-  const hud = document.getElementById('mission-hud'); if(!hud) return;
-  const isMission = document.documentElement.getAttribute('data-theme')==='mission';
-  hud.style.display = isMission ? '' : 'none';
-  if(!isMission) return;
-  // Read optional globals defensively — they may be in the TDZ on first paint.
-  let agents=0, sessions=0, personasN=0;
-  try{ const r=window.rooms; agents = r ? Object.keys(r).length : 0; }catch(e){}
-  try{ const s=window.SESSIONS; sessions = s ? s.length : 0; }catch(e){}
-  try{ const p=window.personas; personasN = p ? p.length : 0; }catch(e){}
-  const d = HEALTH||{};
-  const backendPct = (d.ollama&&d.tts) ? 100 : (d.ollama||d.tts) ? 55 : 0;
-  const set=(id,v)=>{const e=document.getElementById(id); if(e) e.textContent=v;};
-  set('hud-agents', (agents+sessions) ? (agents+'/'+sessions) : (personasN||'—'));
-  set('hud-uptime', bootUptime());
-  set('hud-latency', d.latency!=null ? d.latency+'ms' : '—');
-  set('hud-models', (d.models&&d.models.length)||'—');
-  set('hud-io', ((d.tts?'TTS✓':'TTS✗')+' / '+(d.whisper?'STT✓':'STT✗')));
-  set('hud-backend-pct', backendPct+'%');
+  const hud=document.getElementById('mission-hud'); if(!hud) return;
+  const isMission=document.documentElement.getAttribute('data-theme')==='mission';
+  hud.style.display=isMission?'':'none'; if(!isMission) return;
+  const d=HEALTH||{}, services=[d.ollama,d.tts,d.whisper,d.comfyui], up=services.filter(Boolean).length;
+  const backendPct=Math.round((up/services.length)*100);
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('hud-uptime',formatUptime(d.uptime_seconds));
+  set('hud-latency',d.latency!=null?d.latency+'ms':'--');
+  set('hud-models',(d.models&&d.models.length)||'--');
+  set('hud-voice',(document.getElementById('hud-voice')?.textContent||d.default_voice||'--'));
+  set('hud-io',((d.tts?'TTS OK':'TTS DOWN')+' / '+(d.whisper?'STT OK':'STT DOWN')));
+  set('hud-backend-pct',backendPct+'%');
   const bar=document.getElementById('hud-backend-bar'); if(bar) bar.style.width=backendPct+'%';
 }
 /* ---------- health ---------- */

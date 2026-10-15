@@ -24,7 +24,6 @@ import uuid
 from typing import Any
 
 from .database import _now, Event, Mission
-from .runtime import REGISTRY
 
 # One Mission Control mission per kind ("agent" = chat/team activity,
 # "voice" = TTS/playback activity). Reused while fresh so a whole team round
@@ -50,8 +49,6 @@ async def ensure_mission(repo, kind: str, goal: str) -> str:
         repo.add_event(Event(mission_id=m.id, agent="mission-control",
                              event="mission.created",
                              data=json.dumps({"kind": kind, "goal": goal})))
-        await REGISTRY.broadcast(m.id, {"event": "mission.created",
-                                        "mission_id": m.id, "kind": kind})
         return m.id
 
 
@@ -73,8 +70,6 @@ async def emit(repo, kind: str, event: str, data: dict[str, Any],
         e = Event(mission_id=mid, agent=agent or kind, event=event,
                   data=json.dumps(data, ensure_ascii=False))
         repo.add_event(e)
-        await REGISTRY.broadcast(mid, {"event": event, "agent": e.agent,
-                                       "data": data, "created_at": e.created_at})
     except Exception:
         # A telemetry failure must never take down chat/TTS.
         return

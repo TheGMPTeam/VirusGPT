@@ -660,7 +660,9 @@
     display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;
     border-bottom:1px solid rgba(52,231,228,0.18);padding-bottom:6px;
   }
-  #mission-hud .hud-title .hud-live{color:var(--neon);font-size:9px}
+  #mission-hud .hud-title .hud-live{color:var(--neon);font-size:9px;display:flex;align-items:center;gap:5px}
+  #mission-hud .hud-live i{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon);animation:hudPulse 1.2s ease-in-out infinite}
+  @keyframes hudPulse{50%{opacity:.25;transform:scale(.72)}}
   #mission-hud .hud-kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
   #mission-hud .hud-kpi{
     background:rgba(4,7,11,0.6);border:1px solid rgba(52,231,228,0.18);
@@ -675,6 +677,20 @@
   #mission-hud .hud-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--hud2),var(--neon));transition:width .6s ease}
   #mission-hud .hud-row{font-size:10px;color:var(--txt-dim);display:flex;justify-content:space-between;margin-top:5px}
   #mission-hud .hud-row b{color:var(--txt);font-weight:600}
+  #mission-hud .hud-feed-title{display:flex;justify-content:space-between;margin-top:9px;padding-top:7px;border-top:1px solid rgba(52,231,228,.18);font-size:9px;letter-spacing:.7px;color:var(--hud2)}
+  #mission-hud .hud-feed-title span:last-child{color:var(--txt-dim);letter-spacing:0;text-transform:none}
+  #mission-hud .hud-feed{height:190px;overflow-y:auto;margin-top:5px;background:rgba(2,5,8,.58);border:1px solid rgba(52,231,228,.14);border-radius:6px;padding:4px;scrollbar-width:thin}
+  #mission-hud .hud-feed-empty{color:var(--txt-dim);font-size:9px;padding:9px 6px;text-align:center}
+  #mission-hud .hud-event{display:grid;grid-template-columns:43px minmax(0,1fr);gap:5px;padding:5px 4px;border-bottom:1px solid rgba(52,231,228,.09);font-size:9px;line-height:1.3}
+  #mission-hud .hud-event:last-child{border-bottom:0}
+  #mission-hud .hud-event-time{color:var(--txt-dim)}
+  #mission-hud .hud-event-main{min-width:0;color:var(--txt)}
+  #mission-hud .hud-event-agent{color:var(--hud2);font-weight:700;margin-right:4px}
+  #mission-hud .hud-event-name{color:var(--neon)}
+  #mission-hud .hud-event-detail{display:block;color:var(--txt-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+  #mission-hud .hud-event.tool .hud-event-name{color:#ffcf6b}
+  #mission-hud .hud-event.voice .hud-event-name{color:#d58cff}
+  #mission-hud .hud-event.error .hud-event-name{color:var(--danger,#ff4d4d)}
   [data-theme="mission"] #mission-hud{border-color:rgba(52,231,228,0.4);box-shadow:0 0 18px rgba(52,231,228,0.12)}
   html:not([data-theme="mission"]) #mission-hud{display:none}
 

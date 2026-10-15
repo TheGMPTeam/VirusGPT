@@ -59,6 +59,7 @@ function boot(){
     // off until the user clicks the speaker again.
     sessionAutoPlay = !!TTS_ON;
     refreshHealth(); setInterval(refreshHealth,15000);
+    refreshMissionFeed(); setInterval(refreshMissionFeed,1000);
     showVersion();
     window.addEventListener('resize',()=>{ if(document.querySelector('.tab[data-tab=memory]').classList.contains('active')){ clearTimeout(window.__mgResizeT); window.__mgResizeT=setTimeout(loadMemoryGraph,200); } });
     // Dismiss the boot/loading screen once the full page has painted (window.load),
