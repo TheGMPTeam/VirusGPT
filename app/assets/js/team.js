@@ -320,13 +320,15 @@ async function silentStream(persona, userText, systemExtra, onChunk){
   const rm=activeRoom();
   const hist=(rm.messages||[]).slice(-24).map(m=>({role: m.role==='user'?'user':'assistant', content:m.content}));
   const msgs=[{role:'system',content:sys}, ...hist, {role:'user',content:userText}];
-  const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:currentModel,messages:msgs})});
+  const body={model:currentModel,messages:msgs,persona:persona?.name||null,tools:persona?.tools||[]};
+  const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!resp.ok) throw new Error('server '+resp.status);
   const reader=resp.body.getReader(); const dec=new TextDecoder(); let buf='';
   while(true){const {value,done}=await reader.read(); if(done)break; buf+=dec.decode(value,{stream:true});
     let i; while((i=buf.indexOf('\n\n'))>=0){const chunk=buf.slice(0,i);buf=buf.slice(i+2);
       if(chunk.startsWith('data: ')){const obj=JSON.parse(chunk.slice(6));
         if(obj.content){acc+=obj.content; if(onChunk) onChunk(acc);}
+        if(obj.tool_call) renderChatToolCall(persona?.name||'team', obj.tool_call);
         if(obj.error) throw new Error(obj.error);}}}
   if(acc&&myToken===runToken){
     persona.context=persona.context||[];
@@ -369,7 +371,7 @@ async function teamTurn(persona, userText, opts){
     const rm=activeRoom();
     const hist=(rm.messages||[]).slice(-24).map(m=>({role: m.role==='user'?'user':'assistant', content:m.content}));
     const msgs=[{role:'system',content:sys}, ...hist, {role:'user',content:userText}];
-    const body={model:currentModel,messages:msgs};
+    const body={model:currentModel,messages:msgs,persona:persona?.name||null,tools:persona?.tools||[]};
     if(opts.maxHistory) body.max_history=opts.maxHistory;
     if(opts.maxHistoryTokens) body.max_history_tokens=opts.maxHistoryTokens;
     const resp=await fetch(API.base+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -388,6 +390,7 @@ async function teamTurn(persona, userText, opts){
             // rendered, then speaks it as one ordered turn.
             if(!opts.speakAfterTurn) feedTTS(obj.content, persona);
           }
+          if(obj.tool_call) renderChatToolCall(persona?.name||'team', obj.tool_call);
           if(obj.done && !opts.speakAfterTurn) flushTTS(persona);
           if(obj.error){if(currentBot) currentBot.cur.textContent='⚠ '+obj.error;}}}}
     flushDOM();

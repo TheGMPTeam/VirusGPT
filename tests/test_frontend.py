@@ -18,7 +18,7 @@ INDEX = (ROOT / "app" / "index.html").read_text()
 
 
 def test_personas_asset_version_invalidates_pre_consent_cache():
-    assert '/assets/js/personas.js?v=16' in INDEX
+    assert '/assets/js/personas.js?v=17' in INDEX
 
 
 # In-page service worker: route /api/* to canned responses.
@@ -157,7 +157,13 @@ def _new_page(browser, viewport=None):
             # Reply text includes @Name: turns so the Agent-to-Agent team round
             # (parseTurns) produces real agent bubbles, and still renders as normal
             # sentences for a plain chat.
-            body = "".join(
+            req_body = route.request.post_data_json or {}
+            tool_event = ""
+            if req_body.get("persona") == "Cipher" and "calc" in req_body.get("tools", []):
+                tool_event = ('data: {"tool_call":{"id":"team-calc-1","tool":"calc",'
+                              '"args":{"expression":"2+2"},"result":{"result":4},'
+                              '"duration_ms":1}}\n\n')
+            body = tool_event + "".join(
                 f'data: {{"content":"{w} "}}\n\ndata: {{"done":true}}\n\n'
                 for w in ["Plan", "ready.", "@Cipher:", "I", "will", "analyse",
                           "the", "crypto.", "@Coder:", "I", "will", "write",
@@ -228,11 +234,13 @@ def _new_page(browser, viewport=None):
                            {"name": "memory_query", "description": "x", "parameters": []}],
             "/api/personas": [{"name": "VirusGPT", "role": "planner", "emoji": "🤖",
                                "color": "#23e0ff", "system_prompt": "you are virusgpt",
-                               "voice": "alba"},
+                               "voice": "alba", "tools": ["web_search"]},
                               {"name": "Studio", "role": "worker", "emoji": "🎨",
-                               "color": "#ff2bd6", "system_prompt": "artist", "voice": "alba"},
+                               "color": "#ff2bd6", "system_prompt": "artist", "voice": "alba",
+                               "tools": ["write_file"]},
                               {"name": "Cipher", "role": "worker", "emoji": "🕵️",
-                               "color": "#00ff9c", "system_prompt": "security", "voice": "alba"},
+                               "color": "#00ff9c", "system_prompt": "security", "voice": "alba",
+                               "tools": ["calc"]},
                               {"name": "Coder", "role": "worker", "emoji": "💻",
                                "color": "#00ff9c", "system_prompt": "code", "voice": "alba"}],
             "/api/memory/graph": {"ok": True, "concepts": 3, "directories": 1,
@@ -831,6 +839,50 @@ def test_team_round_runs_and_autoplays_every_agent_turn(browser):
     assert len(bots) >= 2, f"team round should produce >=2 agent bubbles, got {len(bots)}"
     assert len(tts_requests) >= 2, f"each completed team turn should autoplay, requests={tts_requests}"
     assert page.evaluate("sessionAutoPlay") is False, "team playback must not alter normal session autoplay"
+    ctx.close()
+
+
+def test_team_round_forwards_each_personas_tool_allow_list(browser):
+    ctx, page = _new_page(browser)
+    chat_payloads = []
+
+    def capture_chat(req):
+        if req.url.endswith("/api/chat") and req.method == "POST":
+            chat_payloads.append(req.post_data_json)
+
+    page.on("request", capture_chat)
+    page.evaluate("""
+      TTS_ON=false;
+      personas.forEach(p => {
+        if(p.name === 'Cipher') p.tools = ['calc'];
+        else if(p.name === 'VirusGPT') p.tools = ['web_search'];
+        else p.tools = ['read_file'];
+      });
+    """)
+    page.fill("#message-input", "@Team calculate and explain a result")
+    page.click("#btn-send")
+    page.wait_for_function("typeof __teamActive !== 'undefined' && __teamActive === false", timeout=15_000)
+
+    persona_calls = [p for p in chat_payloads if p.get("persona")]
+    assert persona_calls, f"team round never identified a persona: {chat_payloads}"
+    assert any(p.get("persona") == "Cipher" and p.get("tools") == ["calc"]
+               for p in persona_calls), persona_calls
+    assert all(p.get("tools") for p in persona_calls), persona_calls
+    ctx.close()
+
+
+def test_team_round_renders_tool_calls_in_chat_and_workflow_log(browser):
+    ctx, page = _new_page(browser)
+    page.evaluate("""
+      TTS_ON=false;
+      personas.forEach(p => { p.tools = p.name === 'Cipher' ? ['calc'] : []; });
+    """)
+    page.fill("#message-input", "@Team calculate 2 plus 2")
+    page.click("#btn-send")
+    page.wait_for_function("typeof __teamActive !== 'undefined' && __teamActive === false", timeout=15_000)
+
+    assert page.locator(".chat-tool-call .ctc-tool", has_text="calc").count() >= 1
+    assert page.locator("#tool-call-log .tool-call .tc-name", has_text="calc").count() >= 1
     ctx.close()
 
 
