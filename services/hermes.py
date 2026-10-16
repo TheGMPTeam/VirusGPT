@@ -209,4 +209,8 @@ async def hermes_status() -> dict:
             info["reachable"] = False
     else:
         info["reachable"] = False
+    # Settings UI (services_ui.js renderServiceDetail) reads st.connected with
+    # fallback to st.healthy; without one of those keys the panel showed
+    # "enabled, not connected" even when the peer answered. Mirror reachability.
+    info["connected"] = bool(info["reachable"] and info["has_token"])
     return info
