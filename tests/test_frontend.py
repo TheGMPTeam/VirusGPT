@@ -951,6 +951,63 @@ def test_team_round_recovers_when_planner_asks_instead_of_delegating(browser):
     ctx.close()
 
 
+def test_team_interview_unanswered_question_holds_round_in_modal_popup(browser):
+    """When no teammate can answer a planner question, it must pop OUT of the
+    chat as a modal overlay and the round must HOLD until the human answers."""
+    ctx, page = _new_page(browser)
+    page.evaluate("TTS_ON=false;")
+    # The interview phase needs a working /api/questions store; emulate it.
+    qstore = {}
+    def qroute(route):
+        url = route.request.url.split("?")[0]
+        if route.request.method == "POST" and url.endswith("/api/questions"):
+            body = route.request.post_data_json or {}
+            rec = {"id": "Q-test-1", "question": body.get("question", ""),
+                   "status": "pending", "asked_by": body.get("asked_by", "planner")}
+            qstore[rec["id"]] = rec
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({"ok": True, "question": rec}))
+        elif "/answer" in url:
+            body = route.request.post_data_json or {}
+            rec = qstore.get(url.split("/")[-2], {})
+            rec.update({"status": "answered", "answer": body.get("answer", ""),
+                        "answered_by": body.get("answered_by", "")})
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({"ok": True, "question": rec}))
+        elif route.request.method == "POST":
+            rec = qstore.get(url.split("/")[-2], {})
+            rec["status"] = "human_pending"
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({"ok": True, "question": rec}))
+        else:
+            route.fulfill(status=200, content_type="application/json",
+                          body=json.dumps({"ok": True, "questions": list(qstore.values())}))
+    page.route("**/api/questions**", qroute)
+    _stateful_chat_route(page, [
+        ("Before planning", "What deadline does the human want for this deliverable?"),
+        ("planner asked", "UNKNOWN"),
+        ("Produce an ORDERED", "@Cipher: Do your part.\n@Studio: Do your part."),
+        ("Your turn in the team round", "Contribution done."),
+        ("Original goal", "Great work team."),
+    ])
+    page.fill("#message-input", "@Team plan a launch")
+    page.click("#btn-send")
+    # The modal must appear and the round must still be active (held).
+    page.wait_for_selector("#iq-overlay:not(.hidden)", timeout=10_000)
+    assert page.evaluate("__teamActive") is True, "round must hold while the modal is open"
+    assert page.locator(".iq-card").count() == 0, "interview must not render in chat"
+    q_text = page.locator("#iq-modal-q").inner_text()
+    assert "deadline" in q_text.lower()
+    # Answer through the modal.
+    page.fill("#iq-modal-input", "Wrap it up by Friday.")
+    page.click("#iq-btn-answer")
+    page.wait_for_selector("#iq-overlay", state="hidden", timeout=5_000)
+    page.wait_for_function("typeof __teamActive !== 'undefined' && __teamActive === false", timeout=20_000)
+    bots = page.query_selector_all(".msg.bot")
+    assert len(bots) >= 3, f"round must continue after the modal answer, got {len(bots)}"
+    ctx.close()
+
+
 def test_team_round_falls_back_when_planner_never_delegates(browser):
     """If even the strict re-plan yields no @Name: lines, the round must fall
     back to one worker turn each instead of exporting an empty project."""

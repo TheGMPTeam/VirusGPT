@@ -735,3 +735,9 @@
   .iq-status-pending{border-left:3px solid var(--warn)}
   .iq-status-answered{border-left:3px solid var(--ok,#33ff99)}
   .iq-status-human_pending{border-left:3px solid var(--neon2)}
+  .iq-modal{width:min(520px,92vw)}
+  .iq-modal-body{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .iq-modal-body .iq-q{font-size:14px;color:var(--txt);line-height:1.4}
+  .iq-modal-body .iq-meta{font-size:11px;color:var(--txt-dim)}
+  .iq-modal-body textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:64px;font:inherit}
+  .iq-modal-body .iq-controls{display:flex;justify-content:flex-end;gap:8px}

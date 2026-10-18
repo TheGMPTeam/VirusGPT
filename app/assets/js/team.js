@@ -11,6 +11,7 @@ function stopAll(){
   // Stop any in-flight streamed turn and all speech.
   runToken++;                 // invalidates in-flight teamTurn
   __teamActive = false;
+  settleIqModal(null);        // dismiss any held interview modal
   if(currentBot){ try{ currentBot.cur.textContent='⏹ stopped'; }catch(e){} currentBot=null; }
   stopTTS();
   $('#message-input').disabled=false;
@@ -175,31 +176,61 @@ async function markQuestionHumanPending(qid){
   }catch(e){}
 }
 
-function renderInterviewCard(q){
-  const wrap=document.createElement('div');
-  wrap.className='iq-card iq-status-'+(q.status||'pending');
-  wrap.dataset.qid=q.id;
-  const qEl=document.createElement('div'); qEl.className='iq-q'; qEl.textContent='? '+q.question; wrap.appendChild(qEl);
-  const meta=document.createElement('div'); meta.className='iq-meta';
-  meta.textContent=(q.asked_by||'planner')+' asked - status: '+(q.status||'pending'); wrap.appendChild(meta);
-  if(q.status==='answered' && q.answer){
-    const a=document.createElement('div'); a.className='iq-answer';
-    a.textContent=(q.answered_by||'agent')+': '+q.answer; wrap.appendChild(a);
-  } else if(q.status==='human_pending' || q.status==='pending'){
-    const ctr=document.createElement('div'); ctr.className='iq-controls';
-    const inp=document.createElement('input'); inp.placeholder='Answer this question (human)...';
-    const btn=document.createElement('button'); btn.className='btn small'; btn.textContent='Answer';
-    btn.onclick=async()=>{
-      const v=inp.value.trim(); if(!v) return;
-      const row=await answerQuestionApi(q.id, v, 'human', 'human');
-      if(row){ meta.textContent=(q.asked_by||'planner')+' asked - status: answered';
-        const a=document.createElement('div'); a.className='iq-answer'; a.textContent='human: '+v;
-        wrap.appendChild(a); ctr.remove(); wrap.className='iq-card iq-status-answered'; }
-    };
-    ctr.appendChild(inp); ctr.appendChild(btn); wrap.appendChild(ctr);
-  }
-  const msgs=$('#messages'); if(msgs){ msgs.appendChild(wrap); msgs.scrollTop=msgs.scrollHeight; }
-  return wrap;
+/* Interview questions live in a MODAL, not in the chat stream. When no
+   teammate could answer, the question pops up over the app and the round
+   HOLDS until the human fills it in (or closes it, which keeps the question
+   human_pending server-side and lets it re-pop on reload/next round). */
+let __iqResolver = null;
+
+function ensureIqOverlay(){
+  let ov = document.querySelector('#iq-overlay');
+  if(ov) return ov;
+  ov = document.createElement('div');
+  ov.id = 'iq-overlay';
+  ov.className = 'modal-overlay hidden';
+  const box = document.createElement('div');
+  box.className = 'modal-box iq-modal';
+  const head = document.createElement('div'); head.className = 'modal-header';
+  const h2 = document.createElement('h2'); h2.textContent = 'Planner needs your input';
+  const x = document.createElement('button'); x.id = 'iq-btn-close'; x.className = 'btn-icon-close'; x.textContent = '✕'; x.title = 'Close (question stays pending)';
+  head.appendChild(h2); head.appendChild(x);
+  const body = document.createElement('div'); body.className = 'iq-modal-body';
+  const qEl = document.createElement('div'); qEl.className = 'iq-q'; qEl.id = 'iq-modal-q';
+  const meta = document.createElement('div'); meta.className = 'iq-meta'; meta.id = 'iq-modal-meta';
+  const inp = document.createElement('textarea'); inp.id = 'iq-modal-input'; inp.rows = 3; inp.placeholder = 'Your answer... (Ctrl+Enter to submit)';
+  const ctr = document.createElement('div'); ctr.className = 'iq-controls';
+  const btn = document.createElement('button'); btn.id = 'iq-btn-answer'; btn.className = 'btn-accent'; btn.textContent = 'Answer';
+  ctr.appendChild(btn);
+  body.appendChild(qEl); body.appendChild(meta); body.appendChild(inp); body.appendChild(ctr);
+  box.appendChild(head); box.appendChild(body);
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  return ov;
+}
+
+function closeIqModal(){ const ov = document.querySelector('#iq-overlay'); if(ov) ov.classList.add('hidden'); }
+
+/* Resolve any open interview modal with `val` (null = dismissed). */
+function settleIqModal(val){
+  if(__iqResolver){ const r = __iqResolver; __iqResolver = null; r(val); }
+}
+
+function askHumanViaModal(q){
+  return new Promise(resolve => {
+    const ov = ensureIqOverlay();
+    ov.classList.remove('hidden');
+    document.querySelector('#iq-modal-q').textContent = '? ' + (q.question || '');
+    document.querySelector('#iq-modal-meta').textContent =
+      (q.asked_by || 'planner') + ' asked - the team is holding for your answer';
+    const inp = document.querySelector('#iq-modal-input');
+    inp.value = ''; inp.focus();
+    const done = (val) => { __iqResolver = null; closeIqModal(); resolve(val); };
+    __iqResolver = done;
+    const btn = document.querySelector('#iq-btn-answer');
+    btn.onclick = () => { const v = inp.value.trim(); if(!v){ inp.focus(); return; } done(v); };
+    document.querySelector('#iq-btn-close').onclick = () => done(null);
+    inp.onkeydown = (e) => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)) btn.click(); };
+  });
 }
 
 async function runInterviewPhase(planner, workers, task){
@@ -229,7 +260,6 @@ Output one question per line, no numbering.`,
   const answered=[];
   for(const q of questions){
     if(!__teamActive) break;
-    const card = renderInterviewCard(q);
     let resolved=false;
     if(q.status!=='human_pending'){
       for(const w of workers){
@@ -247,17 +277,27 @@ If you genuinely know the answer, answer in one or two sentences. If you do not 
         if(a && !/^UNKNOWN\b/i.test(a) && a.length>2){
           const row=await answerQuestionApi(q.id, a, w.name, 'agent');
           if(row){ answered.push({question:q.question, answer:a, answered_by:w.name});
-            if(card){ const meta=card.querySelector('.iq-meta'); if(meta) meta.textContent=(q.asked_by||'planner')+' asked - status: answered';
-              const el=document.createElement('div'); el.className='iq-answer'; el.textContent=w.name+': '+a; card.appendChild(el);
-              const ctr=card.querySelector('.iq-controls'); if(ctr) ctr.remove();
-              card.className='iq-card iq-status-answered'; }
+            pushMessage('user', `? ${q.question}\n> ${w.name}: ${a}`, 'Interview');
             resolved=true; break; }
         }
       }
-      if(!resolved){
-        await markQuestionHumanPending(q.id);
-        if(card){ card.className='iq-card iq-status-human_pending';
-          const meta=card.querySelector('.iq-meta'); if(meta) meta.textContent=(q.asked_by||'planner')+' asked - status: human_pending (waiting for you)'; }
+    }
+    if(!resolved && __teamActive){
+      // No teammate knew: pop the modal and HOLD the round until the human
+      // fills it in. Closing the modal keeps the question human_pending so it
+      // re-pops on reload or the next round.
+      await markQuestionHumanPending(q.id);
+      updatePlanPanel('waiting for your answer...');
+      const human = await askHumanViaModal(q);
+      if(!__teamActive) break;   // round stopped while the modal was open
+      if(human){
+        const row=await answerQuestionApi(q.id, human, 'human', 'human');
+        if(row){ answered.push({question:q.question, answer:human, answered_by:'human'});
+          pushMessage('user', `? ${q.question}\n> human: ${human}`, 'Interview'); }
+        updatePlanPanel('interview...');
+      } else {
+        // dismissed without answering: round continues without this answer
+        updatePlanPanel('interview...');
       }
     }
   }
@@ -727,17 +767,23 @@ async function loadMissionsList(){
   }catch(e){ const el=$('#mission-state'); if(el) el.textContent='⚠ missions unavailable'; }
 }
 
-/* Restore open interview questions after a page reload: pending/human_pending
-   questions re-render with their answer controls so nothing is lost. */
+/* Restore open interview questions after a page reload: the first unanswered
+   question re-pops as the modal so a held round's question is never lost. */
 async function restoreInterviewQuestions(){
+  if(__teamActive) return;           // a live round manages its own modal
   const rm=activeRoom();
   const roomId = rm && rm.name ? String(rm.name) : null;
   if(!roomId) return;
   const open = await fetchQuestions('', roomId);
-  for(const q of open){
-    if(q.status==='answered') continue;
-    renderInterviewCard(q);
+  const pend = open.filter(q=>q.status!=='answered');
+  if(!pend.length) return;
+  const q = pend[0];
+  const human = await askHumanViaModal(q);
+  if(human){
+    await answerQuestionApi(q.id, human, 'human', 'human');
+    pushMessage('user', `? ${q.question}\n> human: ${human}`, 'Interview');
   }
+  if(pend.length>1) setTimeout(()=>restoreInterviewQuestions(), 300);
 }
 if(typeof document!=='undefined'){
   document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(restoreInterviewQuestions, 800); });
