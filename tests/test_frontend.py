@@ -886,6 +886,92 @@ def test_team_round_renders_tool_calls_in_chat_and_workflow_log(browser):
     ctx.close()
 
 
+def _stateful_chat_route(page, replies):
+    """Route /api/chat with per-call canned replies keyed by prompt marker.
+    `replies` is a list of (marker_or_None, text); the first entry whose marker
+    is None or appears in the last user message wins for each call."""
+    def handler(route):
+        body = route.request.post_data_json or {}
+        last = (body.get("messages") or [{}])[-1].get("content") or ""
+        text = "ok"
+        for marker, t in replies:
+            if marker is None or marker in last:
+                text = t
+                break
+        # One JSON-escaped content chunk (newlines preserved) + done event.
+        sse = (f'data: {json.dumps({"content": text})}\n\n'
+               'data: {"done":true}\n\n')
+        route.fulfill(status=200, content_type="text/event-stream", body=sse)
+    page.route("**/api/chat", handler)
+
+
+def test_team_round_recovers_when_planner_asks_instead_of_delegating(browser):
+    """A planner that answers with a clarifying question (no @Name: lines)
+    used to produce an empty round and a garbage export package. The round
+    must now re-plan in strict format and still run real agent turns."""
+    ctx, page = _new_page(browser)
+    page.evaluate("TTS_ON=false;")
+    chat_payloads = []
+    page.on("request", lambda req: chat_payloads.append(req.post_data_json)
+            if req.url.endswith("/api/chat") and req.method == "POST" else None)
+    _stateful_chat_route(page, [
+        ("Before planning", "NONE"),
+        ("STRICT FORMAT RE-PLAN", "@Cipher: Introduce yourself to the team.\n@Studio: Share what you do."),
+        ("Produce an ORDERED", "I'm VirusGPT, your planner. What would you like me to plan? Tell me the goal."),
+        ("Your turn in the team round", "Hi team, glad to be here."),
+        ("Original goal", "Nice intros everyone."),
+    ])
+    page.fill("#message-input", "@Team meet and greet")
+    page.click("#btn-send")
+    page.wait_for_function("typeof __teamActive !== 'undefined' && __teamActive === false", timeout=20_000)
+    assert any("STRICT FORMAT RE-PLAN" in (p.get("messages") or [{}])[-1].get("content", "")
+               for p in chat_payloads), "strict re-plan never fired"
+    bots = page.query_selector_all(".msg.bot")
+    assert len(bots) >= 3, f"expected 2 worker turns + synthesis, got {len(bots)}"
+    # Export card must carry real turns, not an empty turnLog.
+    page.evaluate("""(() => {
+      window.__exportBodies=[];
+      HTMLAnchorElement.prototype.click=function(){};
+      const originalFetch=window.fetch.bind(window);
+      window.fetch=async function(input,init){
+        const url=String(input && input.url ? input.url : input);
+        if(url.includes('/api/export/project')){
+          window.__exportBodies.push(JSON.parse(init.body));
+          return new Response(new Blob(['zip']),{status:200,headers:{'Content-Disposition':'attachment; filename=\"x.zip\"'}});
+        }
+        return originalFetch(input,init);
+      };
+    })()""")
+    card = page.locator("#messages .msg.bot").last
+    card.locator("button").click()
+    page.wait_for_function("window.__exportBodies.length === 1")
+    exported = page.evaluate("window.__exportBodies[0]")
+    assert len(exported["turns"]) >= 2, f"export turns empty: {exported['turns']}"
+    assert all((t.get("output") or "").strip() for t in exported["turns"]), "export has blank outputs"
+    ctx.close()
+
+
+def test_team_round_falls_back_when_planner_never_delegates(browser):
+    """If even the strict re-plan yields no @Name: lines, the round must fall
+    back to one worker turn each instead of exporting an empty project."""
+    ctx, page = _new_page(browser)
+    page.evaluate("TTS_ON=false;")
+    _stateful_chat_route(page, [
+        ("Before planning", "NONE"),
+        ("STRICT FORMAT RE-PLAN", "I still think we should discuss scope first."),
+        ("Produce an ORDERED", "What would you like me to plan?"),
+        ("Your turn in the team round", "My contribution to the goal."),
+        ("Original goal", "Solid contributions all around."),
+    ])
+    page.fill("#message-input", "@Team onboarding meet and greet")
+    page.click("#btn-send")
+    page.wait_for_function("typeof __teamActive !== 'undefined' && __teamActive === false", timeout=20_000)
+    assert page.evaluate("updatePlanPanel && document.querySelector('#team-plan-status').textContent") == "✓ done"
+    bots = page.query_selector_all(".msg.bot")
+    assert len(bots) >= 3, f"fallback should run worker turns + synthesis, got {len(bots)}"
+    ctx.close()
+
+
 # ---------------------------------------------------------------------------
 # Image generation (🎨 single image)
 # ---------------------------------------------------------------------------

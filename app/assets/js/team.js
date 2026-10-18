@@ -66,7 +66,33 @@ async function runTeamRound(task){
     `You are ${planner.name}, the PLANNER and team lead. Decompose the goal into an ordered list of agent turns. Never answer the task yourself.`,
     null);
   updatePlanPanel('✓ plan ready');
-  const turns=parseTurns(plan, lineup);
+  let turns=parseTurns(plan, lineup);
+  // The planner sometimes answers with a clarifying question instead of
+  // delegating (no @Name: lines). Zero turns used to produce an empty round
+  // and a garbage export, so retry once with a strict format, then fall back
+  // to one turn per worker so the round always produces real contributions.
+  if(!turns.length){
+    updatePlanPanel('re-planning...');
+    const retry = await silentStream(planner,
+      `Team members: ${lineup.map(p=>p.name).join(', ')}.
+Goal: ${task}
+STRICT FORMAT RE-PLAN: Output ONLY lines in the exact form "@<PersonName>: <instruction>".
+Every line MUST start with @ followed by a team member name and a colon.
+Never ask questions, never explain, never refuse. Minimum one line per team member.`,
+      `You are ${planner.name}, the PLANNER. Output ONLY @Name: instruction lines. No other text.`,
+      null);
+    if(!__teamActive){ $('#message-input').disabled=false; $('#btn-send').disabled=false; return; }
+    turns = parseTurns(retry, lineup);
+    if(!turns.length){
+      // Fallback: the planner will not delegate, so rotate the goal across
+      // the workers directly. The round still runs and the export stays real.
+      updatePlanPanel('fallback plan');
+      turns = lineup.filter(p=>p!==planner).map(w=>({worker:w,
+        task:`Contribute your part toward the goal: ${task}`}));
+      if(!turns.length) turns = lineup.map(w=>({worker:w,
+        task:`Contribute your part toward the goal: ${task}`}));
+    }
+  }
   kbReset(); kbAdd('backlog','Task', task, 'progress');
   // 2) Each agent takes its turn IN CHAT (with TTS).
   const turnLog=[];
