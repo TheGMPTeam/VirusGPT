@@ -51,7 +51,10 @@ def stub_llm(monkeypatch):
 
     state = {"text": "Hello from the offline test assistant.", "tool_calls": None}
 
-    async def fake_stream_chat(model, messages, base_url, timeout=120.0, tools=None):
+    async def fake_stream_chat(model, messages, base_url, timeout=120.0, tools=None,
+                               **kwargs):
+        # **kwargs absorbs tool_choice/think/options/backend/api_key so the
+        # stub survives server.py call-signature evolution (it drifted once).
         if state["tool_calls"] and tools:
             yield {"tool_calls": state["tool_calls"]}
             yield {"done": True}

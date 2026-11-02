@@ -167,6 +167,15 @@ def load_config() -> dict:
         cfg["ollama"]["base_url"] = os.environ["VG_OLLAMA_URL"]
     if os.environ.get("VG_MODEL"):
         cfg["ollama"]["default_model"] = os.environ["VG_MODEL"]
+    # Strata (OpenAI-compatible local inference server). The API key lives in
+    # the data-dir .env as VG_STRATA_KEY -- never in tracked config.json.
+    if isinstance(cfg.get("strata"), dict):
+        if os.environ.get("VG_STRATA_URL"):
+            cfg["strata"]["base_url"] = os.environ["VG_STRATA_URL"]
+        if os.environ.get("VG_STRATA_MODEL"):
+            cfg["strata"]["model"] = os.environ["VG_STRATA_MODEL"]
+        if os.environ.get("VG_STRATA_KEY"):
+            cfg["strata"]["api_key"] = os.environ["VG_STRATA_KEY"]
     if os.environ.get("VG_TTS_URL"):
         cfg["tts"]["base_url"] = os.environ["VG_TTS_URL"]
     if os.environ.get("VG_STT_URL"):

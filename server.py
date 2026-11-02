@@ -94,10 +94,14 @@ async def health():
     cf = await _comfy.comfyui_health() if cfg.CONFIG["services"]["comfyui"]["enabled"] else False
     from services import hermes as _hermes
     hf = await _hermes.hermes_status()
+    strata_cfg = cfg.CONFIG.get("strata") or {}
+    sh = await llm.strata_healthy(strata_cfg["base_url"]) if strata_cfg.get("base_url") else False
     models = await llm.list_models(cfg.CONFIG["ollama"]["base_url"]) if oll else []
     voices = await tts.list_voices(cfg.CONFIG["tts"]["base_url"]) if tt else []
     return JSONResponse({
         "ollama": oll,
+        "strata": sh,
+        "chat_backend": (cfg.CONFIG.get("chat") or {}).get("backend", "ollama"),
         "tts": tt,
         "whisper": st,
         "comfyui": cf,
@@ -340,7 +344,17 @@ async def chat(req: Request):
 
     messages = [{"role": "system", "content": system}] + kept
 
-    base = cfg.CONFIG["ollama"]["base_url"]
+    # Chat backend selection: "ollama" (native /api/chat) or "strata"
+    # (OpenAI-compatible /v1/chat/completions). Config-driven via chat.backend.
+    chat_cfg = cfg.CONFIG.get("chat") or {}
+    strata_cfg = cfg.CONFIG.get("strata") or {}
+    if chat_cfg.get("backend") == "strata" and strata_cfg.get("base_url"):
+        base = strata_cfg["base_url"]
+        model = (strata_cfg.get("model") or model).strip()
+        llm_backend, llm_key = "openai", strata_cfg.get("api_key")
+    else:
+        base = cfg.CONFIG["ollama"]["base_url"]
+        llm_backend, llm_key = "ollama", None
     chat_timeout = float(cfg.CONFIG.get("chat_timeout", 60))
     # Caller-side generation controls: meta-calls (chat router, suggest, etc.)
     # pass think=false + a small num_predict so thinking models do not burn
@@ -352,7 +366,8 @@ async def chat(req: Request):
         # No tools -> plain streaming chat (original behavior, untouched).
         if not ollama_tools:
             async for chunk in llm.stream_chat(model, messages, base, timeout=chat_timeout,
-                                               think=think, options=gen_options):
+                                               think=think, options=gen_options,
+                                               backend=llm_backend, api_key=llm_key):
                 yield f"data: {json.dumps(chunk)}\n\n"
             return
         # ReAct loop: stream the model, execute any tool_calls, then loop until
@@ -365,7 +380,8 @@ async def chat(req: Request):
             async for chunk in llm.stream_chat(model, messages, base,
                                                timeout=chat_timeout,
                                                tools=ollama_tools,
-                                               tool_choice=_tc):
+                                               tool_choice=_tc,
+                                               backend=llm_backend, api_key=llm_key):
                 if chunk.get("content"):
                     assistant_msg["content"] += chunk["content"]
                     yield f"data: {json.dumps({'content': chunk['content']})}\n\n"
