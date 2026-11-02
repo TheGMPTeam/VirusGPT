@@ -9,7 +9,7 @@
   },
   "ollama": {
     "base_url": "http://10.0.0.157:11434",
-    "default_model": "qwen3.6:27b-einstein"
+    "default_model": "ornith-1.5:9b"
   },
   "chat_timeout": 60,
   "chat": {
